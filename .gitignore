@@ -1,0 +1,28 @@
+﻿# --- Virtuelle Umgebung & Bytecode ---
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Sensible Daten (WICHTIG) ---
+.env
+AGENT/.env
+*.env
+# Verhindert das versehentliche Committen von Backup-Dateien mit Secrets
+.env.bak
+*.key
+
+# --- IDE & Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Build & Dist (Falls Sie Pakete erstellen) ---
+build/
+dist/
+*.egg-info/   
+.env
+AGENT/.env
