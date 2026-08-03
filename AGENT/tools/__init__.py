@@ -29,7 +29,8 @@ def load_all_tools(registry: ToolRegistry, **context) -> None:
                         generated.register(registry)
         except Exception as exc:
             logger.warning("Tool-Modul %s konnte nicht geladen werden: %s", module_info.name, exc)
-    generated_dir = Path(os.getenv("JUDE_GENERATED_TOOLS_DIR", "/media/d4sd1ng/AI-Data/Jude/generated_tools"))
+    from core.paths import GENERATED_TOOLS_DIR
+    generated_dir = GENERATED_TOOLS_DIR
     if generated_dir.is_dir():
         for path in sorted(generated_dir.glob("*.py")):
             try:

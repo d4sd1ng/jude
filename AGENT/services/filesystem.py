@@ -4,7 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 
-AI_DATA_ROOT = Path(os.getenv("AI_DATA_ROOT", "/media/d4sd1ng/AI-Data")).resolve()
+from core.paths import AI_DATA_ROOT  # noqa: F401  (zentrale Wurzel, auch für Importe von hier)
 BLOCKED_PARTS = {"$RECYCLE.BIN", "System Volume Information", ".Trash-1000"}
 
 

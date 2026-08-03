@@ -10,7 +10,8 @@ from services import database
 
 @pytest.fixture(autouse=True)
 def isolated_database(monkeypatch):
-    root = Path("/media/d4sd1ng/AI-Data/Jude/test-data")
+    from core.paths import TEST_DATA_DIR
+    root = TEST_DATA_DIR
     root.mkdir(parents=True, exist_ok=True)
     target = root / f"test-{uuid.uuid4().hex}.db"
     monkeypatch.setattr(database, "DB_PATH", target)

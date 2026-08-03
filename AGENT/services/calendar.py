@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from services.database import connection
 
-OUTPUT_DIR = Path("/media/d4sd1ng/AI-Data/Kalender")
+from core.paths import CALENDAR_DIR as OUTPUT_DIR
 
 
 class CalendarService:

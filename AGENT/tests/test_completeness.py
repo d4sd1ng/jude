@@ -175,7 +175,8 @@ def test_calendar_creates_valid_ics():
 
 def test_coding_service_real_git_repository():
     from services.coding import CodingService
-    root = Path("/media/d4sd1ng/AI-Data/Jude/test-repos") / uuid.uuid4().hex
+    from core.paths import TEST_REPOS_DIR
+    root = TEST_REPOS_DIR / uuid.uuid4().hex
     root.mkdir(parents=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     try:
@@ -211,7 +212,8 @@ def test_gui_downloads_recorded_meal_pdf(monkeypatch):
     monkeypatch.setenv("JUDE_GUI_USER", "jude")
     monkeypatch.setenv("JUDE_GUI_PASSWORD", "secret")
     plan_id = uuid.uuid4().hex[:12]
-    target = Path("/media/d4sd1ng/AI-Data/Essensplan") / f"essensplan_{plan_id}.pdf"
+    from core.paths import MEALS_DIR
+    target = MEALS_DIR / f"essensplan_{plan_id}.pdf"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"%PDF-1.4\n%%EOF\n")
     try:

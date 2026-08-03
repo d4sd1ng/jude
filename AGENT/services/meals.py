@@ -16,7 +16,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from services.database import connection
 
-OUTPUT_DIR = Path("/media/d4sd1ng/AI-Data/Essensplan")
+from core.paths import MEALS_DIR as OUTPUT_DIR
 
 
 

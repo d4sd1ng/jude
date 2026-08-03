@@ -130,3 +130,15 @@ AGENT/
 ```
 
 Die fünf Pflichtdokumente im Projektwurzelverzeichnis enthalten getrennt Übersicht, Vertrag, Entscheidungen, Architekturregeln und offene Aufgaben.
+## Windows & Debian (Dual-Boot)
+
+Jude läuft von derselben Datenplatte identisch unter beiden Systemen:
+
+- **Debian:** `./start.sh` (im Projektstamm) — nutzt `.venv`
+- **Windows:** `start.bat` — legt beim ersten Start `.venv-win` an
+- Beide starten das Desktop-Fenster mit Sprachsteuerung; `--gui` statt Desktop: `./start.sh --gui`
+
+Die Datenwurzel (AI-Data) wird automatisch erkannt (Linux-Mountpunkt bzw.
+Windows-Laufwerksbuchstabe) und kann mit `AI_DATA_ROOT` übersteuert werden.
+Voraussetzungen je System: Python 3.11+, Ollama (mit denselben Modellen)
+und ein Mikrofon. `.env`, Konfiguration, Datenbank und Modelle werden geteilt.

@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -37,6 +38,7 @@ class ModelSpec:
     priority: int = 5
     weight: float = 1.0
     reasoning_effort: str | None = None
+    think: bool | None = None
 
 
 class ComplexityEstimator:
@@ -80,6 +82,8 @@ class OllamaAdapter(ProviderAdapter):
         }
         if tools:
             payload["tools"] = tools
+        if spec.think is not None:
+            payload["think"] = spec.think
         last_error: Exception | None = None
         for _ in range(self.retries + 1):
             try:
@@ -91,6 +95,9 @@ class OllamaAdapter(ProviderAdapter):
                     "input_tokens": data.get("prompt_eval_count", 0),
                     "output_tokens": data.get("eval_count", 0),
                 }
+                if isinstance(message.get("content"), str):
+                    # Qwen3 & Co. liefern Denkblöcke im Klartext; die gehören nicht in die Antwort.
+                    message["content"] = re.sub(r"<think>.*?</think>\s*", "", message["content"], flags=re.S)
                 return message
             except (requests.RequestException, ValueError) as exc:
                 last_error = exc
@@ -152,6 +159,50 @@ class OpenAIAdapter(ProviderAdapter):
                            "cached_input_tokens": cached, "output_tokens": usage.get("output_tokens", 0),
                            "reasoning_tokens": usage.get("output_tokens_details", {}).get("reasoning_tokens", 0),
                            "service_tier": data.get("service_tier", "standard"), "tariff": "standard"}
+        return result
+
+
+class OpenAICompatAdapter(ProviderAdapter):
+    """Chat-Completions-Format für OpenAI-kompatible Anbieter (OpenRouter, Groq, DeepSeek …)."""
+
+    def __init__(self, base_url: str, api_key_env: str, timeout_seconds: int = 60,
+                 extra_headers: dict[str, str] | None = None, **_: Any):
+        self.url = f"{base_url.rstrip('/')}/chat/completions"
+        self.api_key_env = api_key_env
+        self.timeout = timeout_seconds
+        self.extra_headers = extra_headers or {}
+
+    def call(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None) -> dict:
+        outgoing: list[dict] = []
+        for message in messages:
+            item = dict(message)
+            for call in item.get("tool_calls", []) or []:
+                arguments = call.get("function", {}).get("arguments")
+                if not isinstance(arguments, str):
+                    call["function"]["arguments"] = json.dumps(arguments or {})
+            item.pop("usage", None)
+            outgoing.append(item)
+        payload: dict[str, Any] = {"model": spec.model_name, "messages": outgoing,
+                                   "max_tokens": spec.max_tokens, "stream": False}
+        if tools:
+            payload["tools"] = tools
+        response = requests.post(
+            self.url, json=payload,
+            headers={"Authorization": f"Bearer {os.environ[self.api_key_env]}", **self.extra_headers},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        message = data.get("choices", [{}])[0].get("message", {})
+        result: dict[str, Any] = {"role": "assistant", "content": message.get("content") or ""}
+        if message.get("tool_calls"):
+            result["tool_calls"] = message["tool_calls"]
+        usage = data.get("usage", {}) or {}
+        cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+        result["usage"] = {"input_tokens": usage.get("prompt_tokens", 0),
+                           "uncached_input_tokens": max(0, usage.get("prompt_tokens", 0) - cached),
+                           "cached_input_tokens": cached,
+                           "output_tokens": usage.get("completion_tokens", 0), "tariff": "standard"}
         return result
 
 
@@ -282,7 +333,7 @@ class ModelRouter:
                 latency=int(data["avg_latency_ms"]), max_tokens=int(data["max_tokens"]),
                 context_length=int(data["context_length"]), tags=list(data["tags"]),
                 priority=int(data.get("priority", 5)), weight=float(data.get("weight", 1.0)),
-                reasoning_effort=data.get("reasoning_effort"),
+                reasoning_effort=data.get("reasoning_effort"), think=data.get("think"),
             ) for name, data in self.config["models"].items()
         }
         self.router_cfg = self.config["router"]
@@ -293,6 +344,9 @@ class ModelRouter:
             "anthropic": AnthropicAdapter(**providers["anthropic"]),
             "google": GoogleAdapter(**providers["google"]),
         }
+        for name, settings in providers.items():
+            if name not in self.adapters and settings.get("api_key_env"):
+                self.adapters[name] = OpenAICompatAdapter(**settings)
         month = datetime.now(timezone.utc).strftime("%Y-%m")
         with connection() as db:
             row = db.execute("SELECT COALESCE(SUM(cost_usd),0) AS total FROM model_usage WHERE substr(created_at,1,7)=?", (month,)).fetchone()
@@ -336,7 +390,10 @@ class ModelRouter:
         return float(row["score"] or 0) * 4 if int(row["n"]) >= 3 else 0.0
 
     def _provider_enabled(self, provider: str) -> bool:
-        key = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "google": "GOOGLE_API_KEY"}.get(provider)
+        if provider == "ollama":
+            return True
+        key = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "google": "GOOGLE_API_KEY"}.get(
+            provider) or self.config.get("providers", {}).get(provider, {}).get("api_key_env")
         return key is None or (self.paid_models_enabled and bool(os.getenv(key)))
 
     def select_model(self, prompt: str, allow_uncensored: bool = False, force_local: bool = False,
@@ -347,17 +404,23 @@ class ModelRouter:
             candidates = [m for m in candidates if "lokal" in m.tags]
         if allow_uncensored:
             candidates = [m for m in candidates if "unzensiert" in m.tags]
-        elif needs_tools:
+        elif needs_tools and task_type != "allgemein":
+            # Nur werkzeuglastige Aufgaben erzwingen ein Tools-fähiges Modell; im
+            # allgemeinen Gespräch bleibt das Standardmodell wählbar (call_llm lässt
+            # Tools für Modelle ohne "tools"-Tag ohnehin weg).
             candidates = [m for m in candidates if "tools" in m.tags]
         if not candidates:
             raise ValueError("Kein passendes und aktiviertes Modell konfiguriert.")
+        standard_name = self.router_cfg.get("standard_model")
 
         def score(model: ModelSpec) -> float:
             is_local = "lokal" in model.tags
             local_preference = 2 if is_local and self.router_cfg.get("prefer_local", True) else 0
             task_fit = 7 if task_type in model.tags else 4 if task_type == "allgemein" and "allgemein" in model.tags else 0
             uncensored_default = 2 if task_type == "allgemein" and "unzensiert" in model.tags else 0
-            return (local_preference + task_fit + uncensored_default + model.priority - model.latency / 300
+            standard_bonus = 6 if model.name == standard_name and task_type == "allgemein" else 0
+            return (local_preference + task_fit + uncensored_default + standard_bonus + model.priority
+                    - model.latency / 300
                     - (model.cost_input + model.cost_output) * 100 + self._learned_adjustment(model, task_type)) * model.weight
 
         return max(candidates, key=score)

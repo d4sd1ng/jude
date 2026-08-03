@@ -9,11 +9,13 @@ from typing import Iterable
 import numpy as np
 import onnxruntime as ort
 
+from core.paths import MODELS_DIR as _MODELS_DIR
+
 
 class JudeWakeWordModel:
     """Streaming-Klassifikator für das lokale Kommando „Jude angetreten“."""
 
-    DEFAULT_MODEL = Path("/media/d4sd1ng/AI-Data/Jude/models/wakeword/jude_angetreten.onnx")
+    DEFAULT_MODEL = _MODELS_DIR / "wakeword" / "jude_angetreten.onnx"
 
     def __init__(self, model_path: str | Path | None = None):
         self.path = Path(model_path or os.getenv("WAKE_WORD_MODEL", str(self.DEFAULT_MODEL))).resolve()

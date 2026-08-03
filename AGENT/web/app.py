@@ -334,7 +334,8 @@ def meal_pdf(plan_id: str):
     if row is None:
         raise HTTPException(404, "Essensplan nicht gefunden")
     path = Path(row["pdf_path"]).resolve()
-    allowed = Path("/media/d4sd1ng/AI-Data/Essensplan").resolve()
+    from core.paths import MEALS_DIR
+    allowed = MEALS_DIR.resolve()
     if allowed not in path.parents or not path.is_file():
         raise HTTPException(404, "PDF nicht gefunden")
     return FileResponse(path, media_type="application/pdf", filename=path.name)
@@ -344,7 +345,8 @@ def meal_pdf(plan_id: str):
 def calendar_ics(event_id: str):
     if not event_id.isalnum():
         raise HTTPException(400, "Ungültige Termin-ID")
-    matches = list(Path("/media/d4sd1ng/AI-Data/Kalender").glob(f"*_{event_id[:8]}.ics"))
+    from core.paths import CALENDAR_DIR
+    matches = list(CALENDAR_DIR.glob(f"*_{event_id[:8]}.ics"))
     if len(matches) != 1:
         raise HTTPException(404, "Kalenderdatei nicht gefunden")
     return FileResponse(matches[0], media_type="text/calendar", filename=matches[0].name)

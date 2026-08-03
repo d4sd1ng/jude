@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-DATA_DIR = Path(os.getenv("JUDE_DATA_DIR", "/media/d4sd1ng/AI-Data/Jude/data"))
+from core.paths import DATA_DIR
 DB_PATH = DATA_DIR / "jude.db"
 
 

@@ -19,7 +19,8 @@ WAKE_BLOCK = 1_280  # 80 ms, Vorgabe des Wake-Word-Modells
 @lru_cache(maxsize=1)
 def _model():
     from faster_whisper import WhisperModel
-    default = "/media/d4sd1ng/AI-Data/Jude/models/whisper-small"
+    from core.paths import MODELS_DIR
+    default = str(MODELS_DIR / "whisper-small")
     configured = os.getenv("WHISPER_MODEL", default)
     if configured == default and not os.path.isfile(os.path.join(default, "model.bin")):
         raise RuntimeError("Lokales Whisper-Modell fehlt oder ist unvollständig: " + default)

@@ -14,7 +14,7 @@ from services.database import connection
 from services.ict_training import ICTTrainingService
 from services.notifications import NotificationService
 
-ICT_PROMPT = Path("/media/d4sd1ng/AI-Data/Projects/ICT_SNIPER/ict_trading_bot_systemprompt_1.txt")
+from core.paths import ICT_PROMPT_FILE as ICT_PROMPT
 
 
 class MT5MCPClient:

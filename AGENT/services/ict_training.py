@@ -10,7 +10,8 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-MODEL_DIR = Path(os.getenv("JUDE_DATA_DIR", "/media/d4sd1ng/AI-Data/Jude/data")) / "ict_models"
+from core.paths import DATA_DIR
+MODEL_DIR = DATA_DIR / "ict_models"
 FEATURE_NAMES = [
     "h4_return_4", "h4_ema_gap", "h4_range_position", "h4_atr_ratio",
     "h1_return_8", "h1_ema_gap", "h1_range_position", "h1_atr_ratio",

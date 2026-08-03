@@ -15,11 +15,12 @@ from services.scraper import ScraperService
 
 
 def test_filesystem_write_scope():
-    assert str(resolve_path("/media/d4sd1ng/AI-Data/test.txt", for_write=True)).endswith("test.txt")
+    from core.paths import AI_DATA_ROOT
+    assert str(resolve_path(AI_DATA_ROOT / "test.txt", for_write=True)).endswith("test.txt")
     with pytest.raises(PermissionError):
         resolve_path("/tmp/not-allowed.txt", for_write=True)
     with pytest.raises(PermissionError):
-        resolve_path("/media/d4sd1ng/AI-Data/.Trash-1000/item")
+        resolve_path(AI_DATA_ROOT / ".Trash-1000" / "item")
 
 
 def test_kill_zones_and_cross_midnight():
