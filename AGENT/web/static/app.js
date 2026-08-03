@@ -80,3 +80,6 @@ renderToggles();pollSystem();pollWeather();pollHudRadar();pollTokens();pollTicke
 
 // Thema überspringen
 $('#voiceSkip').onclick=async()=>{try{await api('/api/voice/skip',{method:'POST'});toast('Thema übersprungen')}catch(e){toast(e.message)}};
+
+// ICT walk-forward Training (benötigt MT5-Verbindung)
+$$('.ictTrain').forEach(b=>b.onclick=async()=>{const sym=b.dataset.symbol;b.disabled=true;toast(`${sym}: Training läuft (kann dauern)…`);try{const r=await api('/api/ict/train/'+sym,{method:'POST'});const m=r.metrics||r;toast(`${sym} trainiert: ROC-AUC ${(m.roc_auc??0).toFixed(2)}, Precision ${(m.precision??0).toFixed(2)}, ${m.test_signals??'?'} Signale`)}catch(e){toast(`${sym} Training: ${e.message}`)}finally{b.disabled=false}});

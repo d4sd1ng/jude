@@ -28,7 +28,20 @@ def build_application() -> tuple[Agent, ToolCreator]:
     load_all_tools(registry, router=router, confirmations=confirmations)
     creator = ToolCreator(router, registry)
     registry.register(creator.as_tool())
-    return Agent(router, registry), creator
+    agent = Agent(router, registry)
+    _seed_profile(agent)
+    return agent, creator
+
+
+def _seed_profile(agent: Agent) -> None:
+    """Legt Name und optionale Profilfakten (JUDE_PROFILE, per Semikolon) als bestätigte Erinnerungen an."""
+    name = os.getenv("JUDE_USER_NAME", "Tino").strip()
+    facts = [f"Ich heiße {name}."] if name else []
+    facts += [part.strip() for part in os.getenv("JUDE_PROFILE", "").split(";") if part.strip()]
+    try:
+        agent.memory.seed_profile(facts)
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Profil konnte nicht angelegt werden: %s", exc)
 
 
 def parse_args() -> argparse.Namespace:

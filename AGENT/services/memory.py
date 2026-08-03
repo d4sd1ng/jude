@@ -26,6 +26,23 @@ class MemoryService:
         r"mein(?:e|er|en|em|es)?\b|für mich\b)",
         re.IGNORECASE,
     )
+    # Sehr verlässliche Identitäts-/Dauerfakten – rechtfertigen automatische Freigabe.
+    STRONG_FACT = re.compile(
+        r"^\s*ich (?:heiße|bin|wohne(?: in)?|arbeite(?: als| bei)?|komme aus)\b",
+        re.IGNORECASE,
+    )
+
+    def __init__(self):
+        import os
+        self.auto_approve_threshold = self._env_float("JUDE_MEMORY_AUTOAPPROVE", 0.8)
+
+    @staticmethod
+    def _env_float(name: str, default: float) -> float:
+        import os
+        try:
+            return float(os.getenv(name, "").strip() or default)
+        except ValueError:
+            return default
 
     @staticmethod
     def _now() -> str:
@@ -92,10 +109,29 @@ class MemoryService:
         results = []
         for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
             sentence = sentence.strip()
-            if len(sentence) >= 8 and self.STABLE_FACT.search(sentence):
-                results.append(self.remember(sentence, kind="personal", status="candidate",
-                                             source="automatic", confidence=0.65))
+            if len(sentence) < 8 or not self.STABLE_FACT.search(sentence):
+                continue
+            # Starke Identitätsfakten bekommen hohe Konfidenz und werden bei
+            # Überschreiten der Schwelle automatisch bestätigt (kein Klick nötig).
+            confidence = 0.85 if self.STRONG_FACT.search(sentence) else 0.65
+            status = "active" if confidence >= self.auto_approve_threshold else "candidate"
+            results.append(self.remember(sentence, kind="personal", status=status,
+                                         source="automatic", confidence=confidence))
         return results
+
+    def seed_profile(self, facts: list[str]) -> list[dict]:
+        """Legt bekannte Profilfakten (Name, Vorlieben) als bestätigte Erinnerungen an."""
+        stored = []
+        for fact in facts:
+            fact = fact.strip()
+            if not fact:
+                continue
+            try:
+                stored.append(self.remember(fact, kind="explicit", status="active",
+                                            source="profil", confidence=1.0))
+            except ValueError:
+                continue
+        return stored
 
     def record_turn(self, user_text: str, assistant_text: str, model: str | None) -> None:
         excluded = bool(self.DO_NOT_STORE.search(user_text) or self.SENSITIVE.search(user_text))
