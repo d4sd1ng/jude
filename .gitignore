@@ -1,0 +1,16 @@
+# --- Virtuelle Umgebung & Bytecode ---
+.venv/
+venv/
+ENV/
+__pycache__/
+*.pyc
+
+# --- Geheimnisse ---
+.env
+
+# --- Caches & Tests ---
+.pytest_cache/
+.ruff_cache/
+
+# --- Daten & Temporäres ---
+tmp/

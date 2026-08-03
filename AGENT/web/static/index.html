@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Jarvis</title><link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header><div><span class="eyebrow">LOCAL CONTROL</span><h1>Jarvis</h1></div><span id="health" class="badge">verbinden…</span></header>
+<nav id="nav" aria-label="Bereiche"></nav><main>
+<section data-page="Übersicht">
+  <div class="hero"><div><span class="eyebrow">ASSISTENT</span><h2>Ein System. Klare Kontrolle.</h2><p>Lokale KI, Daten, Automationen und bestätigungspflichtige Aktionen.</p></div><div id="stats" class="stats"></div></div>
+  <div class="panel"><h3>Chat</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jarvis tun?" required><button>Senden</button></form></div>
+</section>
+<section data-page="Märkte">
+  <div class="sectionhead"><div><span class="eyebrow">OHLCV</span><h2>Märkte</h2></div><div class="controls"><select id="market"><option>BTC/EUR</option><option>BTC/USD</option><option>XAU/EUR</option><option>XAU/USD</option></select><select id="interval"><option>1m</option><option>15m</option><option selected>1h</option><option>4h</option><option>1d</option></select><button id="loadMarket">Laden</button><a id="marketCsv" class="button" href="#">CSV</a></div></div>
+  <div class="panel"><canvas id="chart" height="360" role="img" aria-label="Candlestick-Chart des ausgewählten Markts"></canvas><p id="marketLast"></p><p id="marketMeta" class="muted"></p><details><summary>Kerzendaten als Tabelle</summary><div class="tablewrap"><table><thead><tr><th>Zeit</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volumen</th></tr></thead><tbody id="marketRows"></tbody></table></div></details></div>
+</section>
+<section data-page="ICT / SMC">
+  <div class="sectionhead"><div><span class="eyebrow">DEMO ANALYSIS</span><h2>ICT / SMC</h2></div><div><button class="ictRun" data-symbol="XAUUSD">XAUUSD prüfen</button> <button class="ictRun" data-symbol="BTCUSD">BTCUSD prüfen</button></div></div><div id="killzones" class="panel"></div><div id="ictTraining" class="panel"></div><div id="cards" class="cards"></div>
+</section>
+<section data-page="Radar">
+  <div class="sectionhead"><div><span class="eyebrow">MARBURG</span><h2>Regenradar</h2></div><div class="controls"><label>Zoom <select id="radarZoom"><option>5</option><option>6</option><option selected>7</option></select></label><button id="loadRadar">Aktualisieren</button></div></div><div class="panel radar"><div class="radarMap"><img id="radarBase" alt="OpenStreetMap-Karte um Marburg"><img id="radarImage" alt="Regenradar für Marburg"><span class="marker" aria-label="Berliner Straße, Marburg">●</span></div><div><h3>Berliner Straße · 35039</h3><input id="radarFrame" type="range" min="0" max="0" value="0" aria-label="Radarzeit auswählen"><p id="radarMeta" class="muted"></p></div></div>
+</section>
+<section data-page="Fake-Checker">
+  <div class="sectionhead"><div><span class="eyebrow">EVIDENCE</span><h2>Fake-Checker</h2></div></div><div class="panel"><form id="factForm"><input id="factUrl" type="url" placeholder="URL zu Bericht, Post oder Video" required><button>Prüfen</button></form><p class="muted">Bestätigt erst mit zwei unabhängigen seriösen Quellen.</p></div><div id="factResult"></div>
+</section>
+<section data-page="Dienste">
+  <div class="sectionhead"><div><span class="eyebrow">CONNECTED SERVICES</span><h2>Dienste</h2></div></div><div class="toolgrid">
+    <article class="panel"><h3>Crypto-News</h3><button id="newsRun">Journalistisches Briefing</button><div id="newsResult"></div></article>
+    <article class="panel"><h3>Licht</h3><p>Wohnzimmer · Schlafzimmer · Flur</p><div id="lights"></div></article>
+    <article class="panel"><h3>Alexa / Growcontroller</h3><p>Nur explizit konfigurierte Home-Assistant-Aktionen.</p><div id="homeActions"></div></article>
+    <article class="panel"><h3>Postfächer</h3><div id="mailStatus"></div><select id="mailAccount"><option value="gmx">GMX</option><option value="yahoo">Yahoo</option><option value="gmail">Gmail</option><option value="proton_nurovelle">Proton Nurovelle</option><option value="proton_mongojude">Proton MongoJude</option></select><div class="controls"><input id="mailQuery" value="ALL" aria-label="Mailsuche"><button id="mailSearch">Suchen</button></div><div id="mailResults"></div><h4>Entwurf / Versand</h4><form id="mailCompose"><input id="mailTo" type="email" placeholder="Empfänger" required><input id="mailSubject" placeholder="Betreff" required><textarea id="mailBody" placeholder="Nachricht" required></textarea><div class="controls"><button name="mode" value="draft">Entwurf speichern</button><button name="mode" value="send">Versand vormerken</button></div></form></article>
+    <article class="panel"><h3>Kalender</h3><form id="calendarForm"><input id="calendarTitle" placeholder="Termin" required><label>Beginn <input id="calendarStart" type="datetime-local" required></label><label>Ende <input id="calendarEnd" type="datetime-local" required></label><input id="calendarLocation" placeholder="Ort"><textarea id="calendarDescription" placeholder="Beschreibung"></textarea><button>Termin vormerken</button></form><div id="calendarEvents"></div></article>
+    <article class="panel"><h3>Coding / Tests</h3><button id="reposRun">Repositories laden</button><div id="repos"></div></article>
+  </div>
+</section>
+<section data-page="Werkzeuge">
+  <div class="sectionhead"><div><span class="eyebrow">AGENTS</span><h2>Werkzeuge</h2></div></div><div class="toolgrid">
+    <article class="panel"><h3>OCR</h3><form id="ocrForm"><input name="file" type="file" required><select name="language"><option>deu+eng</option><option>deu</option><option>eng</option></select><button>Text erkennen</button></form><pre id="ocrText"></pre></article>
+    <article class="panel"><h3>Shopping</h3><select id="shopCategory"><option value="t-shirt">T-Shirts XXL</option><option value="sweater">Sweater XXL</option><option value="schuhe">Schuhe 44</option></select><button id="shopRun">Vergleichen</button><div id="shopResult"></div></article>
+    <article class="panel"><h3>Essensplan</h3><div class="controls"><select id="mealDays"><option>7</option><option>8</option><option>9</option><option>10</option></select><select id="mealPeople"><option>1</option><option selected>2</option></select><button id="mealRun">PDF erstellen</button></div><div id="mealResult"></div></article>
+    <article class="panel"><h3>Web-Scraper</h3><form id="scrapeForm"><input id="scrapeUrl" type="url" placeholder="Öffentliche URL" required><button>Extrahieren</button></form><div id="scrapeResult"></div></article>
+  </div>
+</section>
+<section data-page="Gedächtnis">
+  <div class="sectionhead"><div><span class="eyebrow">LOCAL MEMORY</span><h2>Gedächtnis</h2></div><button id="loadMemory">Aktualisieren</button></div>
+  <div class="panel"><p id="memoryStats" class="muted"></p><form id="memoryForm"><input id="memoryContent" placeholder="Erinnerung ausdrücklich hinzufügen" required><button>Speichern</button></form></div>
+  <div id="memoryItems" class="cards"></div>
+</section>
+<section data-page="Routing">
+  <div class="sectionhead"><div><span class="eyebrow">LOCAL FIRST</span><h2>Modell-Routing &amp; Verbrauch</h2></div><button id="loadRouting">Aktualisieren</button></div>
+  <div id="routingStats" class="stats"></div>
+  <div class="grid2"><article class="panel"><h3>Verbrauch je Modell</h3><div id="routingUsage"></div></article><article class="panel"><h3>Letzte Entscheidungen</h3><div id="routingHistory"></div></article></div>
+</section>
+<section data-page="Bestätigungen"><div class="sectionhead"><div><span class="eyebrow">SAFETY GATE</span><h2>Bestätigungen</h2></div><button id="loadConfirmations">Aktualisieren</button></div><div id="confirmations" class="cards"></div></section>
+</main><div id="toast" role="status"></div><script src="/static/app.js"></script></body></html>

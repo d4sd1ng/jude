@@ -1,0 +1,128 @@
+models:
+  local_qwen_coder:
+    provider: ollama
+    model_name: qwen2.5-coder:7b-instruct
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    avg_latency_ms: 220
+    max_tokens: 4096
+    context_length: 16384
+    tags: [lokal, privat, schnell, tools, code, test, routing_judge]
+    priority: 10
+
+  local_dolphin:
+    provider: ollama
+    model_name: dolphin-mistral:7b-v2
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    avg_latency_ms: 300
+    max_tokens: 2048
+    context_length: 8192
+    tags: [lokal, privat, unzensiert, allgemein, kreativ]
+    priority: 9
+
+  cloud_openai_luna:
+    provider: openai
+    model_name: gpt-5.6-luna
+    cost_per_1k_input: 0.0002
+    cost_per_1k_cached_input: 0.00002
+    cost_per_1k_output: 0.0012
+    avg_latency_ms: 500
+    max_tokens: 8192
+    context_length: 1050000
+    reasoning_effort: low
+    tags: [cloud, schnell, kostenguenstig, extraktion, routing, tools]
+    priority: 7
+
+  cloud_openai_terra:
+    provider: openai
+    model_name: gpt-5.6-terra
+    cost_per_1k_input: 0.002
+    cost_per_1k_cached_input: 0.0002
+    cost_per_1k_output: 0.012
+    avg_latency_ms: 750
+    max_tokens: 16384
+    context_length: 1050000
+    reasoning_effort: medium
+    tags: [cloud, analyse, code, tools, grosserkontext]
+    priority: 8
+
+  cloud_openai_sol:
+    provider: openai
+    model_name: gpt-5.6-sol
+    cost_per_1k_input: 0.005
+    cost_per_1k_cached_input: 0.0005
+    cost_per_1k_output: 0.03
+    avg_latency_ms: 1100
+    max_tokens: 24576
+    context_length: 1050000
+    reasoning_effort: high
+    tags: [cloud, top_tier, analyse, code, agentisch, grosserkontext]
+    priority: 10
+
+  cloud_claude_sonnet:
+    provider: anthropic
+    model_name: claude-sonnet-5
+    cost_per_1k_input: 0.003
+    cost_per_1k_cached_input: 0.0003
+    cost_per_1k_output: 0.015
+    avg_latency_ms: 850
+    max_tokens: 16384
+    context_length: 1000000
+    tags: [cloud, analyse, code, agentisch, grosserkontext, tools]
+    priority: 8
+
+  cloud_claude_fable:
+    provider: anthropic
+    model_name: claude-fable-5
+    cost_per_1k_input: 0.01
+    cost_per_1k_cached_input: 0.001
+    cost_per_1k_output: 0.05
+    avg_latency_ms: 1400
+    max_tokens: 24576
+    context_length: 1000000
+    tags: [cloud, top_tier, langlaufend, agentisch, analyse, grosserkontext, tools]
+    priority: 10
+
+  cloud_gemini_flash:
+    provider: google
+    model_name: gemini-3.6-flash
+    cost_per_1k_input: 0.0015
+    cost_per_1k_cached_input: 0.00015
+    cost_per_1k_output: 0.0075
+    avg_latency_ms: 450
+    max_tokens: 16384
+    context_length: 1000000
+    tags: [cloud, schnell, multimodal, grosserkontext, analyse, tools]
+    priority: 8
+
+router:
+  budget_limit_monthly_usd: 5.0
+  prefer_local: true
+  local_first: true
+  complexity_threshold_high: 7
+  quality_judge_min_complexity: 6
+  request_cost_limit_usd: 1.0
+  fallback_chain:
+    - tags:lokal
+    - cloud_openai_luna
+    - cloud_openai_terra
+    - cloud_gemini_flash
+    - cloud_claude_sonnet
+    - cloud_openai_sol
+    - cloud_claude_fable
+
+providers:
+  ollama:
+    base_url: http://127.0.0.1:11434
+    timeout_seconds: 120
+    num_retries: 1
+  openai:
+    base_url: https://api.openai.com/v1
+    timeout_seconds: 60
+  anthropic:
+    base_url: https://api.anthropic.com/v1
+    timeout_seconds: 60
+  google:
+    base_url: https://generativelanguage.googleapis.com/v1beta
+    timeout_seconds: 60
