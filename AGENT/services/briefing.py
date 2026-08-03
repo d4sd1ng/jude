@@ -18,12 +18,15 @@ from defusedxml import ElementTree
 
 from services.market import MarketService
 
-DEFAULT_TOPICS = {
-    "Tech / Elon Musk": "Elon Musk OR Tesla OR SpaceX",
+TECH_TOPICS = {
+    "Elon Musk": "Elon Musk OR Tesla OR SpaceX OR xAI",
     "Nvidia / Jensen Huang": "Nvidia Jensen Huang",
     "AMD": "AMD Ryzen OR AMD Radeon OR Lisa Su",
-    "Kriegslage": "Krieg OR Ukraine OR Nahost OR Gaza",
 }
+WAR_TOPICS = {
+    "Kriegslage": "Krieg OR Ukraine OR Nahost OR Gaza OR Taiwan",
+}
+DEFAULT_TOPICS = {**TECH_TOPICS, **WAR_TOPICS}
 
 
 class BriefingService:
@@ -236,16 +239,37 @@ class BriefingService:
         self._cached_at = now
         return self._cache
 
-    def spoken_brief(self) -> str:
+    def segments(self, full: bool = True) -> list[dict]:
+        """Briefing in überspringbare Themenblöcke.
+
+        ``full=True`` liefert XAU & BTC, Tech und Kriegslage (einmal täglich);
+        ``full=False`` nur das Markt-Update zu XAU & BTC für erneutes Aufwachen.
+        """
         data = self.data()
-        parts: list[str] = []
-        for m in data["markets"]:
-            parts.append(self._market_sentence(m))
-        for r in data.get("ict", []):
-            parts.append(self._ict_sentence(r))
-        for label, items in data["headlines"].items():
-            if items:
-                parts.append(f"{label}: {items[0]}.")
-        if not parts:
+        segments: list[dict] = []
+
+        market_parts = [self._market_sentence(m) for m in data.get("markets", [])]
+        market_parts += [self._ict_sentence(r) for r in data.get("ict", [])]
+        if market_parts:
+            segments.append({"topic": "XAU & BTC", "text": " ".join(market_parts)})
+
+        if not full:
+            return segments
+
+        headlines = data.get("headlines", {})
+        tech = [f"{label}: {items[0]}" for label, items in headlines.items()
+                if label in TECH_TOPICS and items]
+        if tech:
+            segments.append({"topic": "Tech", "text": "Tech-News. " + " ".join(f"{t}." for t in tech)})
+
+        war = [items[0] for label, items in headlines.items() if label in WAR_TOPICS and items]
+        if war:
+            segments.append({"topic": "Kriegslage", "text": "Kriegslage. " + " ".join(f"{w}." for w in war)})
+
+        return segments
+
+    def spoken_brief(self) -> str:
+        segments = self.segments()
+        if not segments:
             return "Für das Briefing liegen gerade keine Daten vor."
-        return "Kurzbriefing. " + " ".join(parts)
+        return "Kurzbriefing. " + " ".join(s["text"] for s in segments)

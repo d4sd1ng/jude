@@ -50,7 +50,10 @@ def _default_model() -> str | None:
     return None
 
 
-def speak(text: str) -> None:
+def speak(text: str, should_stop=None) -> None:
+    """Spricht *text*. Ist ``should_stop`` gesetzt (Callable -> bool), wird die
+    Wiedergabe abgebrochen, sobald es True liefert – das ermöglicht das
+    Überspringen einzelner Briefing-Abschnitte."""
     model = os.getenv("PIPER_MODEL") or _default_model()
     piper = _piper_binary()
     if not text or not model:
@@ -82,6 +85,15 @@ def speak(text: str) -> None:
         import numpy as np
         import sounddevice as sd
         audio = np.frombuffer(result.stdout, dtype=np.int16)
-        sd.play(audio, playback_rate, blocking=True)
+        sd.play(audio, playback_rate)
+        if should_stop is None:
+            sd.wait()
+        else:
+            stream = sd.get_stream()
+            while stream is not None and stream.active:
+                if should_stop():
+                    sd.stop()
+                    break
+                sd.sleep(40)
     except ImportError as exc:
         raise RuntimeError("Sprachausgabe benötigt numpy und sounddevice.") from exc

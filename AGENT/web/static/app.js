@@ -77,3 +77,6 @@ for(const[id,key]of[['#tglMarket','market'],['#tglNews','news'],['#tglRadar','ra
 $('#tglVoice').onclick=()=>$('#voiceToggle').click();
 const _vb=voiceBadge;voiceBadge=s=>{_vb(s);$('#tickVoice').textContent=s.running?(s.state||'an'):'aus';renderToggles()};
 renderToggles();pollSystem();pollWeather();pollHudRadar();pollTokens();pollTicker();pollNews();
+
+// Thema überspringen
+$('#voiceSkip').onclick=async()=>{try{await api('/api/voice/skip',{method:'POST'});toast('Thema übersprungen')}catch(e){toast(e.message)}};

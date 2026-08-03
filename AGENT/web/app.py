@@ -178,6 +178,16 @@ async def voice_stop():
     return await asyncio.to_thread(voice.stop)
 
 
+@app.post("/api/voice/skip")
+def voice_skip():
+    return voice.skip()
+
+
+@app.post("/api/voice/skip-all")
+def voice_skip_all():
+    return voice.skip_all()
+
+
 @app.get("/api/system")
 def system_snapshot():
     return system_monitor.snapshot()

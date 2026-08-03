@@ -46,9 +46,13 @@ class VoiceController:
         self._state = "aus"
         self._error: str | None = None
         self._stop = threading.Event()
+        self._skip = threading.Event()        # aktuellen Abschnitt überspringen
+        self._skip_all = threading.Event()    # restliches Briefing überspringen
         self._thread: threading.Thread | None = None
         self._guard = threading.Lock()
         self._tts_warned = False
+        from core.paths import DATA_DIR
+        self._brief_state_path = DATA_DIR / "voice_briefing.json"
 
     # ------------------------------------------------------------------ API
 
@@ -85,6 +89,17 @@ class VoiceController:
         last_id = items[-1]["id"] if items else since
         return {"events": items, "last_id": last_id, **self.status()}
 
+    def skip(self) -> dict:
+        """Überspringt den gerade gesprochenen Abschnitt und geht zum nächsten Thema."""
+        self._skip.set()
+        return self.status()
+
+    def skip_all(self) -> dict:
+        """Bricht das restliche Briefing ab."""
+        self._skip_all.set()
+        self._skip.set()
+        return self.status()
+
     # ------------------------------------------------------------ intern
 
     def _emit(self, kind: str, text: str, **extra) -> None:
@@ -96,31 +111,68 @@ class VoiceController:
             self._state = state
             self._emit("state", state)
 
-    def _speak(self, text: str) -> None:
+    def _speak(self, text: str, interruptible: bool = False) -> None:
         from speech.tts import speak
+        should_stop = None
+        if interruptible:
+            should_stop = lambda: self._skip.is_set() or self._skip_all.is_set() or self._stop.is_set()
         try:
-            speak(text)
+            speak(text, should_stop=should_stop)
         except Exception as exc:
             if not self._tts_warned:
                 self._tts_warned = True
                 self._emit("warning", f"Sprachausgabe nicht verfügbar: {exc}")
             logger.warning("Sprachausgabe fehlgeschlagen: %s", exc)
 
+    # -- Einmal-täglich-Zustand des vollständigen Briefings -----------------
+
+    def _today(self) -> str:
+        from datetime import datetime
+        return datetime.now().strftime("%Y-%m-%d")
+
+    def _full_brief_done_today(self) -> bool:
+        import json
+        try:
+            state = json.loads(self._brief_state_path.read_text(encoding="utf-8"))
+            return state.get("last_full_brief") == self._today()
+        except Exception:
+            return False
+
+    def _mark_full_brief(self) -> None:
+        import json
+        try:
+            self._brief_state_path.parent.mkdir(parents=True, exist_ok=True)
+            self._brief_state_path.write_text(json.dumps({"last_full_brief": self._today()}), encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Briefing-Zustand nicht speicherbar: %s", exc)
+
     def _speak_briefing(self) -> None:
         if not self.briefing_enabled:
             return
+        full = not self._full_brief_done_today()
         try:
             if self.briefing is None:
                 from services.briefing import BriefingService
                 self.briefing = BriefingService()
-            text = self.briefing.spoken_brief()
+            segments = self.briefing.segments(full=full)
         except Exception as exc:
             self._emit("warning", f"Briefing nicht verfügbar: {exc}")
             return
-        if text:
-            self._emit("answer", text, kind_detail="briefing")
+        if not segments:
+            return
+        self._skip.clear()
+        self._skip_all.clear()
+        for segment in segments:
+            if self._stop.is_set() or self._skip_all.is_set():
+                break
+            self._skip.clear()
+            self._emit("answer", segment["text"], kind_detail="briefing", topic=segment.get("topic"))
             self._set_state("spricht")
-            self._speak(text)
+            self._speak(segment["text"], interruptible=True)
+        self._skip.clear()
+        self._skip_all.clear()
+        if full:
+            self._mark_full_brief()
 
     def _respond(self, text: str) -> None:
         self._set_state("denkt")
