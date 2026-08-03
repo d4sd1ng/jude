@@ -86,6 +86,7 @@
   <div class="toolgrid">
     <article class="panel"><h3>Erzeugen (OpenAI)</h3><form id="imgGenForm"><input id="imgPrompt" placeholder="Bildbeschreibung" required><select id="imgSize"><option value="1024x1024">1024×1024</option><option value="1536x1024">1536×1024 quer</option><option value="1024x1536">1024×1536 hoch</option></select><button>Erzeugen</button></form><div id="imgGenResult"></div></article>
     <article class="panel"><h3>Bearbeiten (OpenAI)</h3><form id="imgEditForm"><input type="file" name="file" accept="image/*" required><input name="prompt" placeholder="Was soll geändert werden?" required><button>Bearbeiten</button></form><div id="imgEditResult"></div></article>
+    <article class="panel"><h3>Bild verstehen</h3><form id="visionForm"><input type="file" name="file" accept="image/*" required><input name="question" placeholder="Frage zum Bild (optional)"><button>Analysieren</button></form><div id="visionResult"></div></article>
     <article class="panel"><h3>3D rendern (Blender, lokal)</h3><input id="renderTitle" placeholder="Titel"><textarea id="renderPrompt" placeholder="Szene beschreiben – Jude schreibt das Blender-Skript und rendert lokal"></textarea><button id="renderRun">Lokal rendern</button><div id="renderResult"></div></article>
   </div>
   <div class="sectionhead"><div><span class="eyebrow">GALERIE</span><h3>Zuletzt erzeugt</h3></div><button id="loadImages">Aktualisieren</button></div>

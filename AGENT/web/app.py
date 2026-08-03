@@ -40,6 +40,7 @@ from services.render3d import BlenderService
 from services.scraper import ScraperService
 from services.shopping import ShoppingService
 from services.system_monitor import SystemMonitorService
+from services.vision import VisionService
 from services.weather import WeatherService
 from speech.controller import VoiceController
 
@@ -62,6 +63,7 @@ briefing = BriefingService(market, ict=ict, router=agent.router)
 voice = VoiceController(agent, agent_lock, briefing=briefing)
 images = ImageService()
 blender = BlenderService()
+vision = VisionService()
 
 
 def _local(host: str | None) -> bool:
@@ -239,6 +241,12 @@ async def images_render3d(payload: dict):
     return await asyncio.to_thread(blender.render, script, str(payload.get("title", "szene")),
                                    int(payload.get("width", 1024)), int(payload.get("height", 1024)),
                                    str(payload.get("engine", "BLENDER_EEVEE_NEXT")))
+
+
+@app.post("/api/vision")
+async def vision_describe(file: UploadFile = File(...), question: str = Form("Beschreibe dieses Bild genau auf Deutsch.")):
+    image_bytes = await file.read()
+    return await asyncio.to_thread(vision.describe, image_bytes, question)
 
 
 @app.post("/api/routing/{route_id}/feedback")

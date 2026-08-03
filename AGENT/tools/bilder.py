@@ -3,9 +3,15 @@ from __future__ import annotations
 from core.tool_registry import Tool, ToolRegistry
 from services.images import ImageService
 from services.render3d import BlenderService
+from services.vision import VisionService
 
 _images = ImageService()
 _blender = BlenderService()
+_vision = VisionService()
+
+
+def analyze_image(path: str, question: str = "Beschreibe dieses Bild genau auf Deutsch.") -> dict:
+    return _vision.describe_path(path, question)
 
 
 def generate_image(prompt: str, size: str = "1024x1024") -> dict:
@@ -22,6 +28,16 @@ def render_3d_objects(objects: list, background: list | None = None, title: str 
 
 
 def register(registry: ToolRegistry) -> None:
+    registry.register(Tool(
+        name="analyze_image",
+        description=("Versteht ein gegebenes Bild: beschreibt es oder beantwortet eine Frage dazu. "
+                     "'path' ist der Pfad zu einer Bilddatei unter AI-Data (z.B. unter Jude/images)."),
+        func=analyze_image,
+        param_schema={"type": "object", "properties": {
+            "path": {"type": "string", "description": "Pfad zur Bilddatei"},
+            "question": {"type": "string", "description": "Was über das Bild wissen? Optional."},
+        }, "required": ["path"]},
+    ))
     registry.register(Tool(
         name="generate_image",
         description="Erzeugt ein Bild aus einer Textbeschreibung über OpenAI (gpt-image-1) und speichert es lokal unter Jude/images.",
