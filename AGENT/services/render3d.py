@@ -12,6 +12,7 @@ Tool-Creator wird generierter Python-Code ausgeführt; ein Timeout und
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import shutil
@@ -21,6 +22,31 @@ import uuid
 from datetime import datetime, timezone
 
 from core.paths import IMAGES_DIR
+
+_ALLOWED_IMPORTS = {"bpy", "math", "mathutils", "random"}
+_FORBIDDEN_NAMES = {"eval", "exec", "open", "compile", "__import__", "globals", "locals",
+                    "vars", "getattr", "setattr", "delattr", "os", "sys", "subprocess",
+                    "socket", "shutil", "pathlib", "importlib", "input", "breakpoint"}
+
+
+def _assert_safe_bpy(script: str) -> None:
+    """Erlaubt nur eine enge bpy-Teilmenge für vom Modell geschriebene Skripte."""
+    try:
+        tree = ast.parse(script)
+    except SyntaxError as exc:
+        raise ValueError(f"Ungültiges Blender-Skript: {exc}") from exc
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] not in _ALLOWED_IMPORTS:
+                    raise ValueError(f"Import nicht erlaubt: {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            if (node.module or "").split(".")[0] not in _ALLOWED_IMPORTS:
+                raise ValueError(f"Import nicht erlaubt: {node.module}")
+        elif isinstance(node, ast.Name) and node.id in _FORBIDDEN_NAMES:
+            raise ValueError(f"Nicht erlaubter Bezeichner im Skript: {node.id}")
+        elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+            raise ValueError("Dunder-Zugriff im Skript ist nicht erlaubt.")
 
 _WRAPPER = '''
 import bpy, sys
@@ -69,11 +95,18 @@ class BlenderService:
 
     def render(self, blender_python: str, title: str = "szene",
                width: int = 1024, height: int = 1024,
-               engine: str = "BLENDER_EEVEE_NEXT", transparent: bool = False) -> dict:
+               engine: str = "BLENDER_EEVEE_NEXT", transparent: bool = False,
+               trusted: bool = False) -> dict:
         if not blender_python.strip():
             raise ValueError("Es wurde kein Blender-Skript übergeben.")
         if not self.available():
             raise RuntimeError("Blender wurde nicht gefunden (BLENDER_BIN setzen oder installieren).")
+        if not trusted:
+            # Roh-Skripte vom Modell sind standardmäßig deaktiviert und werden geprüft.
+            if os.getenv("JUDE_BLENDER_RAW", "").strip().lower() not in {"1", "true", "an", "on", "ja"}:
+                raise RuntimeError("Roh-Blender-Skripte sind deaktiviert. Nutze render_3d_objects "
+                                   "oder setze JUDE_BLENDER_RAW=true.")
+            _assert_safe_bpy(blender_python)
         engine = engine if engine in {"BLENDER_EEVEE_NEXT", "CYCLES", "BLENDER_WORKBENCH"} else "BLENDER_EEVEE_NEXT"
 
         indented = "\n".join("    " + line for line in blender_python.splitlines()) or "    pass"
@@ -166,4 +199,6 @@ class BlenderService:
 
     def render_spec(self, spec: dict, title: str = "szene", width: int = 1024,
                     height: int = 1024, engine: str = "BLENDER_EEVEE_NEXT") -> dict:
-        return self.render(self._spec_to_bpy(spec), title=title, width=width, height=height, engine=engine)
+        # Serverseitig aus geprüften Primitiven gebaut -> vertrauenswürdig.
+        return self.render(self._spec_to_bpy(spec), title=title, width=width, height=height,
+                           engine=engine, trusted=True)

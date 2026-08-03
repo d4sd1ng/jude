@@ -105,7 +105,38 @@ async def lifespan(_: FastAPI):
             await task
 
 
+def _allowed_hosts() -> set[str]:
+    hosts = {"127.0.0.1", "localhost", "::1", "[::1]"}
+    hosts.add(os.getenv("JUDE_HOST", "127.0.0.1"))
+    hosts.update(h.strip() for h in os.getenv("JUDE_ALLOWED_HOSTS", "").split(",") if h.strip())
+    return hosts
+
+
+def _host_of(value: str) -> str:
+    value = value.split("://", 1)[-1].split("/", 1)[0]
+    if value.startswith("["):  # IPv6 literal
+        return value.split("]")[0] + "]"
+    return value.rsplit(":", 1)[0] if ":" in value else value
+
+
 app = FastAPI(title="Jude", version="1.0", lifespan=lifespan, dependencies=[Depends(require_auth)])
+
+
+@app.middleware("http")
+async def _origin_guard(request: Request, call_next):
+    """Schützt vor CSRF/DNS-Rebinding: fremde Herkunft und unbekannte Host-Header
+    werden bei zustandsändernden Anfragen abgewiesen."""
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        allowed = _allowed_hosts()
+        host = _host_of(request.headers.get("host", ""))
+        if host and host not in allowed:
+            return JSONResponse({"error": "Unerlaubter Host-Header."}, status_code=403)
+        origin = request.headers.get("origin")
+        if origin and _host_of(origin) not in allowed:
+            return JSONResponse({"error": "Anfrage von fremder Herkunft blockiert."}, status_code=403)
+    return await call_next(request)
+
+
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
