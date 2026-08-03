@@ -9,6 +9,7 @@ from services.database import audit
 from services.filesystem import write_external_after_confirmation
 from services.home_assistant import HomeAssistantService
 from services.mail import MailService
+from services.remote import SSHService
 
 
 def _privileged_enabled() -> bool:
@@ -21,6 +22,7 @@ class ActionExecutor:
         self.coding = CodingService()
         self.calendar = CalendarService()
         self.home = HomeAssistantService()
+        self.ssh = SSHService()
         self.team = team  # SubAgentService, für bestätigte Sub-Agent-Erstellung
 
     def __call__(self, action_type: str, payload: dict) -> str:
@@ -62,6 +64,10 @@ class ActionExecutor:
                 raise RuntimeError("Sub-Agent-Verwaltung ist nicht verfügbar.")
             spec = self.team.create(**payload)
             return f"Sub-Agent '{spec['name']}' angelegt mit Skills: {', '.join(spec['skills']) or 'keine'}"
+        if action_type == "ssh_command":
+            return str(self.ssh.run(**payload))
+        if action_type == "scp_transfer":
+            return str(self.ssh.transfer(**payload))
         # Privilegierter Freibrief: nach ausdrücklicher Bestätigung sonst gesperrte Aktionen.
         if action_type == "shell_command":
             return self._run_shell(payload)

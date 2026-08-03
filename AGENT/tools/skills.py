@@ -4,6 +4,7 @@ import json
 
 from core.tool_registry import Tool, ToolRegistry
 from services.filesystem import list_dir
+from services.remote import SSHService
 from services.calendar import CalendarService
 from services.coding import CodingService
 from services.confirmations import ConfirmationQueue
@@ -30,6 +31,7 @@ def register(registry: ToolRegistry) -> None:
     market, news, radar = MarketService(), CryptoNewsService(), RadarService()
     ha, mail, shopping, coding, ict = HomeAssistantService(), MailService(), ShoppingService(), CodingService(), ICTService()
     ocr, scraper, calendar, memory = OCRService(), ScraperService(), CalendarService(), MemoryService()
+    ssh = SSHService()
     tools = [
         Tool("market_fetch", "Aktuelle OHLCV-Daten abrufen und speichern.", market.fetch,
              _schema({"market": {"type": "string", "enum": ["BTC/EUR", "BTC/USD", "XAU/EUR", "XAU/USD"]}, "interval": {"type": "string"}, "limit": {"type": "integer"}}, ["market"])),
@@ -73,6 +75,14 @@ def register(registry: ToolRegistry) -> None:
              _schema({"url": {"type": "string"}, "name": {"type": "string"}}, ["url"]), confirm_action="code_clone"),
         Tool("coding_pull", "Aktuellen Stand eines AI-Data-Repositories per fast-forward ziehen (nach Bestätigung).", coding.pull,
              _schema({"repo": {"type": "string"}}, ["repo"]), confirm_action="code_pull"),
+        Tool("list_ssh_hosts", "Freigegebene SSH-Hosts auflisten (aus JUDE_SSH_HOSTS bzw. ~/.ssh/config).",
+             ssh.allowed_hosts, _schema({})),
+        Tool("ssh_run", "Befehl auf einem freigegebenen SSH-Host ausführen (schlüsselbasiert, nach Bestätigung).", ssh.run,
+             _schema({"host": {"type": "string"}, "command": {"type": "string"}}, ["host", "command"]), confirm_action="ssh_command"),
+        Tool("scp_transfer", "Datei per SCP zu/von einem freigegebenen Host übertragen (nach Bestätigung). direction: upload|download.", ssh.transfer,
+             _schema({"host": {"type": "string"}, "direction": {"type": "string", "enum": ["upload", "download"]},
+                      "remote_path": {"type": "string"}, "local_path": {"type": "string"}},
+                     ["host", "direction", "remote_path", "local_path"]), confirm_action="scp_transfer"),
         Tool("coding_create_pr", "GitHub-Pull-Request erstellen.", coding.create_pr,
              _schema({"repo": {"type": "string"}, "title": {"type": "string"}, "body": {"type": "string"}, "draft": {"type": "boolean"}}, ["repo", "title", "body"]), confirm_action="code_pr"),
         Tool("ocr_file", "Deutsch/englischen Text aus Bild oder PDF lesen.", ocr.extract_path,
