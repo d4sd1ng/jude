@@ -73,3 +73,11 @@ input,select,textarea{background:#0f130c;border-color:#31402a;color:var(--ink)}
 .tick{min-width:0}.tick div{color:var(--ink);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .tick .up{color:var(--green)}.tick .down{color:var(--accent)}
 @media(max-width:1100px){.cockpit{grid-template-columns:1fr}.ticker{grid-template-columns:1fr 1fr}.cockR .output .feed{min-height:200px}}
+
+/* Regenradar-Zeitleiste (Leaflet) */
+.radartimeline{margin-top:12px}
+#radarFrame{width:100%;accent-color:var(--green)}
+.leaflet-container{background:#0f130c}
+.radarpin{color:var(--accent);font-size:22px;text-shadow:0 0 6px #000;line-height:1}
+#radarMeta .fc{color:var(--accent);font-weight:700}
+#radarMeta .now{color:var(--green);font-weight:700}

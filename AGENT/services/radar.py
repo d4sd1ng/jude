@@ -19,9 +19,18 @@ class RadarService:
         response = requests.get("https://api.rainviewer.com/public/weather-maps.json", timeout=15)
         response.raise_for_status()
         data = response.json()
-        frames = [{"time": frame["time"], "iso_time": datetime.fromtimestamp(frame["time"], timezone.utc).isoformat(),
-                   "path": frame["path"]} for frame in data.get("radar", {}).get("past", [])]
-        return {"host": data.get("host"), "generated": data.get("generated"), "frames": frames,
+        radar = data.get("radar", {})
+
+        def _frame(frame: dict, kind: str) -> dict:
+            return {"time": frame["time"], "kind": kind,
+                    "iso_time": datetime.fromtimestamp(frame["time"], timezone.utc).isoformat(),
+                    "path": frame["path"]}
+
+        past = [_frame(f, "past") for f in radar.get("past", [])]
+        nowcast = [_frame(f, "forecast") for f in radar.get("nowcast", [])]
+        frames = past + nowcast
+        return {"host": data.get("host"), "generated": data.get("generated"),
+                "frames": frames, "past_count": len(past), "nowcast_count": len(nowcast),
                 "latitude": self.LATITUDE, "longitude": self.LONGITUDE, "address": self.ADDRESS,
                 "zip": self.ZIP, "city": self.CITY, "zoom": self.ZOOM,
                 "max_zoom": 12, "source": "RainViewer", "status": "live" if frames else "empty"}
