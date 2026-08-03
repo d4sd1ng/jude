@@ -29,10 +29,68 @@ DEFAULT_TOPICS = {
 class BriefingService:
     CACHE_SECONDS = 300
 
-    def __init__(self, market: MarketService | None = None):
+    SYMBOL_LABELS = {"XAUUSD": "Gold", "BTCUSD": "Bitcoin"}
+    STATUS_LABELS = {"SETUP_FOUND": "Setup gefunden", "WAITING_FOR_SETUP": "wartet auf Setup",
+                     "TRADE_BLOCKED": "Trade blockiert"}
+
+    def __init__(self, market: MarketService | None = None, ict=None, router=None):
         self.market = market or MarketService()
+        self.ict = ict
+        self.router = router
+        self.ict_live = os.getenv("JUDE_BRIEFING_ICT_LIVE", "").strip().lower() in {"1", "true", "an", "on", "ja"}
         self._cache: dict | None = None
         self._cached_at = 0.0
+
+    # ------------------------------------------------------------ ICT/SMC
+
+    @staticmethod
+    def _short(value, limit: int = 160) -> str:
+        text = value if isinstance(value, str) else str(value)
+        return text[:limit].strip()
+
+    def _latest_card(self, symbol: str) -> dict | None:
+        if not self.ict:
+            return None
+        try:
+            if self.ict_live and self.router is not None:
+                return self.ict.analyse_live(self.router, symbol)
+            for card in self.ict.cards(limit=50):
+                if card.get("symbol") == symbol:
+                    return card
+        except Exception:
+            return None
+        return None
+
+    def ict_readouts(self) -> list[dict]:
+        readouts = []
+        for symbol, label in self.SYMBOL_LABELS.items():
+            card = self._latest_card(symbol)
+            if not card:
+                continue
+            readouts.append({
+                "label": label, "symbol": symbol,
+                "status": card.get("status"),
+                "status_label": self.STATUS_LABELS.get(card.get("status"), card.get("status") or "unbekannt"),
+                "direction": card.get("direction"),
+                "h4_bias": self._short(card.get("h4_bias", "")),
+                "h1_context": self._short(card.get("h1_context", "")),
+                "m1_entry": self._short(card.get("m1_entry", "")),
+                "confluence": self._short(card.get("confluence", "")),
+                "kill_zone": card.get("kill_zone"),
+                "rr": card.get("rr"), "entry": card.get("entry"),
+                "created_at": card.get("created_at"),
+            })
+        return readouts
+
+    def _ict_sentence(self, r: dict) -> str:
+        bits = [f"ICT-Analyse {r['label']}: H4-Bias {r['h4_bias'] or 'unklar'}, {r['status_label']}"]
+        if r.get("kill_zone") and r["kill_zone"] != "manuell":
+            bits.append(f"Kill Zone {r['kill_zone']}")
+        if r["status"] == "SETUP_FOUND" and r.get("direction"):
+            bits.append(f"{r['direction']} mit Chance-Risiko-Verhältnis {r.get('rr', '-')}")
+        elif r.get("confluence"):
+            bits.append(f"Konfluenz: {r['confluence']}")
+        return ". ".join(bits) + "."
 
     # --------------------------------------------------------------- Märkte
 
@@ -174,7 +232,7 @@ class BriefingService:
         now = time.monotonic()
         if self._cache is not None and now - self._cached_at < self.CACHE_SECONDS:
             return self._cache
-        self._cache = {"markets": self.markets(), "headlines": self.headlines()}
+        self._cache = {"markets": self.markets(), "ict": self.ict_readouts(), "headlines": self.headlines()}
         self._cached_at = now
         return self._cache
 
@@ -183,6 +241,8 @@ class BriefingService:
         parts: list[str] = []
         for m in data["markets"]:
             parts.append(self._market_sentence(m))
+        for r in data.get("ict", []):
+            parts.append(self._ict_sentence(r))
         for label, items in data["headlines"].items():
             if items:
                 parts.append(f"{label}: {items[0]}.")

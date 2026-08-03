@@ -55,7 +55,7 @@ chat_lock = asyncio.Lock()
 agent_lock = threading.Lock()
 system_monitor = SystemMonitorService()
 weather = WeatherService()
-briefing = BriefingService(market)
+briefing = BriefingService(market, ict=ict, router=agent.router)
 voice = VoiceController(agent, agent_lock, briefing=briefing)
 
 
