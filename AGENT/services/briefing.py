@@ -36,27 +36,92 @@ class BriefingService:
 
     # --------------------------------------------------------------- Märkte
 
-    def _market_line(self, name: str, label: str, unit: str) -> dict | None:
+    @staticmethod
+    def _sma(values: list[float], period: int) -> float | None:
+        if len(values) < period:
+            return None
+        return sum(values[-period:]) / period
+
+    @staticmethod
+    def _pct(values: list[float], bars_back: int) -> float:
+        if len(values) < 2:
+            return 0.0
+        base = values[-1 - min(bars_back, len(values) - 1)]
+        return (values[-1] - base) / base * 100 if base else 0.0
+
+    def _analyze(self, name: str, label: str, unit: str) -> dict | None:
         try:
-            data = self.market.fetch(name, interval="1h", limit=30)
-            candles = data.get("candles", [])
-            if not candles:
-                return None
-            last = float(candles[-1]["close"])
-            past = float(candles[max(0, len(candles) - 25)]["close"])
-            change = (last - past) / past * 100 if past else 0.0
-            return {"label": label, "price": round(last, 2), "unit": unit,
-                    "change_pct": round(change, 2), "direction": "gestiegen" if change >= 0 else "gefallen"}
+            data = self.market.fetch(name, interval="1h", limit=200)
         except Exception:
             return None
+        candles = data.get("candles", [])
+        if len(candles) < 24:
+            return None
+        closes = [float(c["close"]) for c in candles]
+        highs = [float(c["high"]) for c in candles]
+        lows = [float(c["low"]) for c in candles]
+        last = closes[-1]
+
+        change_24h = self._pct(closes, 24)
+        change_7d = self._pct(closes, 168)
+        window = candles[-24:]
+        day_high = max(float(c["high"]) for c in window)
+        day_low = min(float(c["low"]) for c in window)
+        span = day_high - day_low
+        range_pos = (last - day_low) / span * 100 if span else 50.0
+
+        sma20, sma50 = self._sma(closes, 20), self._sma(closes, 50)
+        if sma20 and sma50 and last > sma20 > sma50:
+            trend = "aufwärts"
+        elif sma20 and sma50 and last < sma20 < sma50:
+            trend = "abwärts"
+        else:
+            trend = "seitwärts"
+        momentum = (last - sma20) / sma20 * 100 if sma20 else 0.0
+
+        lookback = min(72, len(candles))
+        resistance = max(highs[-lookback:])
+        support = min(lows[-lookback:])
+        # Volatilität als mittlere Stundenspanne der letzten 24h in Prozent.
+        volatility = sum((float(c["high"]) - float(c["low"])) / float(c["close"]) for c in window) / len(window) * 100
+
+        return {
+            "label": label, "unit": unit, "price": round(last, 2),
+            "change_24h": round(change_24h, 2), "change_7d": round(change_7d, 2),
+            "direction": "gestiegen" if change_24h >= 0 else "gefallen",
+            "day_high": round(day_high, 2), "day_low": round(day_low, 2),
+            "range_position_pct": round(range_pos, 0),
+            "trend": trend, "momentum_pct": round(momentum, 2),
+            "support": round(support, 2), "resistance": round(resistance, 2),
+            "volatility_pct": round(volatility, 2), "source": data.get("source"),
+        }
 
     def markets(self) -> list[dict]:
         result = []
         for name, label, unit in (("XAU/USD", "Gold", "Dollar"), ("BTC/USD", "Bitcoin", "Dollar")):
-            line = self._market_line(name, label, unit)
+            line = self._analyze(name, label, unit)
             if line:
                 result.append(line)
         return result
+
+    @staticmethod
+    def _zone(range_pos: float) -> str:
+        if range_pos >= 66:
+            return "im oberen Bereich der Tagesspanne"
+        if range_pos <= 33:
+            return "im unteren Bereich der Tagesspanne"
+        return "in der Mitte der Tagesspanne"
+
+    def _market_sentence(self, m: dict) -> str:
+        price_fmt = f"{m['price']:,.0f}".replace(",", ".")
+        support_fmt = f"{m['support']:,.0f}".replace(",", ".")
+        resist_fmt = f"{m['resistance']:,.0f}".replace(",", ".")
+        return (
+            f"{m['label']} steht bei {price_fmt} {m['unit']}, {m['direction']} um "
+            f"{abs(m['change_24h']):.1f} Prozent auf Tagessicht und {m['change_7d']:+.1f} Prozent auf Wochensicht. "
+            f"Der kurzfristige Trend ist {m['trend']}, {self._zone(m['range_position_pct'])}. "
+            f"Unterstützung bei {support_fmt}, Widerstand bei {resist_fmt}."
+        )
 
     # ---------------------------------------------------------- Schlagzeilen
 
@@ -116,12 +181,8 @@ class BriefingService:
     def spoken_brief(self) -> str:
         data = self.data()
         parts: list[str] = []
-        market_bits = []
         for m in data["markets"]:
-            market_bits.append(f"{m['label']} bei {m['price']:.0f} {m['unit']}, "
-                               f"{m['direction']} um {abs(m['change_pct']):.1f} Prozent")
-        if market_bits:
-            parts.append("Märkte: " + "; ".join(market_bits) + ".")
+            parts.append(self._market_sentence(m))
         for label, items in data["headlines"].items():
             if items:
                 parts.append(f"{label}: {items[0]}.")
