@@ -20,7 +20,12 @@ WAKE_BLOCK = 1_280  # 80 ms, Vorgabe des Wake-Word-Modells
 def _model():
     from faster_whisper import WhisperModel
     from core.paths import MODELS_DIR
-    default = str(MODELS_DIR / "whisper-small")
+    # whisper-base ist auf CPU deutlich schneller als -small und für die kurzen
+    # deutschen Sprachbefehle ausreichend genau; per WHISPER_MODEL übersteuerbar.
+    default_dir = MODELS_DIR / "whisper-base"
+    if not (default_dir / "model.bin").is_file():
+        default_dir = MODELS_DIR / "whisper-small"
+    default = str(default_dir)
     configured = os.getenv("WHISPER_MODEL", default)
     if configured == default and not os.path.isfile(os.path.join(default, "model.bin")):
         raise RuntimeError("Lokales Whisper-Modell fehlt oder ist unvollständig: " + default)
@@ -30,7 +35,7 @@ def _model():
 def transcribe(audio: np.ndarray) -> str:
     segments, _ = _model().transcribe(audio.astype(np.float32) / 32768.0,
                                       language=os.getenv("WHISPER_LANGUAGE") or "de",
-                                      vad_filter=True, beam_size=3,
+                                      vad_filter=True, beam_size=1,
                                       condition_on_previous_text=False)
     return " ".join(segment.text.strip() for segment in segments).strip()
 

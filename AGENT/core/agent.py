@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from services.memory import MemoryService
@@ -17,10 +18,12 @@ class Agent:
         self.tools = tool_registry
         self.max_tool_steps = max_tool_steps
         self.memory = MemoryService()
+        user_name = os.getenv("JUDE_USER_NAME", "Tino").strip()
+        address = f" Der Nutzer heißt {user_name}; sprich ihn gelegentlich mit seinem Namen an." if user_name else ""
         self._base_system = (
             "Du bist Jude, ein hilfreicher lokaler Assistent. Deutsch ist die Standardsprache. "
             "Passe dich an die Sprache des Nutzers an; verwende bei Coding, Trading und technischen "
-            "Themen die gebräuchlichen englischen Fachbegriffe, wenn sie präziser sind."
+            "Themen die gebräuchlichen englischen Fachbegriffe, wenn sie präziser sind." + address
         )
         self.conversation_history: list[dict[str, Any]] = [
             {"role": "system", "content": self._base_system}
