@@ -122,3 +122,13 @@ def register_context(registry: ToolRegistry, router=None, confirmations: Confirm
         registry.register(Tool("request_calendar_event", "Termin als ICS zur ausdrücklichen Bestätigung vormerken.",
                                lambda title, starts_at, ends_at, description="", location="": confirmations.request("calendar_create", f"Termin erstellen: {title} am {starts_at}", {"title": title, "starts_at": starts_at, "ends_at": ends_at, "description": description, "location": location}),
                                _schema({"title": {"type": "string"}, "starts_at": {"type": "string"}, "ends_at": {"type": "string"}, "description": {"type": "string"}, "location": {"type": "string"}}, ["title", "starts_at", "ends_at"])))
+        # Privilegierter Freibrief: normalerweise gesperrte Aktionen nach ausdrücklicher Nutzerfreigabe.
+        registry.register(Tool("request_command",
+                               "Systembefehl (auch normalerweise gesperrte Aktionen) zur ausdrücklichen Bestätigung vormerken. "
+                               "Der genaue Befehl wird dir vor der Ausführung zur Freigabe angezeigt.",
+                               lambda command, reason="": confirmations.request("shell_command", f"Befehl ausführen: {command}" + (f" — {reason}" if reason else ""), {"command": command}),
+                               _schema({"command": {"type": "string"}, "reason": {"type": "string"}}, ["command"])))
+        registry.register(Tool("request_external_write",
+                               "Datei außerhalb von AI-Data schreiben – zur ausdrücklichen Bestätigung vormerken.",
+                               lambda path, content: confirmations.request("external_write", f"Datei außerhalb AI-Data schreiben: {path}", {"path": path, "content": content}),
+                               _schema({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"])))
