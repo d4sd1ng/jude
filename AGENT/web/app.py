@@ -18,6 +18,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from main import build_application
 from services.actions import ActionExecutor
+from services.briefing import BriefingService
 from services.calendar import CalendarService
 from services.coding import CodingService
 from services.confirmations import ConfirmationQueue
@@ -52,9 +53,10 @@ memory = MemoryService()
 ict, scraper, facts = ICTService(), ScraperService(), FactCheckerService(agent.router)
 chat_lock = asyncio.Lock()
 agent_lock = threading.Lock()
-voice = VoiceController(agent, agent_lock)
 system_monitor = SystemMonitorService()
 weather = WeatherService()
+briefing = BriefingService(market)
+voice = VoiceController(agent, agent_lock, briefing=briefing)
 
 
 def _local(host: str | None) -> bool:
@@ -184,6 +186,11 @@ def system_snapshot():
 @app.get("/api/weather")
 async def weather_current():
     return await asyncio.to_thread(weather.current)
+
+
+@app.get("/api/briefing")
+async def briefing_current():
+    return await asyncio.to_thread(briefing.data)
 
 
 @app.post("/api/routing/{route_id}/feedback")

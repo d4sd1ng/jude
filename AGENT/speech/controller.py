@@ -28,9 +28,12 @@ class VoiceController:
 
     def __init__(self, agent, agent_lock: threading.Lock,
                  wake_word: str | None = None, sleep_word: str | None = None,
-                 record_seconds: float = 12.0):
+                 record_seconds: float = 12.0, briefing=None):
         self.agent = agent
         self.agent_lock = agent_lock
+        self.briefing = briefing
+        self.briefing_enabled = os.getenv("JUDE_BRIEFING", "true").strip().lower() in {
+            "1", "true", "an", "on", "ja"}
         self.wake_word = wake_word or os.getenv("JUDE_WAKE_PHRASE", "Jude angetreten")
         self.sleep_word = sleep_word or os.getenv("JUDE_SLEEP_PHRASE", "Jude Zapfenstreich")
         self.record_seconds = max(6.0, float(record_seconds))
@@ -103,6 +106,22 @@ class VoiceController:
                 self._emit("warning", f"Sprachausgabe nicht verfügbar: {exc}")
             logger.warning("Sprachausgabe fehlgeschlagen: %s", exc)
 
+    def _speak_briefing(self) -> None:
+        if not self.briefing_enabled:
+            return
+        try:
+            if self.briefing is None:
+                from services.briefing import BriefingService
+                self.briefing = BriefingService()
+            text = self.briefing.spoken_brief()
+        except Exception as exc:
+            self._emit("warning", f"Briefing nicht verfügbar: {exc}")
+            return
+        if text:
+            self._emit("answer", text, kind_detail="briefing")
+            self._set_state("spricht")
+            self._speak(text)
+
     def _respond(self, text: str) -> None:
         self._set_state("denkt")
         self._emit("heard", text)
@@ -145,6 +164,7 @@ class VoiceController:
                 self._emit("answer", self.greeting)
                 self._set_state("spricht")
                 self._speak(self.greeting)
+                self._speak_briefing()
                 # Dauerhaft aktiver Zustand bis Schlafwort oder Stille.
                 while not self._stop.is_set():
                     self._set_state("aktiv")
