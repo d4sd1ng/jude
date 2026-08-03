@@ -18,9 +18,23 @@ from collections import deque
 logger = logging.getLogger(__name__)
 
 
+import re
+
 def _phrase(value: str) -> str:
     from speech.stt import _spoken_phrase
     return _spoken_phrase(value)
+
+
+_FEEDBACK_POSITIVE = re.compile(
+    r"\b(das war (sehr )?gut|gut gemacht|perfekt|passt( genau)?|sehr gut|richtig gut|"
+    r"das war (richtig|hilfreich|super|klasse|top)|top|danke das (war|hat) geholfen)\b",
+    re.IGNORECASE,
+)
+_FEEDBACK_NEGATIVE = re.compile(
+    r"\b(das war (schlecht|falsch|nicht gut|unbrauchbar|mist|daneben|nutzlos)|"
+    r"unzureichend|das stimmt (so )?nicht|das war (kompletter )?quatsch)\b",
+    re.IGNORECASE,
+)
 
 
 class VoiceController:
@@ -174,6 +188,29 @@ class VoiceController:
         if full:
             self._mark_full_brief()
 
+    def _maybe_feedback(self, text: str) -> bool:
+        """Erkennt gesprochenes Lob/Kritik und bewertet die letzte Routing-Entscheidung."""
+        positive = bool(_FEEDBACK_POSITIVE.search(text))
+        negative = bool(_FEEDBACK_NEGATIVE.search(text))
+        if not (positive or negative) or (positive and negative):
+            return False
+        route_id = getattr(self.agent, "last_route_id", None)
+        self._emit("heard", text)
+        if not route_id:
+            self._speak("Dazu gibt es noch keine Antwort zum Bewerten.")
+            return True
+        value = 1 if positive else -1
+        try:
+            self.agent.router.feedback(route_id, value)
+        except Exception as exc:
+            logger.warning("Sprach-Feedback fehlgeschlagen: %s", exc)
+            self._speak("Das Feedback konnte ich nicht speichern.")
+            return True
+        ack = "Danke, ich habe es als gut vermerkt." if positive else "Verstanden, ich vermerke es als unzureichend."
+        self._emit("answer", ack, feedback=value, route_id=route_id)
+        self._speak(ack)
+        return True
+
     def _respond(self, text: str) -> None:
         self._set_state("denkt")
         self._emit("heard", text)
@@ -233,6 +270,8 @@ class VoiceController:
                         self._emit("answer", self.farewell)
                         self._speak(self.farewell)
                         break
+                    if self._maybe_feedback(text):
+                        continue
                     self._respond(text)
         finally:
             listener.close()
