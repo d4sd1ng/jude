@@ -5,11 +5,50 @@
   <title>Jude</title><link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header><div><span class="eyebrow">LOCAL CONTROL</span><h1>Jude</h1></div><div class="controls headercontrols"><button id="voiceToggle" title="Sprachsteuerung starten oder stoppen">🎙️ Sprachsteuerung</button><span id="voiceState" class="badge">Sprachsteuerung aus</span><span id="health" class="badge">verbinden…</span></div></header>
+<header><div class="brand"><span class="eyebrow">LOCAL CONTROL</span><h1>Jude</h1></div><div id="clock" class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div><div class="controls headercontrols"><button id="voiceToggle" title="Sprachsteuerung starten oder stoppen">🎙️ Sprachsteuerung</button><span id="voiceState" class="badge">Sprachsteuerung aus</span><span id="health" class="badge">verbinden…</span></div></header>
 <nav id="nav" aria-label="Bereiche"></nav><main>
+<section data-page="Cockpit">
+  <div class="cockpit">
+    <div class="cockL">
+      <div class="panel hudpanel"><h3>Wetter</h3><div id="hudWeather" class="hudweather">–</div></div>
+      <div class="panel hudpanel"><h3>Regenradar</h3><div class="hudradar"><img id="hudRadarBase" alt="Karte"><img id="hudRadar" alt="Regenradar Marburg"><span class="marker">●</span></div><p id="hudRadarMeta" class="muted small"></p></div>
+      <div class="panel hudpanel"><h3>Schalter</h3><div class="toggles">
+        <button class="toggle" id="tglVoice" title="Sprachsteuerung"><span>🎙️</span><small>Stimme</small></button>
+        <button class="toggle" id="tglMarket" title="Marktdaten automatisch aktualisieren"><span>📈</span><small>Markt</small></button>
+        <button class="toggle" id="tglNews" title="News automatisch aktualisieren"><span>📰</span><small>News</small></button>
+        <button class="toggle" id="tglRadar" title="Radar automatisch aktualisieren"><span>🌧️</span><small>Radar</small></button>
+      </div></div>
+      <div class="panel hudpanel"><h3>Token-Verbrauch</h3><div id="hudTokens" class="hudtokens">–</div></div>
+    </div>
+    <div class="cockC">
+      <div class="gaugerow top">
+        <div class="gauge" id="gNet"><div class="ring"></div><b>–</b><small>Netz kb/s</small></div>
+        <div class="gauge" id="gCpuTemp"><div class="ring"></div><b>–</b><small>CPU °C</small></div>
+        <div class="gauge" id="gGpuTemp"><div class="ring"></div><b>–</b><small>GPU °C</small></div>
+        <div class="gauge" id="gNvme"><div class="ring"></div><b>–</b><small>NVMe °C</small></div>
+      </div>
+      <div class="core"><div class="c1"></div><div class="c2"></div><div class="c3"></div><div class="c4"></div>
+        <div class="corelabel"><b id="coreCpu">–</b><small>CPU %</small><span id="coreState">bereit</span></div>
+      </div>
+      <div class="gaugerow bottom">
+        <div class="gauge" id="gCpu"><div class="ring"></div><b>–</b><small>CPU %</small></div>
+        <div class="gauge" id="gRam"><div class="ring"></div><b>–</b><small>RAM %</small></div>
+      </div>
+    </div>
+    <div class="cockR">
+      <div class="panel hudpanel output"><h3>Ausgabe</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jude tun?" required><button>Senden</button></form></div>
+    </div>
+  </div>
+  <div class="ticker">
+    <div class="tick"><span class="eyebrow">NEWS</span><div id="tickNews">–</div></div>
+    <div class="tick"><span class="eyebrow">XAU/USD</span><div id="tickXau">–</div></div>
+    <div class="tick"><span class="eyebrow">BTC/USD</span><div id="tickBtc">–</div></div>
+    <div class="tick"><span class="eyebrow">MODELL</span><div id="tickModel">–</div></div>
+    <div class="tick"><span class="eyebrow">STIMME</span><div id="tickVoice">aus</div></div>
+  </div>
+</section>
 <section data-page="Übersicht">
   <div class="hero"><div><span class="eyebrow">ASSISTENT</span><h2>Ein System. Klare Kontrolle.</h2><p>Lokale KI, Daten, Automationen und bestätigungspflichtige Aktionen.</p></div><div id="stats" class="stats"></div></div>
-  <div class="panel"><h3>Chat</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jude tun?" required><button>Senden</button></form></div>
 </section>
 <section data-page="Märkte">
   <div class="sectionhead"><div><span class="eyebrow">OHLCV</span><h2>Märkte</h2></div><div class="controls"><select id="market"><option>BTC/EUR</option><option>BTC/USD</option><option>XAU/EUR</option><option>XAU/USD</option></select><select id="interval"><option>1m</option><option>15m</option><option selected>1h</option><option>4h</option><option>1d</option></select><button id="loadMarket">Laden</button><a id="marketCsv" class="button" href="#">CSV</a></div></div>

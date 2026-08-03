@@ -35,6 +35,8 @@ from services.ocr import OCRService
 from services.radar import RadarService
 from services.scraper import ScraperService
 from services.shopping import ShoppingService
+from services.system_monitor import SystemMonitorService
+from services.weather import WeatherService
 from speech.controller import VoiceController
 
 STATIC = Path(__file__).parent / "static"
@@ -51,6 +53,8 @@ ict, scraper, facts = ICTService(), ScraperService(), FactCheckerService(agent.r
 chat_lock = asyncio.Lock()
 agent_lock = threading.Lock()
 voice = VoiceController(agent, agent_lock)
+system_monitor = SystemMonitorService()
+weather = WeatherService()
 
 
 def _local(host: str | None) -> bool:
@@ -170,6 +174,16 @@ def voice_start():
 @app.post("/api/voice/stop")
 async def voice_stop():
     return await asyncio.to_thread(voice.stop)
+
+
+@app.get("/api/system")
+def system_snapshot():
+    return system_monitor.snapshot()
+
+
+@app.get("/api/weather")
+async def weather_current():
+    return await asyncio.to_thread(weather.current)
 
 
 @app.post("/api/routing/{route_id}/feedback")
