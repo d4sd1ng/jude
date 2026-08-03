@@ -34,6 +34,10 @@ class VoiceController:
         self.wake_word = wake_word or os.getenv("JUDE_WAKE_PHRASE", "Jude angetreten")
         self.sleep_word = sleep_word or os.getenv("JUDE_SLEEP_PHRASE", "Jude Zapfenstreich")
         self.record_seconds = max(6.0, float(record_seconds))
+        user_name = os.getenv("JUDE_USER_NAME", "Tino").strip()
+        default_greeting = f"Hey {user_name}, wie geht's?" if user_name else "Hey, wie geht's?"
+        self.greeting = os.getenv("JUDE_GREETING", default_greeting)
+        self.farewell = os.getenv("JUDE_FAREWELL", "Bis später.")
         self._events: deque[dict] = deque(maxlen=200)
         self._ids = itertools.count(1)
         self._state = "aus"
@@ -137,16 +141,10 @@ class VoiceController:
                     self._set_state("fehler")
                     return
                 _ready_tone()
-                self._set_state("aufnahme")
-                try:
-                    text = transcribe(record_until_silence(max_seconds=self.record_seconds))
-                except TimeoutError as exc:
-                    self._emit("warning", str(exc))
-                    continue
-                if not text:
-                    self._emit("warning", "Whisper konnte keinen Sprachbefehl transkribieren.")
-                    continue
-                self._respond(text)
+                # Freundliche Begrüßung beim Aufwachen statt das Wake-Wort als Befehl zu deuten.
+                self._emit("answer", self.greeting)
+                self._set_state("spricht")
+                self._speak(self.greeting)
                 # Dauerhaft aktiver Zustand bis Schlafwort oder Stille.
                 while not self._stop.is_set():
                     self._set_state("aktiv")
@@ -160,8 +158,8 @@ class VoiceController:
                         continue
                     if _phrase(text) == _phrase(self.sleep_word):
                         self._emit("heard", text)
-                        self._emit("answer", "Schlafmodus aktiviert.")
-                        self._speak("Schlafmodus aktiviert.")
+                        self._emit("answer", self.farewell)
+                        self._speak(self.farewell)
                         break
                     self._respond(text)
         finally:

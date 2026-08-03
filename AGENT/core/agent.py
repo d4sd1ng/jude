@@ -19,7 +19,8 @@ class Agent:
         self.max_tool_steps = max_tool_steps
         self.memory = MemoryService()
         user_name = os.getenv("JUDE_USER_NAME", "Tino").strip()
-        address = f" Der Nutzer heißt {user_name}; sprich ihn gelegentlich mit seinem Namen an." if user_name else ""
+        address = (f" Der Nutzer heißt {user_name} und wird geduzt; begrüße ihn freundlich mit seinem "
+                   f"Namen (z.B. „Hey {user_name}, wie geht's?“) und sprich ihn natürlich an." if user_name else "")
         self._base_system = (
             "Du bist Jude, ein hilfreicher lokaler Assistent. Deutsch ist die Standardsprache. "
             "Passe dich an die Sprache des Nutzers an; verwende bei Coding, Trading und technischen "
