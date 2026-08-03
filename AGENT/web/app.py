@@ -134,7 +134,11 @@ async def _origin_guard(request: Request, call_next):
         origin = request.headers.get("origin")
         if origin and _host_of(origin) not in allowed:
             return JSONResponse({"error": "Anfrage von fremder Herkunft blockiert."}, status_code=403)
-    return await call_next(request)
+    response = await call_next(request)
+    # GUI-Dateien nie hart cachen, damit Änderungen sofort sichtbar sind.
+    if request.url.path in {"/", ""} or request.url.path.startswith("/static"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

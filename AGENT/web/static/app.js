@@ -66,7 +66,7 @@ async function pollWeather(){try{const w=await api('/api/weather');
   $('#hudWeather').innerHTML=`<b>${w.temperature!=null?w.temperature.toFixed(1):'–'}°C</b> <span class=cond>${esc(w.condition)}</span><br><span class=small>gefühlt ${w.feels_like??'–'}° · ${w.min??'–'}°/${w.max??'–'}° · Wind ${w.wind_kmh??'–'} km/h · ${esc(w.location.split(',')[1]||'')}</span>`
 }catch(e){$('#hudWeather').textContent='Wetter nicht erreichbar'}finally{setTimeout(pollWeather,600000)}}
 async function pollHudRadar(){if(!toggles.radar){setTimeout(pollHudRadar,60000);return}
- try{const d=await api('/api/radar'),f=d.frames.at(-1);if(f){const z=d.zoom||9,n=2**z,x=Math.floor((d.longitude+180)/360*n),lat=d.latitude*Math.PI/180,y=Math.floor((1-Math.asinh(Math.tan(lat))/Math.PI)/2*n);
+ try{const d=await api('/api/radar'),f=d.frames.at(-1);if(f){const z=7,n=2**z,x=Math.floor((d.longitude+180)/360*n),lat=d.latitude*Math.PI/180,y=Math.floor((1-Math.asinh(Math.tan(lat))/Math.PI)/2*n);
   $('#hudRadar').src=`${d.host}${f.path}/256/${z}/${x}/${y}/2/1_1.png`;$('#hudRadarBase').src=`https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
   const fx=((d.longitude+180)/360*n)%1,fy=((1-Math.asinh(Math.tan(lat))/Math.PI)/2*n)%1,mk=document.querySelector('.hudradar .marker');mk.style.left=`${(fx*100).toFixed(1)}%`;mk.style.top=`${(fy*100).toFixed(1)}%`;
   $('#hudRadarMeta').textContent=`Stand ${new Date(f.time*1000).toLocaleTimeString('de-DE')}`}}catch(e){}finally{setTimeout(pollHudRadar,300000)}}
