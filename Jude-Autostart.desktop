@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Jude (Autostart)
+Comment=Startet Jude im Hintergrund mit Sprachsteuerung beim Login
+Exec=sh -c "sleep 8 && /media/d4sd1ng/AI-Data/Projects/Jude/autostart.sh"
+Icon=/media/d4sd1ng/AI-Data/Projects/Jude/jude.png
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=8
+StartupNotify=false
