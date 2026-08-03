@@ -362,6 +362,20 @@ class ModelRouter:
         }
         self._call_lock = threading.RLock()
 
+    # Handlungsabsicht: Verben, die auf eine auszuführende Aktion (Werkzeug) deuten,
+    # nicht auf reines Erklären/Plaudern.
+    _ACTIONABLE = re.compile(
+        r"\b(führ(e|st)?\s+.*\s*aus|ausführen|starte|stoppe|erstelle|erzeuge|generiere|rendere|"
+        r"prüfe|überprüfe|klone|committe|pushe?|pulle?|deploy|sende|schicke|lösche|entferne|"
+        r"installiere|aktualisiere|richte\s+.*\bein|kümmere?\s+dich|öffne|lade\b|hol(e)?\b|"
+        r"schalte|zeig(e)?\s+mir\s+(die|den|das|aktuelle)|liste|suche|schreibe\s+.*\b(datei|in)\b|"
+        r"ssh|verbinde|run|execute|clone|create|delete|send|deploy|fetch|list)\b",
+        re.IGNORECASE,
+    )
+
+    def _is_actionable(self, prompt: str) -> bool:
+        return bool(self._ACTIONABLE.search(prompt))
+
     def estimate_complexity(self, prompt: str) -> int:
         return ComplexityEstimator.estimate(prompt)
 
@@ -406,11 +420,12 @@ class ModelRouter:
             candidates = [m for m in candidates if "lokal" in m.tags]
         if allow_uncensored:
             candidates = [m for m in candidates if "unzensiert" in m.tags]
-        elif needs_tools and task_type != "allgemein":
-            # Nur werkzeuglastige Aufgaben erzwingen ein Tools-fähiges Modell; im
-            # allgemeinen Gespräch bleibt das Standardmodell wählbar (call_llm lässt
-            # Tools für Modelle ohne "tools"-Tag ohnehin weg).
-            candidates = [m for m in candidates if "tools" in m.tags]
+        elif needs_tools and (task_type != "allgemein" or self._is_actionable(prompt)):
+            # Werkzeuglastige ODER klar handlungsorientierte Anfragen ("führe aus",
+            # "erstelle", "klone" …) erzwingen ein Tools-fähiges Modell, damit der
+            # Assistent handelt statt nur zu erklären. Reines Plaudern bleibt beim Standardmodell.
+            tool_capable = [m for m in candidates if "tools" in m.tags]
+            candidates = tool_capable or candidates
         if not candidates:
             raise ValueError("Kein passendes und aktiviertes Modell konfiguriert.")
         standard_name = self.router_cfg.get("standard_model")
@@ -501,7 +516,10 @@ class ModelRouter:
 
     def call_with_fallback(self, messages: list[dict], tools: list[dict] | None = None,
                            allow_uncensored: bool = False) -> dict:
-        prompt = str(messages[-1].get("content", ""))
+        # Routing an der eigentlichen Nutzeranfrage ausrichten, nicht an Tool-Ergebnissen –
+        # so bleibt eine Aktion über den gesamten Werkzeug-Loop beim passenden Modell.
+        user_messages = [m for m in messages if m.get("role") == "user"]
+        prompt = str((user_messages[-1] if user_messages else messages[-1]).get("content", ""))
         complexity, task_type = self.estimate_complexity(prompt), self.task_type(prompt)
         selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools))
         route_id = uuid.uuid4().hex[:16]

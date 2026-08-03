@@ -154,7 +154,10 @@ def register_team(registry: ToolRegistry, team) -> None:
                            lambda name, task: team.run(name, task),
                            _schema({"name": {"type": "string"}, "task": {"type": "string"}}, ["name", "task"])))
     registry.register(Tool("create_sub_agent",
-                           "Neuen Sub-Agenten (Mitarbeiter) mit Name, Rolle und Skill-Liste anlegen – nach ausdrücklicher Bestätigung.",
+                           "Lege einen benannten Sub-Agenten (Mitarbeiter) an, wenn ein abgegrenzter, wiederkehrender "
+                           "Aufgabenbereich davon profitiert (z.B. 'ServerAdmin' für SSH-Wartung, 'Rechercheur' fürs Web). "
+                           "Gib Name, Rolle und die passende Skill-Liste an; danach kannst du ihm mit delegate_to_agent "
+                           "Aufgaben übergeben. Anlegen erfolgt nach ausdrücklicher Bestätigung.",
                            lambda name, role, skills, model=None: team.create(name, role, skills, model),
                            _schema({"name": {"type": "string"}, "role": {"type": "string"},
                                     "skills": {"type": "array", "items": {"type": "string"}},
