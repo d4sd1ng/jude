@@ -2,14 +2,14 @@
 <html lang="de">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Jarvis</title><link rel="stylesheet" href="/static/app.css">
+  <title>Jude</title><link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header><div><span class="eyebrow">LOCAL CONTROL</span><h1>Jarvis</h1></div><span id="health" class="badge">verbinden…</span></header>
+<header><div><span class="eyebrow">LOCAL CONTROL</span><h1>Jude</h1></div><div class="controls headercontrols"><button id="voiceToggle" title="Sprachsteuerung starten oder stoppen">🎙️ Sprachsteuerung</button><span id="voiceState" class="badge">Sprachsteuerung aus</span><span id="health" class="badge">verbinden…</span></div></header>
 <nav id="nav" aria-label="Bereiche"></nav><main>
 <section data-page="Übersicht">
   <div class="hero"><div><span class="eyebrow">ASSISTENT</span><h2>Ein System. Klare Kontrolle.</h2><p>Lokale KI, Daten, Automationen und bestätigungspflichtige Aktionen.</p></div><div id="stats" class="stats"></div></div>
-  <div class="panel"><h3>Chat</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jarvis tun?" required><button>Senden</button></form></div>
+  <div class="panel"><h3>Chat</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jude tun?" required><button>Senden</button></form></div>
 </section>
 <section data-page="Märkte">
   <div class="sectionhead"><div><span class="eyebrow">OHLCV</span><h2>Märkte</h2></div><div class="controls"><select id="market"><option>BTC/EUR</option><option>BTC/USD</option><option>XAU/EUR</option><option>XAU/USD</option></select><select id="interval"><option>1m</option><option>15m</option><option selected>1h</option><option>4h</option><option>1d</option></select><button id="loadMarket">Laden</button><a id="marketCsv" class="button" href="#">CSV</a></div></div>

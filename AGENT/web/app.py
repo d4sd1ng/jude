@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hmac
 import os
+import threading
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from services.ocr import OCRService
 from services.radar import RadarService
 from services.scraper import ScraperService
 from services.shopping import ShoppingService
+from speech.controller import VoiceController
 
 STATIC = Path(__file__).parent / "static"
 agent, _creator = build_application()
@@ -47,6 +49,8 @@ notifications = NotificationService()
 memory = MemoryService()
 ict, scraper, facts = ICTService(), ScraperService(), FactCheckerService(agent.router)
 chat_lock = asyncio.Lock()
+agent_lock = threading.Lock()
+voice = VoiceController(agent, agent_lock)
 
 
 def _local(host: str | None) -> bool:
@@ -78,7 +82,10 @@ async def _scheduler() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     task = asyncio.create_task(_scheduler()) if ict.scheduler_config()["enabled"] else None
+    if os.getenv("JUDE_VOICE", "").strip().lower() in {"1", "true", "an", "on"}:
+        voice.start()
     yield
+    await asyncio.to_thread(voice.stop)
     if task:
         task.cancel()
         with suppress(asyncio.CancelledError):
@@ -130,14 +137,39 @@ def memory_delete(item_id: str):
     return memory.delete_id(item_id)
 
 
+def _chat_sync(text: str) -> dict:
+    with agent_lock:
+        answer_text = agent.process_input(text)
+        return {"answer": answer_text, "model": agent.last_model, "route_id": agent.last_route_id}
+
+
 @app.post("/api/chat")
 async def chat(payload: dict):
     text = str(payload.get("text", "")).strip()
     if not text:
         raise HTTPException(400, "Text fehlt")
     async with chat_lock:
-        answer_text = await asyncio.to_thread(agent.process_input, text)
-        return {"answer": answer_text, "model": agent.last_model, "route_id": agent.last_route_id}
+        return await asyncio.to_thread(_chat_sync, text)
+
+
+@app.get("/api/voice")
+def voice_status():
+    return voice.status()
+
+
+@app.get("/api/voice/events")
+def voice_events(since: int = 0):
+    return voice.events(since)
+
+
+@app.post("/api/voice/start")
+def voice_start():
+    return voice.start()
+
+
+@app.post("/api/voice/stop")
+async def voice_stop():
+    return await asyncio.to_thread(voice.stop)
 
 
 @app.post("/api/routing/{route_id}/feedback")

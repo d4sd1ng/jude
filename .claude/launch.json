@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "jude-gui",
+      "runtimeExecutable": "/media/d4sd1ng/AI-Data/Projects/Jude/.venv/bin/python",
+      "runtimeArgs": ["/media/d4sd1ng/AI-Data/Projects/Jude/AGENT/main.py", "--gui", "--host", "127.0.0.1", "--port", "8765"],
+      "port": 8765
+    }
+  ]
+}

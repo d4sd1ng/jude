@@ -68,6 +68,12 @@ def main() -> int:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING,
                         format="%(levelname)s: %(message)s")
     try:
+        if args.desktop or args.gui:
+            # Sprachsteuerung läuft im GUI-Betrieb als Hintergrund-Thread der App.
+            if args.voice:
+                os.environ["JUDE_VOICE"] = "1"
+            os.environ["JUDE_WAKE_PHRASE"] = args.wake_word
+            os.environ["JUDE_SLEEP_PHRASE"] = args.sleep_word
         if args.desktop:
             from web.desktop import run_desktop
             run_desktop(args.host, args.port)
