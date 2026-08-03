@@ -81,3 +81,11 @@ input,select,textarea{background:#0f130c;border-color:#31402a;color:var(--ink)}
 .radarpin{color:var(--accent);font-size:22px;text-shadow:0 0 6px #000;line-height:1}
 #radarMeta .fc{color:var(--accent);font-weight:700}
 #radarMeta .now{color:var(--green);font-weight:700}
+
+/* Team / Sub-Agenten */
+.skillgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;max-height:220px;overflow:auto;margin:8px 0}
+.skillgrid label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);background:#0f130c;border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer}
+.skillgrid input{flex:none;min-width:0}
+.agentcard .role{color:var(--muted);font-size:13px}
+.agentcard .skills{color:var(--gold);font-size:12px;word-break:break-word}
+.agentrun{display:flex;gap:8px;margin-top:8px}

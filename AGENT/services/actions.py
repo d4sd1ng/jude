@@ -16,11 +16,12 @@ def _privileged_enabled() -> bool:
 
 
 class ActionExecutor:
-    def __init__(self):
+    def __init__(self, team=None):
         self.mail = MailService()
         self.coding = CodingService()
         self.calendar = CalendarService()
         self.home = HomeAssistantService()
+        self.team = team  # SubAgentService, für bestätigte Sub-Agent-Erstellung
 
     def __call__(self, action_type: str, payload: dict) -> str:
         if action_type == "mail_send":
@@ -56,6 +57,11 @@ class ActionExecutor:
             return str(self.coding.clone(**payload))
         if action_type == "code_pull":
             return str(self.coding.pull(**payload))
+        if action_type == "create_agent":
+            if self.team is None:
+                raise RuntimeError("Sub-Agent-Verwaltung ist nicht verfügbar.")
+            spec = self.team.create(**payload)
+            return f"Sub-Agent '{spec['name']}' angelegt mit Skills: {', '.join(spec['skills']) or 'keine'}"
         # Privilegierter Freibrief: nach ausdrücklicher Bestätigung sonst gesperrte Aktionen.
         if action_type == "shell_command":
             return self._run_shell(payload)

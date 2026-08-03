@@ -30,6 +30,10 @@ def build_application() -> tuple[Agent, ToolCreator]:
     registry.register(creator.as_tool())
     agent = Agent(router, registry)
     _seed_profile(agent)
+    from services.team import SubAgentService
+    from tools.skills import register_team
+    agent.team = SubAgentService(registry, router)
+    register_team(registry, agent.team)
     return agent, creator
 
 

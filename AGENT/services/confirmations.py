@@ -14,7 +14,7 @@ class ConfirmationQueue:
     ALLOWED_ACTIONS = {"mail_send", "mail_delete", "git_merge", "file_delete", "external_write", "calendar_create",
                        "home_switch", "home_action", "mail_archive", "code_write", "code_commit",
                        "code_push", "code_pr", "code_branch", "code_clone", "code_pull",
-                       "shell_command"}
+                       "shell_command", "create_agent"}
 
     def request(self, action_type: str, summary: str, payload: dict) -> dict:
         if action_type not in self.ALLOWED_ACTIONS:

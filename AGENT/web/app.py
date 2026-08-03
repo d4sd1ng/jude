@@ -46,7 +46,8 @@ from speech.controller import VoiceController
 
 STATIC = Path(__file__).parent / "static"
 agent, _creator = build_application()
-confirmations, executor = ConfirmationQueue(), ActionExecutor()
+team = agent.team
+confirmations, executor = ConfirmationQueue(), ActionExecutor(team=team)
 market, news, radar = MarketService(), CryptoNewsService(), RadarService()
 ha, mail, ocr = HomeAssistantService(), MailService(), OCRService()
 shopping, meals = ShoppingService(), MealPlanService(agent.router)
@@ -245,6 +246,27 @@ async def weather_current():
 @app.get("/api/briefing")
 async def briefing_current():
     return await asyncio.to_thread(briefing.data)
+
+
+@app.get("/api/agents")
+def agents_list():
+    return {"agents": team.list(), "skills": team.available_skills()}
+
+
+@app.post("/api/agents")
+def agents_create(payload: dict):
+    return team.create(str(payload.get("name", "")), str(payload.get("role", "")),
+                       list(payload.get("skills", [])), payload.get("model"))
+
+
+@app.delete("/api/agents/{name}")
+def agents_delete(name: str):
+    return team.delete(name)
+
+
+@app.post("/api/agents/{name}/run")
+async def agents_run(name: str, payload: dict):
+    return await asyncio.to_thread(team.run, name, str(payload.get("task", "")))
 
 
 @app.get("/api/images")

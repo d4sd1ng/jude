@@ -132,3 +132,21 @@ def register_context(registry: ToolRegistry, router=None, confirmations: Confirm
                                "Datei außerhalb von AI-Data schreiben – zur ausdrücklichen Bestätigung vormerken.",
                                lambda path, content: confirmations.request("external_write", f"Datei außerhalb AI-Data schreiben: {path}", {"path": path, "content": content}),
                                _schema({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"])))
+
+
+def register_team(registry: ToolRegistry, team) -> None:
+    """Werkzeuge zum Verwalten und Einsetzen benannter Sub-Agenten ("Mitarbeiter")."""
+    registry.register(Tool("list_sub_agents", "Vorhandene Sub-Agenten (Mitarbeiter) mit Rolle und Skills auflisten.",
+                           team.list, _schema({})))
+    registry.register(Tool("list_available_skills", "Verfügbare Skills/Werkzeuge auflisten, die ein Sub-Agent bekommen kann.",
+                           team.available_skills, _schema({})))
+    registry.register(Tool("delegate_to_agent", "Einem benannten Sub-Agenten eine Aufgabe übergeben und dessen Ergebnis erhalten.",
+                           lambda name, task: team.run(name, task),
+                           _schema({"name": {"type": "string"}, "task": {"type": "string"}}, ["name", "task"])))
+    registry.register(Tool("create_sub_agent",
+                           "Neuen Sub-Agenten (Mitarbeiter) mit Name, Rolle und Skill-Liste anlegen – nach ausdrücklicher Bestätigung.",
+                           lambda name, role, skills, model=None: team.create(name, role, skills, model),
+                           _schema({"name": {"type": "string"}, "role": {"type": "string"},
+                                    "skills": {"type": "array", "items": {"type": "string"}},
+                                    "model": {"type": "string"}}, ["name", "role", "skills"]),
+                           confirm_action="create_agent"))

@@ -96,6 +96,20 @@
   <div class="sectionhead"><div><span class="eyebrow">GALERIE</span><h3>Zuletzt erzeugt</h3></div><button id="loadImages">Aktualisieren</button></div>
   <div id="imageGallery" class="cards"></div>
 </section>
+<section data-page="Team">
+  <div class="sectionhead"><div><span class="eyebrow">SUB-AGENTEN</span><h2>Team</h2></div><button id="loadAgents">Aktualisieren</button></div>
+  <div class="panel">
+    <h3>Neuen Mitarbeiter anlegen</h3>
+    <form id="agentForm">
+      <input id="agentName" placeholder="Name (z.B. Coder, Rechercheur)" required>
+      <input id="agentRole" placeholder="Rolle / Aufgabe" required>
+      <button>Anlegen</button>
+    </form>
+    <p class="muted small">Skills auswählen:</p>
+    <div id="agentSkills" class="skillgrid"></div>
+  </div>
+  <div id="agentList" class="cards"></div>
+</section>
 <section data-page="Gedächtnis">
   <div class="sectionhead"><div><span class="eyebrow">LOCAL MEMORY</span><h2>Gedächtnis</h2></div><button id="loadMemory">Aktualisieren</button></div>
   <div class="panel"><p id="memoryStats" class="muted"></p><form id="memoryForm"><input id="memoryContent" placeholder="Erinnerung ausdrücklich hinzufügen" required><button>Speichern</button></form></div>
