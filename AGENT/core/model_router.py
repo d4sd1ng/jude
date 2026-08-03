@@ -374,6 +374,8 @@ class ModelRouter:
             "research": ("recherch", "quelle", "beleg", "fake", "news", "wissenschaft", "analyse"),
             "document": ("pdf", "dokument", "ocr", "bericht", "zusammenfassung"),
             "home": ("home assistant", "licht", "alexa", "growcontroller"),
+            "medien": ("bild", "generier", "render", "blender", "foto", "zeichne", "male ", "3d", "szene",
+                       "grafik", "icon", "logo", "bearbeite das bild"),
         }
         for kind, terms in groups.items():
             if any(term in value for term in terms):

@@ -8,7 +8,7 @@ models:
     avg_latency_ms: 220
     max_tokens: 4096
     context_length: 16384
-    tags: [lokal, privat, schnell, tools, code, test, routing_judge]
+    tags: [lokal, privat, schnell, tools, code, test, routing_judge, medien]
     priority: 10
 
   local_dolphin:

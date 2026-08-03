@@ -108,3 +108,62 @@ class BlenderService:
                 "created_at": datetime.now(timezone.utc).isoformat()}
         out_path.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"path": str(out_path), **meta}
+
+    # ------------------------------------------------------- strukturierte Szene
+
+    _SHAPE_OPS = {
+        "cube": "bpy.ops.mesh.primitive_cube_add",
+        "sphere": "bpy.ops.mesh.primitive_uv_sphere_add",
+        "cylinder": "bpy.ops.mesh.primitive_cylinder_add",
+        "cone": "bpy.ops.mesh.primitive_cone_add",
+        "torus": "bpy.ops.mesh.primitive_torus_add",
+        "plane": "bpy.ops.mesh.primitive_plane_add",
+        "monkey": "bpy.ops.mesh.primitive_monkey_add",
+    }
+
+    @staticmethod
+    def _rgb(value, default=(0.8, 0.8, 0.8)):
+        if not isinstance(value, (list, tuple)) or len(value) < 3:
+            return default
+        return tuple(max(0.0, min(1.0, float(c))) for c in value[:3])
+
+    @classmethod
+    def _spec_to_bpy(cls, spec: dict) -> str:
+        lines = ["import bpy"]
+        background = cls._rgb(spec.get("background"), (0.05, 0.05, 0.05))
+        lines += [
+            "world = bpy.data.worlds.new('JudeWorld'); bpy.context.scene.world = world",
+            "world.use_nodes = True",
+            f"world.node_tree.nodes['Background'].inputs[0].default_value = ({background[0]},{background[1]},{background[2]},1)",
+        ]
+        objects = spec.get("objects") or []
+        if not objects:
+            raise ValueError("Die Szene enthält keine Objekte.")
+        for index, obj in enumerate(objects):
+            shape = str(obj.get("shape", "cube")).lower()
+            op = cls._SHAPE_OPS.get(shape)
+            if not op:
+                raise ValueError(f"Unbekannte Form: {shape}. Erlaubt: {', '.join(cls._SHAPE_OPS)}.")
+            loc = obj.get("location", [0, 0, 0])
+            loc = [float(loc[i]) if isinstance(loc, (list, tuple)) and i < len(loc) else 0.0 for i in range(3)]
+            scale = obj.get("scale", 1.0)
+            scale = [float(s) for s in scale] if isinstance(scale, (list, tuple)) else [float(scale)] * 3
+            color = cls._rgb(obj.get("color"))
+            metallic = max(0.0, min(1.0, float(obj.get("metallic", 0.0))))
+            rough = max(0.0, min(1.0, float(obj.get("roughness", 0.5))))
+            lines += [
+                f"{op}(location=({loc[0]},{loc[1]},{loc[2]}))",
+                "o = bpy.context.object",
+                f"o.scale = ({scale[0]},{scale[1]},{scale[2]})",
+                f"m = bpy.data.materials.new('mat{index}'); m.use_nodes = True",
+                "b = m.node_tree.nodes['Principled BSDF']",
+                f"b.inputs['Base Color'].default_value = ({color[0]},{color[1]},{color[2]},1)",
+                f"b.inputs['Metallic'].default_value = {metallic}",
+                f"b.inputs['Roughness'].default_value = {rough}",
+                "o.data.materials.append(m)",
+            ]
+        return "\n".join(lines)
+
+    def render_spec(self, spec: dict, title: str = "szene", width: int = 1024,
+                    height: int = 1024, engine: str = "BLENDER_EEVEE_NEXT") -> dict:
+        return self.render(self._spec_to_bpy(spec), title=title, width=width, height=height, engine=engine)
