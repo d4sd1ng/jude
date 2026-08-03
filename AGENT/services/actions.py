@@ -44,4 +44,8 @@ class ActionExecutor:
             return str(self.coding.create_pr(**payload))
         if action_type == "code_branch":
             return str(self.coding.create_branch(**payload))
+        if action_type == "code_clone":
+            return str(self.coding.clone(**payload))
+        if action_type == "code_pull":
+            return str(self.coding.pull(**payload))
         raise ValueError(f"Unbekannter bestätigter Aktionstyp: {action_type}")

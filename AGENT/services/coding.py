@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -55,6 +56,24 @@ class CodingService:
         root = self._repo(repo)
         self._run(root, ["git", "push", "-u", "origin", branch])
         return f"origin/{branch}"
+
+    def clone(self, url: str, name: str | None = None) -> str:
+        if not re.match(r"^(https://|git@|ssh://)[\w.@:/~+-]+$", url):
+            raise ValueError("Nur gültige https/ssh-Git-URLs sind erlaubt.")
+        base = (name or url.rstrip("/").split("/")[-1]).removesuffix(".git")
+        if not re.match(r"^[A-Za-z0-9._-]{1,80}$", base):
+            raise ValueError("Ungültiger Zielname.")
+        destination_root = AI_DATA_ROOT / "Projects"
+        destination_root.mkdir(parents=True, exist_ok=True)
+        target = resolve_path(destination_root / base, for_write=True)
+        if target.exists():
+            raise ValueError(f"Zielverzeichnis existiert bereits: {target}")
+        self._run(destination_root, ["git", "clone", "--", url, str(target)])
+        return str(target)
+
+    def pull(self, repo: str) -> str:
+        root = self._repo(repo)
+        return self._run(root, ["git", "pull", "--ff-only"]).strip() or "Aktualisiert"
 
     def create_pr(self, repo: str, title: str, body: str, draft: bool = True) -> str:
         root = self._repo(repo)

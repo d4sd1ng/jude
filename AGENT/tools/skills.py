@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from core.tool_registry import Tool, ToolRegistry
+from services.filesystem import list_dir
 from services.calendar import CalendarService
 from services.coding import CodingService
 from services.confirmations import ConfirmationQueue
@@ -57,6 +58,8 @@ def register(registry: ToolRegistry) -> None:
         Tool("coding_test", "Vorhandene Tests eines AI-Data-Repositories ausführen.", coding.test, _schema({"repo": {"type": "string"}}, ["repo"])),
         Tool("coding_read", "Textdatei innerhalb oder außerhalb AI-Data read-only lesen.", coding.read,
              _schema({"path": {"type": "string"}}, ["path"]), untrusted=True),
+        Tool("list_directory", "Verzeichnisinhalt auflisten (nur lesend; System-/Papierkorbpfade gesperrt).", list_dir,
+             _schema({"path": {"type": "string"}, "max_entries": {"type": "integer"}}, ["path"])),
         Tool("coding_write", "Textdatei ausschließlich unter AI-Data atomar schreiben.", coding.write,
              _schema({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]), confirm_action="code_write"),
         Tool("coding_diff", "Git-Diff eines AI-Data-Repositories lesen.", coding.diff, _schema({"repo": {"type": "string"}}, ["repo"])),
@@ -66,6 +69,10 @@ def register(registry: ToolRegistry) -> None:
              _schema({"repo": {"type": "string"}, "message": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}}, ["repo", "message", "paths"]), confirm_action="code_commit"),
         Tool("coding_push", "Branch zu origin pushen.", coding.push,
              _schema({"repo": {"type": "string"}, "branch": {"type": "string"}}, ["repo", "branch"]), confirm_action="code_push"),
+        Tool("coding_clone", "Git-Repository nach AI-Data/Projects klonen (nach Bestätigung).", coding.clone,
+             _schema({"url": {"type": "string"}, "name": {"type": "string"}}, ["url"]), confirm_action="code_clone"),
+        Tool("coding_pull", "Aktuellen Stand eines AI-Data-Repositories per fast-forward ziehen (nach Bestätigung).", coding.pull,
+             _schema({"repo": {"type": "string"}}, ["repo"]), confirm_action="code_pull"),
         Tool("coding_create_pr", "GitHub-Pull-Request erstellen.", coding.create_pr,
              _schema({"repo": {"type": "string"}, "title": {"type": "string"}, "body": {"type": "string"}, "draft": {"type": "boolean"}}, ["repo", "title", "body"]), confirm_action="code_pr"),
         Tool("ocr_file", "Deutsch/englischen Text aus Bild oder PDF lesen.", ocr.extract_path,

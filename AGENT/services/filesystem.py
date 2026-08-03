@@ -24,6 +24,26 @@ def read_text(path: str, max_characters: int = 50000) -> str:
     return target.read_text(encoding="utf-8", errors="replace")[:max(1, min(max_characters, 200000))]
 
 
+def list_dir(path: str, max_entries: int = 300) -> dict:
+    """Listet den Inhalt eines Verzeichnisses (nur lesend, System-/Papierkorb gesperrt)."""
+    target = resolve_path(path)
+    if not target.is_dir():
+        raise NotADirectoryError(f"Kein Verzeichnis: {target}")
+    entries = []
+    for child in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
+        if any(part in BLOCKED_PARTS for part in child.parts):
+            continue
+        try:
+            is_dir = child.is_dir()
+            size = child.stat().st_size if child.is_file() else None
+        except OSError:
+            continue
+        entries.append({"name": child.name, "type": "dir" if is_dir else "file", "size": size})
+        if len(entries) >= max(1, min(max_entries, 2000)):
+            break
+    return {"path": str(target), "count": len(entries), "entries": entries}
+
+
 def write_text(path: str, content: str) -> str:
     target = resolve_path(path, for_write=True)
     target.parent.mkdir(parents=True, exist_ok=True)
