@@ -39,6 +39,7 @@ DATA_DIR = Path(os.getenv("JUDE_DATA_DIR") or (JUDE_DIR / "data"))
 MODELS_DIR = JUDE_DIR / "models"
 MEALS_DIR = AI_DATA_ROOT / "Essensplan"
 CALENDAR_DIR = AI_DATA_ROOT / "Kalender"
+IMAGES_DIR = JUDE_DIR / "images"
 TEST_DATA_DIR = JUDE_DIR / "test-data"
 TEST_REPOS_DIR = JUDE_DIR / "test-repos"
 GENERATED_TOOLS_DIR = Path(os.getenv("JUDE_GENERATED_TOOLS_DIR") or (JUDE_DIR / "generated_tools"))

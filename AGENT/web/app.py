@@ -17,6 +17,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from main import build_application
+from core.paths import IMAGES_DIR
 from services.actions import ActionExecutor
 from services.briefing import BriefingService
 from services.calendar import CalendarService
@@ -34,6 +35,8 @@ from services.news import CryptoNewsService
 from services.notifications import NotificationService
 from services.ocr import OCRService
 from services.radar import RadarService
+from services.images import ImageService
+from services.render3d import BlenderService
 from services.scraper import ScraperService
 from services.shopping import ShoppingService
 from services.system_monitor import SystemMonitorService
@@ -57,6 +60,8 @@ system_monitor = SystemMonitorService()
 weather = WeatherService()
 briefing = BriefingService(market, ict=ict, router=agent.router)
 voice = VoiceController(agent, agent_lock, briefing=briefing)
+images = ImageService()
+blender = BlenderService()
 
 
 def _local(host: str | None) -> bool:
@@ -100,6 +105,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Jude", version="1.0", lifespan=lifespan, dependencies=[Depends(require_auth)])
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
 
 @app.exception_handler(Exception)
@@ -201,6 +208,37 @@ async def weather_current():
 @app.get("/api/briefing")
 async def briefing_current():
     return await asyncio.to_thread(briefing.data)
+
+
+@app.get("/api/images")
+def images_list():
+    return {"items": images.list_recent()}
+
+
+@app.post("/api/images/generate")
+async def images_generate(payload: dict):
+    prompt = str(payload.get("prompt", "")).strip()
+    if not prompt:
+        raise HTTPException(400, "Prompt fehlt")
+    return await asyncio.to_thread(images.generate, prompt, str(payload.get("size", "1024x1024")))
+
+
+@app.post("/api/images/edit")
+async def images_edit(prompt: str = Form(...), file: UploadFile = File(...),
+                      mask: UploadFile | None = File(None), size: str = Form("1024x1024")):
+    image_bytes = await file.read()
+    mask_bytes = await mask.read() if mask is not None else None
+    return await asyncio.to_thread(images.edit, image_bytes, prompt, file.filename or "bild.png", mask_bytes, size)
+
+
+@app.post("/api/images/render3d")
+async def images_render3d(payload: dict):
+    script = str(payload.get("blender_python", "")).strip()
+    if not script:
+        raise HTTPException(400, "Blender-Skript fehlt")
+    return await asyncio.to_thread(blender.render, script, str(payload.get("title", "szene")),
+                                   int(payload.get("width", 1024)), int(payload.get("height", 1024)),
+                                   str(payload.get("engine", "BLENDER_EEVEE_NEXT")))
 
 
 @app.post("/api/routing/{route_id}/feedback")
