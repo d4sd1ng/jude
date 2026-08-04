@@ -99,8 +99,8 @@ models:
   cloud_groq_llama:
     provider: groq
     model_name: llama-3.3-70b-versatile
-    cost_per_1k_input: 0.00059
-    cost_per_1k_output: 0.00079
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
     avg_latency_ms: 350
     max_tokens: 8192
     context_length: 128000
@@ -138,14 +138,16 @@ router:
   complexity_threshold_high: 7
   quality_judge_min_complexity: 6
   request_cost_limit_usd: 1.0
+  # Reihenfolge = Eskalationsstufen: lokal (frei) -> Groq (frei) -> günstig -> stark -> Top-Tier.
+  # Jude bleibt so lange wie möglich kostenlos und steigt nur bei Bedarf auf.
   fallback_chain:
     - tags:lokal
-    - cloud_deepseek_chat
     - cloud_groq_llama
+    - cloud_deepseek_chat
     - cloud_openrouter_dolphin
+    - cloud_gemini_flash
     - cloud_openai_luna
     - cloud_openai_terra
-    - cloud_gemini_flash
     - cloud_claude_sonnet
     - cloud_openai_sol
     - cloud_claude_fable

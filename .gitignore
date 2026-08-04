@@ -14,3 +14,6 @@ __pycache__/
 
 # --- Daten & Temporäres ---
 tmp/
+
+# LibreOffice lock files
+.~lock.*#

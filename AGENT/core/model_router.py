@@ -530,7 +530,12 @@ class ModelRouter:
             db.execute("INSERT INTO route_decisions(id,created_at,task_type,complexity,selected_model,prompt_hash) VALUES(?,?,?,?,?,?)",
                        (route_id, datetime.now(timezone.utc).isoformat(), task_type, complexity, selected.name, prompt_hash))
         errors: list[str] = []
-        for spec in self._resolve_fallbacks(selected, allow_uncensored):
+        chain = self._resolve_fallbacks(selected, allow_uncensored)
+
+        def _has_stronger_tier(index: int) -> bool:
+            return any(self._provider_enabled(chain[j].provider) for j in range(index + 1, len(chain)))
+
+        for position, spec in enumerate(chain):
             if not self._cloud_affordable(spec, messages):
                 attempts.append({"model": spec.name, "status": "skipped_cost_limit"})
                 continue
@@ -538,8 +543,10 @@ class ModelRouter:
                 attempt_started = time.monotonic()
                 response = self.call_llm(spec, messages, tools, request_id=route_id)
                 adequate = True
-                if spec.provider == "ollama" and not allow_uncensored and any(
-                        self._provider_enabled(provider) for provider in ("openai", "anthropic", "google")):
+                # Günstige Stufen (lokal, Groq, …) werden bei schweren Anfragen geprüft und
+                # eskalieren zur nächsten Stufe – aber nur, solange es eine stärkere gibt.
+                if (not allow_uncensored and "top_tier" not in spec.tags
+                        and _has_stronger_tier(position)):
                     adequate = self._local_quality_check(prompt, response, complexity)
                 attempts.append({"model": spec.name, "status": "ok" if adequate else "inadequate",
                                  "latency_ms": int((time.monotonic() - attempt_started) * 1000)})
