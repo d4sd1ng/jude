@@ -110,6 +110,31 @@
   </div>
   <div id="agentList" class="cards"></div>
 </section>
+<section data-page="System">
+  <div class="sectionhead"><div><span class="eyebrow">STATUS &amp; AUTOMATION</span><h2>System</h2></div><button id="loadSystem">Aktualisieren</button></div>
+  <div id="healthPanel" class="panel">–</div>
+  <div class="toolgrid">
+    <article class="panel"><h3>Geplante Aufgaben</h3>
+      <form id="taskForm">
+        <input id="taskName" placeholder="Name" required>
+        <select id="taskAction"><option value="briefing">Briefing</option><option value="prompt">Anfrage</option></select>
+        <input id="taskPrompt" placeholder="Anfrage (bei 'Anfrage')">
+        <input id="taskAt" placeholder="täglich HH:MM" size="8">
+        <input id="taskEvery" placeholder="alle N min" size="7" type="number">
+        <button>Anlegen</button>
+      </form>
+      <div id="taskList"></div>
+    </article>
+    <article class="panel"><h3>Sicherungen</h3><button id="backupRun">Jetzt sichern</button><div id="backupList"></div></article>
+  </div>
+</section>
+<section data-page="Wissen">
+  <div class="sectionhead"><div><span class="eyebrow">DOKUMENTWISSEN (RAG)</span><h2>Wissen</h2></div><button id="loadDocs">Aktualisieren</button></div>
+  <div class="toolgrid">
+    <article class="panel"><h3>Dokument einlesen</h3><form id="docIngestForm"><input id="docPath" placeholder="Pfad unter AI-Data (Text/PDF)" required><button>Einlesen</button></form><div id="docList"></div></article>
+    <article class="panel"><h3>Durchsuchen</h3><form id="docSearchForm"><input id="docQuery" placeholder="Frage an deine Dokumente" required><button>Suchen</button></form><div id="docResults"></div></article>
+  </div>
+</section>
 <section data-page="Gedächtnis">
   <div class="sectionhead"><div><span class="eyebrow">LOCAL MEMORY</span><h2>Gedächtnis</h2></div><button id="loadMemory">Aktualisieren</button></div>
   <div class="panel"><p id="memoryStats" class="muted"></p><form id="memoryForm"><input id="memoryContent" placeholder="Erinnerung ausdrücklich hinzufügen" required><button>Speichern</button></form></div>
