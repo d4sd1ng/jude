@@ -146,6 +146,18 @@ def register_context(registry: ToolRegistry, router=None, confirmations: Confirm
                                _schema({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"])))
 
 
+def register_documents(registry: ToolRegistry, documents) -> None:
+    """Werkzeuge für lokales Dokumentwissen (RAG)."""
+    registry.register(Tool("ingest_document", "Ein Dokument (Text/PDF) unter AI-Data ins Wissen einlesen.",
+                           documents.ingest, _schema({"path": {"type": "string"}}, ["path"])))
+    registry.register(Tool("search_documents", "Eingelesene Dokumente semantisch durchsuchen und passende Stellen erhalten.",
+                           documents.search, _schema({"query": {"type": "string"}, "top_k": {"type": "integer"}}, ["query"]),
+                           untrusted=True))
+    registry.register(Tool("list_documents", "Eingelesene Dokumente auflisten.", documents.list_documents, _schema({})))
+    registry.register(Tool("forget_document", "Ein Dokument aus dem Wissen entfernen.",
+                           documents.forget_document, _schema({"path": {"type": "string"}}, ["path"])))
+
+
 def register_backup(registry: ToolRegistry, backup) -> None:
     registry.register(Tool("run_backup", "Sofort eine Sicherung von Datenbank und Konfiguration erstellen.",
                            backup.run, _schema({})))

@@ -31,9 +31,10 @@ def build_application() -> tuple[Agent, ToolCreator]:
     agent = Agent(router, registry)
     _seed_profile(agent)
     from services.backup import BackupService
+    from services.documents import DocumentService
     from services.scheduler import SchedulerService
     from services.team import SubAgentService
-    from tools.skills import register_backup, register_scheduler, register_team
+    from tools.skills import register_backup, register_documents, register_scheduler, register_team
     agent.team = SubAgentService(registry, router)
     register_team(registry, agent.team)
     agent.scheduler = SchedulerService(agent)
@@ -41,6 +42,8 @@ def build_application() -> tuple[Agent, ToolCreator]:
     agent.backup = BackupService()
     register_backup(registry, agent.backup)
     _ensure_nightly_backup(agent.scheduler)
+    agent.documents = DocumentService()
+    register_documents(registry, agent.documents)
     return agent, creator
 
 

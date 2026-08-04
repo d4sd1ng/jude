@@ -261,6 +261,27 @@ async def briefing_current():
     return await asyncio.to_thread(briefing.data)
 
 
+@app.get("/api/documents")
+def documents_list():
+    return {"documents": agent.documents.list_documents()}
+
+
+@app.post("/api/documents/ingest")
+async def documents_ingest(payload: dict):
+    return await asyncio.to_thread(agent.documents.ingest, str(payload.get("path", "")))
+
+
+@app.post("/api/documents/search")
+async def documents_search(payload: dict):
+    return await asyncio.to_thread(agent.documents.search, str(payload.get("query", "")),
+                                   int(payload.get("top_k", 4)))
+
+
+@app.delete("/api/documents")
+def documents_forget(payload: dict):
+    return agent.documents.forget_document(str(payload.get("path", "")))
+
+
 @app.get("/api/backups")
 def backups_list():
     return {"backups": agent.backup.list()}
