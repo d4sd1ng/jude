@@ -30,10 +30,13 @@ def build_application() -> tuple[Agent, ToolCreator]:
     registry.register(creator.as_tool())
     agent = Agent(router, registry)
     _seed_profile(agent)
+    from services.scheduler import SchedulerService
     from services.team import SubAgentService
-    from tools.skills import register_team
+    from tools.skills import register_scheduler, register_team
     agent.team = SubAgentService(registry, router)
     register_team(registry, agent.team)
+    agent.scheduler = SchedulerService(agent)
+    register_scheduler(registry, agent.scheduler)
     return agent, creator
 
 

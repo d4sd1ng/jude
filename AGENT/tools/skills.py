@@ -144,6 +144,26 @@ def register_context(registry: ToolRegistry, router=None, confirmations: Confirm
                                _schema({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"])))
 
 
+def register_scheduler(registry: ToolRegistry, scheduler) -> None:
+    """Werkzeuge für zeitgesteuerte, proaktive Aufgaben."""
+    registry.register(Tool("list_scheduled_tasks", "Geplante (zeitgesteuerte) Aufgaben auflisten.",
+                           scheduler.list, _schema({})))
+    registry.register(Tool("create_scheduled_task",
+                           "Zeitgesteuerte Aufgabe anlegen, damit Jude proaktiv handelt. Entweder täglich um 'at' (HH:MM) "
+                           "oder alle 'every_minutes'. action_type: 'prompt' (Anfrage an dich selbst ausführen), "
+                           "'briefing' (Kurzbriefing) oder 'tool' (Werkzeug aufrufen).",
+                           lambda name, action_type, at=None, every_minutes=None, prompt=None, tool=None, tool_args=None, speak=True:
+                               scheduler.create(name, action_type, at=at, every_minutes=every_minutes,
+                                                prompt=prompt, tool=tool, tool_args=tool_args, speak=speak),
+                           _schema({"name": {"type": "string"}, "action_type": {"type": "string", "enum": ["prompt", "briefing", "tool"]},
+                                    "at": {"type": "string"}, "every_minutes": {"type": "integer"},
+                                    "prompt": {"type": "string"}, "tool": {"type": "string"},
+                                    "tool_args": {"type": "object"}, "speak": {"type": "boolean"}},
+                                   ["name", "action_type"])))
+    registry.register(Tool("delete_scheduled_task", "Geplante Aufgabe entfernen.",
+                           scheduler.delete, _schema({"task_id": {"type": "string"}}, ["task_id"])))
+
+
 def register_team(registry: ToolRegistry, team) -> None:
     """Werkzeuge zum Verwalten und Einsetzen benannter Sub-Agenten ("Mitarbeiter")."""
     registry.register(Tool("list_sub_agents", "Vorhandene Sub-Agenten (Mitarbeiter) mit Rolle und Skills auflisten.",

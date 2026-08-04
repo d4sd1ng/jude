@@ -62,6 +62,9 @@ system_monitor = SystemMonitorService()
 weather = WeatherService()
 briefing = BriefingService(market, ict=ict, router=agent.router)
 voice = VoiceController(agent, agent_lock, briefing=briefing)
+scheduler = agent.scheduler
+scheduler.briefing = briefing
+scheduler.voice = voice
 images = ImageService()
 blender = BlenderService()
 vision = VisionService()
@@ -93,17 +96,27 @@ async def _scheduler() -> None:
         await asyncio.sleep(60)
 
 
+async def _task_scheduler() -> None:
+    while True:
+        with suppress(Exception):
+            async with chat_lock:
+                await asyncio.to_thread(scheduler.tick)
+        await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     task = asyncio.create_task(_scheduler()) if ict.scheduler_config()["enabled"] else None
+    task_loop = asyncio.create_task(_task_scheduler())
     if os.getenv("JUDE_VOICE", "").strip().lower() in {"1", "true", "an", "on"}:
         voice.start()
     yield
     await asyncio.to_thread(voice.stop)
-    if task:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+    for job in (task, task_loop):
+        if job:
+            job.cancel()
+            with suppress(asyncio.CancelledError):
+                await job
 
 
 def _allowed_hosts() -> set[str]:
@@ -246,6 +259,24 @@ async def weather_current():
 @app.get("/api/briefing")
 async def briefing_current():
     return await asyncio.to_thread(briefing.data)
+
+
+@app.get("/api/tasks")
+def tasks_list():
+    return {"tasks": scheduler.list()}
+
+
+@app.post("/api/tasks")
+def tasks_create(payload: dict):
+    return scheduler.create(str(payload.get("name", "")), str(payload.get("action_type", "prompt")),
+                            at=payload.get("at"), every_minutes=payload.get("every_minutes"),
+                            prompt=payload.get("prompt"), tool=payload.get("tool"),
+                            tool_args=payload.get("tool_args"), speak=bool(payload.get("speak", True)))
+
+
+@app.delete("/api/tasks/{task_id}")
+def tasks_delete(task_id: str):
+    return scheduler.delete(task_id)
 
 
 @app.get("/api/agents")
