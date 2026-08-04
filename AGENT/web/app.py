@@ -25,6 +25,7 @@ from services.coding import CodingService
 from services.confirmations import ConfirmationQueue
 from services.database import connection
 from services.fact_checker import FactCheckerService
+from services.health import HealthService
 from services.home_assistant import HomeAssistantService
 from services.ict import ICTService
 from services.mail import MailService
@@ -60,11 +61,13 @@ chat_lock = asyncio.Lock()
 agent_lock = threading.Lock()
 system_monitor = SystemMonitorService()
 weather = WeatherService()
+health = HealthService(router=agent.router, voice=None)
 briefing = BriefingService(market, ict=ict, router=agent.router)
 voice = VoiceController(agent, agent_lock, briefing=briefing)
 scheduler = agent.scheduler
 scheduler.briefing = briefing
 scheduler.voice = voice
+health.voice = voice
 images = ImageService()
 blender = BlenderService()
 vision = VisionService()
@@ -259,6 +262,11 @@ async def weather_current():
 @app.get("/api/briefing")
 async def briefing_current():
     return await asyncio.to_thread(briefing.data)
+
+
+@app.get("/api/health")
+def health_snapshot():
+    return health.snapshot()
 
 
 @app.get("/api/documents")

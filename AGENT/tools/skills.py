@@ -4,6 +4,7 @@ import json
 
 from core.tool_registry import Tool, ToolRegistry
 from services.filesystem import list_dir
+from services.health import HealthService
 from services.remote import SSHService
 from services.calendar import CalendarService
 from services.coding import CodingService
@@ -32,6 +33,7 @@ def register(registry: ToolRegistry) -> None:
     ha, mail, shopping, coding, ict = HomeAssistantService(), MailService(), ShoppingService(), CodingService(), ICTService()
     ocr, scraper, calendar, memory = OCRService(), ScraperService(), CalendarService(), MemoryService()
     ssh = SSHService()
+    health = HealthService()
     tools = [
         Tool("market_fetch", "Aktuelle OHLCV-Daten abrufen und speichern.", market.fetch,
              _schema({"market": {"type": "string", "enum": ["BTC/EUR", "BTC/USD", "XAU/EUR", "XAU/USD"]}, "interval": {"type": "string"}, "limit": {"type": "integer"}}, ["market"])),
@@ -95,6 +97,8 @@ def register(registry: ToolRegistry) -> None:
              _schema({"status": {"type": "string", "enum": ["candidate", "active"]}, "limit": {"type": "integer"}})),
         Tool("memory_stats", "Statistik des lokalen Gedächtnisses und der freigegebenen Trainingsgespräche.",
              memory.training_stats, _schema({})),
+        Tool("system_health", "Systemzustand prüfen: Ollama, Modelle, Speicher, Datenbank, Mikrofon, Budget, letzte Fehler.",
+             health.snapshot, _schema({})),
         Tool("recall_conversations", "Frühere Gespräche zu einem Thema wiederfinden (episodisches Gedächtnis).",
              memory.recall, _schema({"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"])),
     ]
