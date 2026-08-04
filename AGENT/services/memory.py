@@ -216,7 +216,31 @@ class MemoryService:
         for _, item in ranked[:limit]:
             label = "bestätigt" if item["status"] == "active" else "unbestätigter Kandidat"
             lines.append(f"- [{label}] {item['content']}")
+        recalled = self.recall(query, limit=3)
+        if recalled:
+            lines.append("Frühere Gespräche zum Thema:")
+            for turn in recalled:
+                lines.append(f"  · Du: {turn['user_text'][:160]} → Jude: {turn['assistant_text'][:200]}")
         return "\n".join(lines)
+
+    def recall(self, query: str, limit: int = 3) -> list[dict]:
+        """Sucht thematisch passende frühere Gesprächsbeiträge (episodisches Gedächtnis)."""
+        tokens = {token for token in self._normalize(query).split() if len(token) >= 3}
+        if not tokens:
+            return []
+        with connection() as db:
+            rows = db.execute(
+                "SELECT user_text,assistant_text,created_at,model FROM conversation_turns "
+                "WHERE training_allowed=1 ORDER BY created_at DESC LIMIT 400"
+            ).fetchall()
+        ranked = []
+        for row in rows:
+            text_tokens = set(self._normalize(f"{row['user_text']} {row['assistant_text']}").split())
+            score = len(tokens & text_tokens)
+            if score >= 2:
+                ranked.append((score, dict(row)))
+        ranked.sort(key=lambda pair: (pair[0], pair[1]["created_at"]), reverse=True)
+        return [turn for _, turn in ranked[:limit]]
 
     def training_stats(self) -> dict:
         with connection() as db:

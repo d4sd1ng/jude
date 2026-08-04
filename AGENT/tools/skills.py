@@ -95,6 +95,8 @@ def register(registry: ToolRegistry) -> None:
              _schema({"status": {"type": "string", "enum": ["candidate", "active"]}, "limit": {"type": "integer"}})),
         Tool("memory_stats", "Statistik des lokalen Gedächtnisses und der freigegebenen Trainingsgespräche.",
              memory.training_stats, _schema({})),
+        Tool("recall_conversations", "Frühere Gespräche zu einem Thema wiederfinden (episodisches Gedächtnis).",
+             memory.recall, _schema({"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"])),
     ]
     for tool in tools:
         registry.register(tool)
