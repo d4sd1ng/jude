@@ -261,6 +261,16 @@ async def briefing_current():
     return await asyncio.to_thread(briefing.data)
 
 
+@app.get("/api/backups")
+def backups_list():
+    return {"backups": agent.backup.list()}
+
+
+@app.post("/api/backups")
+async def backups_run():
+    return await asyncio.to_thread(agent.backup.run)
+
+
 @app.get("/api/tasks")
 def tasks_list():
     return {"tasks": scheduler.list()}

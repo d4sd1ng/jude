@@ -144,6 +144,12 @@ def register_context(registry: ToolRegistry, router=None, confirmations: Confirm
                                _schema({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"])))
 
 
+def register_backup(registry: ToolRegistry, backup) -> None:
+    registry.register(Tool("run_backup", "Sofort eine Sicherung von Datenbank und Konfiguration erstellen.",
+                           backup.run, _schema({})))
+    registry.register(Tool("list_backups", "Vorhandene Sicherungen auflisten.", backup.list, _schema({})))
+
+
 def register_scheduler(registry: ToolRegistry, scheduler) -> None:
     """Werkzeuge für zeitgesteuerte, proaktive Aufgaben."""
     registry.register(Tool("list_scheduled_tasks", "Geplante (zeitgesteuerte) Aufgaben auflisten.",

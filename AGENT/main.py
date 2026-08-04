@@ -30,14 +30,27 @@ def build_application() -> tuple[Agent, ToolCreator]:
     registry.register(creator.as_tool())
     agent = Agent(router, registry)
     _seed_profile(agent)
+    from services.backup import BackupService
     from services.scheduler import SchedulerService
     from services.team import SubAgentService
-    from tools.skills import register_scheduler, register_team
+    from tools.skills import register_backup, register_scheduler, register_team
     agent.team = SubAgentService(registry, router)
     register_team(registry, agent.team)
     agent.scheduler = SchedulerService(agent)
     register_scheduler(registry, agent.scheduler)
+    agent.backup = BackupService()
+    register_backup(registry, agent.backup)
+    _ensure_nightly_backup(agent.scheduler)
     return agent, creator
+
+
+def _ensure_nightly_backup(scheduler) -> None:
+    """Legt einmalig eine nächtliche Sicherungsaufgabe an (03:00)."""
+    try:
+        if not any(t.get("tool") == "run_backup" for t in scheduler.list()):
+            scheduler.create("Nächtliche Sicherung", "tool", at="03:00", tool="run_backup", speak=False)
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Sicherungsaufgabe nicht angelegt: %s", exc)
 
 
 def _seed_profile(agent: Agent) -> None:
