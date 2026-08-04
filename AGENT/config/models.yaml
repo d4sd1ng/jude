@@ -145,7 +145,7 @@ router:
     - cloud_groq_llama
     - cloud_deepseek_chat
     - cloud_openrouter_dolphin
-    - cloud_gemini_flash
+    # - cloud_gemini_flash   # deaktiviert: Google-Key hat keinen Zugriff auf die Generative Language API
     - cloud_openai_luna
     - cloud_openai_terra
     - cloud_claude_sonnet
