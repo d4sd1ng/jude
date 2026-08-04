@@ -429,13 +429,18 @@ class ModelRouter:
         if not candidates:
             raise ValueError("Kein passendes und aktiviertes Modell konfiguriert.")
         standard_name = self.router_cfg.get("standard_model")
+        # Nur echte Werkzeug-/Code-/Medien-Anfragen dürfen das Tools-Modell (qwen) zur
+        # Basis machen. Alles andere – Plaudern, Analyse, Kreatives – bleibt beim
+        # unzensierten Standardmodell (dolphin).
+        code_or_tools = (task_type in ("code", "medien")
+                         or (needs_tools and (task_type != "allgemein" or self._is_actionable(prompt))))
 
         def score(model: ModelSpec) -> float:
             is_local = "lokal" in model.tags
             local_preference = 2 if is_local and self.router_cfg.get("prefer_local", True) else 0
             task_fit = 7 if task_type in model.tags else 4 if task_type == "allgemein" and "allgemein" in model.tags else 0
-            uncensored_default = 2 if task_type == "allgemein" and "unzensiert" in model.tags else 0
-            standard_bonus = 6 if model.name == standard_name and task_type == "allgemein" else 0
+            uncensored_default = 2 if "unzensiert" in model.tags and not code_or_tools else 0
+            standard_bonus = 6 if model.name == standard_name and not code_or_tools else 0
             return (local_preference + task_fit + uncensored_default + standard_bonus + model.priority
                     - model.latency / 300
                     - (model.cost_input + model.cost_output) * 100 + self._learned_adjustment(model, task_type)) * model.weight
