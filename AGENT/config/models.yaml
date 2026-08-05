@@ -138,19 +138,24 @@ router:
   complexity_threshold_high: 7
   quality_judge_min_complexity: 6
   request_cost_limit_usd: 1.0
-  # Reihenfolge = Eskalationsstufen: lokal (frei) -> Groq (frei) -> günstig -> stark -> Top-Tier.
-  # Jude bleibt so lange wie möglich kostenlos und steigt nur bei Bedarf auf.
+  # Eskalationsleiter: jede Stufe ist STÄRKER als die darunter. Jude bleibt so lange
+  # wie möglich kostenlos und steigt nur auf, wenn die Antwort fachlich nicht reicht.
+  #   frei:      dolphin3/qwen3 (lokal)  ->  Groq llama-70b (frei, größer)
+  #   günstig:   DeepSeek chat (nur mit Key)
+  #   stark:     gpt-5.6-terra (mittleres Reasoning)  ->  claude-sonnet-5
+  #   Top-Tier:  gpt-5.6-sol (hohes Reasoning)        ->  claude-fable-5
+  # Nicht in der Leiter: gpt-5.6-luna (leichtgewichtig, schwächer als Groq-70b -> keine
+  # echte Eskalationsstufe) und gemini-flash (Key ohne API-Zugriff). Beide bleiben als
+  # Definition erhalten und lassen sich jederzeit wieder einhängen.
   fallback_chain:
-    - tags:lokal
-    - cloud_groq_llama
-    - cloud_deepseek_chat
-    - cloud_openrouter_dolphin
-    # - cloud_gemini_flash   # deaktiviert: Google-Key hat keinen Zugriff auf die Generative Language API
-    - cloud_openai_luna
-    - cloud_openai_terra
-    - cloud_claude_sonnet
-    - cloud_openai_sol
-    - cloud_claude_fable
+    - tags:lokal            # dolphin3 (Basis) + qwen3 (Tools/Code) – frei, lokal
+    - cloud_groq_llama      # frei, Cloud, 70b – erste echte Verstärkung
+    - cloud_deepseek_chat   # günstig & fähig (übersprungen ohne DEEPSEEK_API_KEY)
+    - cloud_openai_terra    # mittleres Reasoning – erste bezahlte Stufe
+    - cloud_claude_sonnet   # stark
+    - cloud_openai_sol      # hohes Reasoning, Top-Tier
+    - cloud_claude_fable    # Top-Tier, stärkste/teuerste Stufe
+    - cloud_openrouter_dolphin  # unzensierte Cloud-Reserve (nur unzensierter Pfad / mit Key)
 
 providers:
   ollama:
