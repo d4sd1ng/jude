@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import hmac
+import json
 import os
 import threading
 from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -14,6 +17,7 @@ from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     PlainTextResponse,
+    Response,
 )
 from fastapi.staticfiles import StaticFiles
 from main import build_application
@@ -31,10 +35,12 @@ from services.ict import ICTService
 from services.mail import MailService
 from services.market import MarketService
 from services.meals import MealPlanService
+from services.notion import NotionRecipeService
 from services.memory import MemoryService
 from services.news import CryptoNewsService
 from services.notifications import NotificationService
 from services.ocr import OCRService
+from services.dwd_radar import DWDRadarService
 from services.radar import RadarService
 from services.images import ImageService
 from services.render3d import BlenderService
@@ -50,8 +56,10 @@ agent, _creator = build_application()
 team = agent.team
 confirmations, executor = ConfirmationQueue(), ActionExecutor(team=team)
 market, news, radar = MarketService(), CryptoNewsService(), RadarService()
+dwd_radar = DWDRadarService()
 ha, mail, ocr = HomeAssistantService(), MailService(), OCRService()
 shopping, meals = ShoppingService(), MealPlanService(agent.router)
+recipes = NotionRecipeService()
 coding = CodingService()
 calendar = CalendarService()
 notifications = NotificationService()
@@ -109,6 +117,7 @@ async def _task_scheduler() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    dwd_radar.warmup()
     task = asyncio.create_task(_scheduler()) if ict.scheduler_config()["enabled"] else None
     task_loop = asyncio.create_task(_task_scheduler())
     if os.getenv("JUDE_VOICE", "").strip().lower() in {"1", "true", "an", "on"}:
@@ -407,7 +416,26 @@ async def get_news_brief():
 
 
 @app.get("/api/radar")
-def get_radar(): return radar.frames()
+def get_radar():
+    """DWD-RV zuerst (30 min zurück, 90 min voraus); RainViewer nur als
+    Notnagel, wenn der DWD nicht liefert."""
+    location = {"latitude": radar.LATITUDE, "longitude": radar.LONGITUDE,
+                "zip": radar.ZIP, "city": radar.CITY, "zoom": radar.ZOOM}
+    try:
+        return {**dwd_radar.frames(), **location}
+    except Exception as exc:
+        logging.getLogger(__name__).warning("DWD-Radar nicht verfügbar: %s", exc)
+        return radar.frames()
+
+
+@app.get("/api/radar/frame/{key}.png")
+def get_radar_frame(key: str):
+    try:
+        image = dwd_radar.png(key)
+    except KeyError:
+        raise HTTPException(404, "Radar-Frame nicht gefunden")
+    return Response(content=image, media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=300"})
 
 
 @app.get("/api/lights")
@@ -510,6 +538,41 @@ async def ict_train(symbol: str):
 
 @app.post("/api/shopping")
 def compare(payload: dict): return shopping.compare(str(payload.get("category", "")))
+
+
+@app.get("/api/grow")
+def grow_metrics():
+    try:
+        return ha.grow_sensors()
+    except Exception:
+        return {"configured": False, "sensors": []}
+
+
+@app.get("/api/recipes/today")
+def recipe_today():
+    """Rezept des Tages aus Notion. Ist Notion nicht eingerichtet, meldet der
+    Endpunkt das, statt zu werfen – das Cockpit zeigt dann einen Hinweis."""
+    if not recipes.available():
+        return {"configured": False, "recipe": None}
+    try:
+        return {"configured": True, "recipe": recipes.today()}
+    except Exception as exc:
+        return {"configured": True, "recipe": None, "error": str(exc)[:200]}
+
+
+@app.get("/api/meals/current")
+def meal_current():
+    """Der Tag des zuletzt erzeugten Plans, der auf heute fällt. Läuft der Plan
+    aus, bleibt kein Tag übrig und das Cockpit zeigt einen Hinweis."""
+    with connection() as db:
+        row = db.execute("SELECT created_at, plan_json FROM meal_plans ORDER BY created_at DESC LIMIT 1").fetchone()
+    if row is None:
+        return {"day": None}
+    plan = json.loads(row["plan_json"])
+    days = plan.get("days", [])
+    created = datetime.fromisoformat(row["created_at"])
+    index = (datetime.now(timezone.utc) - created).days
+    return {"day": days[index] if 0 <= index < len(days) else None}
 
 
 @app.post("/api/meals")

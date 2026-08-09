@@ -1,6 +1,6 @@
 .radarMap{position:relative;width:min(100%,520px);aspect-ratio:1;overflow:hidden;border-radius:10px;background:#dbe8ed}.radarMap img{position:absolute;inset:0;width:100%;height:100%;min-height:0}.radarMap .marker{position:absolute;left:50%;top:50%;transform:translate(-50%,-60%);z-index:2;color:#e63946;font-size:25px;text-shadow:0 1px 3px white}.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}summary{cursor:pointer;font-weight:700}
 textarea{width:100%;min-height:96px;resize:vertical;border:1px solid #bbc7d1;background:white;border-radius:8px;padding:11px 12px;color:var(--ink);font:inherit}.button{display:inline-block;border-radius:8px;padding:10px 16px;background:var(--blue);color:#fff;font-weight:750;text-decoration:none}.linkbutton{padding:0;background:transparent;color:var(--blue);text-align:left}
-:root{--ink:#14213d;--accent:#e76f51;--blue:#287b9e;--paper:#f5f1e8;--panel:#fffdf8;--muted:#64748b;--line:#dbe2e8;--ok:#28765b}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}header{height:86px;padding:16px clamp(20px,5vw,72px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}h1,h2,h3,p{margin-top:0}h1{font:700 28px Georgia,serif;margin:0}h2{font:700 clamp(28px,4vw,48px) Georgia,serif;margin:4px 0 10px}.eyebrow{font-size:11px;letter-spacing:.18em;color:var(--accent);font-weight:800}.badge{border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:#fff}nav{display:flex;gap:4px;overflow:auto;padding:10px clamp(16px,5vw,68px);position:sticky;top:0;background:rgba(245,241,232,.94);backdrop-filter:blur(12px);z-index:3;border-bottom:1px solid var(--line)}nav button{white-space:nowrap;background:transparent;color:var(--muted);padding:8px 13px}nav button.active{background:var(--ink);color:white}button{border:0;border-radius:8px;padding:10px 16px;background:var(--blue);color:#fff;font-weight:750;cursor:pointer}button:hover{filter:brightness(.94)}main{max-width:1400px;margin:auto;padding:34px clamp(16px,5vw,72px) 80px}section{display:none}section.active{display:block}.hero,.sectionhead{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:24px}.hero{padding:44px;border-radius:18px;color:white;background:linear-gradient(125deg,#14213d,#214d68)}.hero p{color:#d9e7ef}.stats{display:grid;grid-template-columns:repeat(2,minmax(110px,1fr));gap:10px}.stat{padding:13px;background:#ffffff16;border:1px solid #ffffff30;border-radius:10px}.stat b{display:block;font-size:22px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 8px 30px #1f29370b;margin-bottom:18px}.controls,form{display:flex;gap:10px;flex-wrap:wrap}input,select{border:1px solid #bbc7d1;background:white;border-radius:8px;padding:11px 12px;color:var(--ink);min-width:130px}input{flex:1}.feed{min-height:100px;max-height:360px;overflow:auto}.message{padding:10px 12px;margin:8px 0;border-left:3px solid var(--blue);background:#edf6f9}.message.user{border-color:var(--accent)}.muted{color:var(--muted)}canvas{width:100%;display:block}.cards,.toolgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:12px;padding:18px}.card.setup{border-top-color:var(--ok)}.card.blocked{border-top-color:var(--accent)}.radar{display:grid;grid-template-columns:minmax(280px,520px) 1fr;gap:24px;align-items:center}.radar img{width:100%;min-height:300px;background:#dbe8ed;image-rendering:auto;border-radius:10px}pre{white-space:pre-wrap;max-height:360px;overflow:auto}.source{display:block;padding:8px 0;border-top:1px solid var(--line);word-break:break-word}#toast{position:fixed;right:20px;bottom:20px;max-width:420px;padding:13px 18px;background:var(--ink);color:white;border-radius:10px;opacity:0;transform:translateY(10px);transition:.2s;pointer-events:none}#toast.show{opacity:1;transform:none}@media(max-width:720px){header{height:72px}.hero,.sectionhead{align-items:stretch;flex-direction:column}.hero{padding:26px}.radar{grid-template-columns:1fr}.toolgrid,.cards{grid-template-columns:1fr}button,input,select{min-height:44px}main{padding-top:22px}}.headercontrols{align-items:center}
+:root{--ink:#14213d;--accent:#e76f51;--blue:#287b9e;--paper:#f5f1e8;--panel:#fffdf8;--muted:#64748b;--line:#dbe2e8;--ok:#28765b}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}header{height:86px;padding:16px clamp(20px,5vw,72px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}h1,h2,h3,p{margin-top:0}h1{font:700 28px Georgia,serif;margin:0}h2{font:700 clamp(28px,4vw,48px) Georgia,serif;margin:4px 0 10px}.eyebrow{font-size:11px;letter-spacing:.18em;color:var(--accent);font-weight:800}.badge{border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:#fff}nav{display:flex;gap:4px;overflow:auto;padding:10px clamp(16px,5vw,68px);position:sticky;top:0;background:rgba(245,241,232,.94);backdrop-filter:blur(12px);z-index:3;border-bottom:1px solid var(--line)}nav button{white-space:nowrap;background:transparent;color:var(--muted);padding:8px 13px}nav button.active{background:var(--ink);color:white}button{border:0;border-radius:8px;padding:10px 16px;background:var(--blue);color:#fff;font-weight:750;cursor:pointer}button:hover{filter:brightness(.94)}main{margin:0;padding:16px clamp(12px,1.6vw,26px) 24px}section{display:none}section.active{display:block}.hero,.sectionhead{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:24px}.hero{padding:44px;border-radius:18px;color:white;background:linear-gradient(125deg,#14213d,#214d68)}.hero p{color:#d9e7ef}.stats{display:grid;grid-template-columns:repeat(2,minmax(110px,1fr));gap:10px}.stat{padding:13px;background:#ffffff16;border:1px solid #ffffff30;border-radius:10px}.stat b{display:block;font-size:22px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 8px 30px #1f29370b;margin-bottom:18px}.controls,form{display:flex;gap:10px;flex-wrap:wrap}input,select{border:1px solid #bbc7d1;background:white;border-radius:8px;padding:11px 12px;color:var(--ink);min-width:130px}input{flex:1}.feed{min-height:100px;max-height:360px;overflow:auto}.message{padding:10px 12px;margin:8px 0;border-left:3px solid var(--blue);background:#edf6f9}.message.user{border-color:var(--accent)}.muted{color:var(--muted)}canvas{width:100%;display:block}.cards,.toolgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:12px;padding:18px}.card.setup{border-top-color:var(--ok)}.card.blocked{border-top-color:var(--accent)}.radar{display:grid;grid-template-columns:minmax(280px,520px) 1fr;gap:24px;align-items:center}.radar img{width:100%;min-height:300px;background:#dbe8ed;image-rendering:auto;border-radius:10px}pre{white-space:pre-wrap;max-height:360px;overflow:auto}.source{display:block;padding:8px 0;border-top:1px solid var(--line);word-break:break-word}#toast{position:fixed;right:20px;bottom:20px;max-width:420px;padding:13px 18px;background:var(--ink);color:white;border-radius:10px;opacity:0;transform:translateY(10px);transition:.2s;pointer-events:none}#toast.show{opacity:1;transform:none}@media(max-width:720px){header{height:72px}.hero,.sectionhead{align-items:stretch;flex-direction:column}.hero{padding:26px}.radar{grid-template-columns:1fr}.toolgrid,.cards{grid-template-columns:1fr}button,input,select{min-height:44px}main{padding-top:22px}}.headercontrols{align-items:center}
 .badge.on{border-color:var(--ok);color:var(--ok);font-weight:700;animation:voicepulse 2.2s ease-in-out infinite}
 @keyframes voicepulse{0%,100%{box-shadow:0 0 0 0 #28765b33}50%{box-shadow:0 0 0 6px #28765b00}}
 
@@ -89,3 +89,225 @@ input,select,textarea{background:#0f130c;border-color:#31402a;color:var(--ink)}
 .agentcard .role{color:var(--muted);font-size:13px}
 .agentcard .skills{color:var(--gold);font-size:12px;word-break:break-word}
 .agentrun{display:flex;gap:8px;margin-top:8px}
+
+/* ------------------------- Cockpit über den ganzen Schirm ------------------ */
+/* Vier Spalten statt drei: die mittlere Spalte trug früher nur den Kern und
+   stand zu 80 % leer. Höhe an den Viewport gekoppelt, damit keine tote
+   Fläche unter dem Ticker bleibt. */
+.cockpit{grid-template-columns:minmax(260px,1fr) minmax(300px,1.1fr) minmax(340px,1.6fr) minmax(240px,1fr);
+  align-items:start;height:calc(100vh - 210px);min-height:520px}
+.cockL,.cockC,.cockR,.cockD{display:flex;flex-direction:column;gap:12px;height:100%;overflow:auto;padding-right:2px}
+.cockC{align-items:stretch}
+.cockR .output{flex:1;display:flex;flex-direction:column}
+.cockR .feed{flex:1;max-height:none}
+.hudpanel{margin-bottom:0}
+
+.hudmap{height:190px;border-radius:10px;overflow:hidden;background:#0f130c}
+.radarbar{display:flex;align-items:center;gap:8px;margin-top:8px}
+.radarbar input[type=range]{flex:1;min-width:0;padding:0}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--green);padding:4px 10px;min-width:0}
+.radarpin{color:var(--accent);font-size:15px;text-shadow:0 0 6px #000}
+.radarbase{filter:grayscale(.5) brightness(.55) contrast(1.1)}
+
+.hudgrow,.hudmeals{display:grid;gap:5px;font-variant-numeric:tabular-nums}
+.hudgrow .row,.hudmeals .row{display:flex;justify-content:space-between;gap:10px;
+  border-bottom:1px solid var(--line);padding:3px 0}
+.hudgrow .row b,.hudmeals .row b{color:var(--gold)}
+.hudmeals details{border-top:1px solid var(--line);padding:5px 0}
+.hudmeals summary{font-weight:600;font-size:13px;cursor:pointer}
+.hudmeals summary .eyebrow{margin-right:6px}
+.factpanel #factResult{max-height:170px;overflow:auto}
+
+@media(max-width:1300px){.cockpit{grid-template-columns:1fr 1fr;height:auto}
+  .cockL,.cockC,.cockR,.cockD{height:auto;overflow:visible}}
+@media(max-width:720px){.cockpit{grid-template-columns:1fr}}
+.hudmeals .mealname{font:700 17px Georgia,serif;color:var(--ink);display:block}
+.hudmeals details p{margin:4px 0 0;white-space:pre-wrap}
+
+/* =========================== Cockpit als Kachelraster ======================= */
+/* Vier feste Spalten liessen jedes Panel auf Spaltenhoehe aufblasen – daher die
+   toten Flaechen. Die Spaltencontainer verschwinden per display:contents, alle
+   Panels werden direkte Rasterkinder und sind nur so hoch wie ihr Inhalt. */
+.cockpit{grid-template-columns:repeat(auto-fill,minmax(196px,1fr));grid-auto-rows:min-content;
+  gap:10px;height:auto;min-height:0;align-items:start}
+.cockL,.cockC,.cockR,.cockD{display:contents}
+.hudpanel{margin:0;padding:13px}
+.hudpanel h3{margin-bottom:8px;font-size:11px}
+
+/* Kacheln, die mehr Platz verdienen */
+.output{grid-column:span 3;grid-row:span 4;display:flex;flex-direction:column}
+.output .feed{flex:1;min-height:190px;max-height:none}
+.cockC>.core{grid-column:span 2;grid-row:span 2;width:100%;max-width:none;justify-self:stretch}
+.gaugerow{grid-column:span 2;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;align-content:start}
+.gaugerow.top{grid-column:span 4;grid-template-columns:repeat(4,1fr)}
+.factpanel,.hudmeals-tile{grid-column:span 2}
+
+/* Gauges im HUD-Stil: Teilstrichkranz aussen, Fuellbogen innen. */
+.gauge{position:relative;aspect-ratio:1;display:grid;place-items:center;padding:6px}
+.gauge .ring{position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(var(--green) calc(var(--p,0)*1%),#ffffff0d 0);
+  -webkit-mask:radial-gradient(circle,transparent 61%,#000 62%);mask:radial-gradient(circle,transparent 61%,#000 62%)}
+.gauge::before{content:"";position:absolute;inset:-3px;border-radius:50%;
+  background:repeating-conic-gradient(var(--line) 0 1.4deg,transparent 1.4deg 9deg);
+  -webkit-mask:radial-gradient(circle,transparent 72%,#000 73%,#000 79%,transparent 80%);
+  mask:radial-gradient(circle,transparent 72%,#000 73%,#000 79%,transparent 80%)}
+.gauge.warn .ring{background:conic-gradient(var(--gold) calc(var(--p,0)*1%),#ffffff0d 0)}
+.gauge.hot .ring{background:conic-gradient(var(--accent) calc(var(--p,0)*1%),#ffffff0d 0)}
+.gauge b{font:700 19px Georgia,serif;color:var(--ink);line-height:1}
+.gauge small{display:block;font-size:9px;letter-spacing:.09em;color:var(--muted);text-transform:uppercase}
+
+/* Kern: Teilstrichkranz statt leerem Ring. */
+.core{aspect-ratio:1;min-height:190px}
+.core .c1{background:repeating-conic-gradient(#3fae5f44 0 .8deg,transparent .8deg 6deg);
+  -webkit-mask:radial-gradient(circle,transparent 84%,#000 85%);mask:radial-gradient(circle,transparent 84%,#000 85%);border:0}
+.corelabel b{font:700 34px Georgia,serif;color:var(--green);display:block;line-height:1}
+.corelabel small{font-size:10px;letter-spacing:.22em;color:var(--muted)}
+.corelabel span{display:block;font-size:11px;color:var(--gold);letter-spacing:.1em}
+
+.ticker{margin-top:10px}
+@media(max-width:1300px){.cockpit{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+  .cockL,.cockC,.cockR,.cockD{display:contents}}
+
+/* ===================== HUD statt Dokument ===================== */
+/* Runde Ecken, Serifen-Ueberschriften und breite Polster liessen das Cockpit
+   wie ein Formular wirken. Kanten werden gekappt statt gerundet, Beschriftungen
+   laufen schmal und versal, Polster runter. */
+.hudpanel,.output,.factpanel{border-radius:0;clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px);
+  background:linear-gradient(180deg,#12180f,#0d110b);border:1px solid #2f4a33;box-shadow:none;padding:10px 12px}
+.hudpanel h3{font:700 10px/1.2 ui-monospace,"DejaVu Sans Mono",monospace;letter-spacing:.2em;
+  color:var(--green);text-transform:uppercase;margin:0 0 7px;padding-bottom:5px;border-bottom:1px solid #24361f}
+.hudpanel .small,.hudpanel .muted{font-size:11px}
+.hudweather b,.gauge b,.corelabel b,.hudmeals .mealname{font-family:ui-monospace,"DejaVu Sans Mono",monospace}
+
+/* Kopfzeile: Temperatur links, Uhr mittig, Token daneben. */
+header{height:auto;min-height:62px;padding:8px clamp(12px,1.6vw,26px);gap:18px}
+.headweather{display:flex;align-items:baseline;gap:8px}
+.headweather b{font-size:27px;color:var(--gold)}
+.headweather .small{font-size:10px;max-width:280px}
+.headtokens{grid-template-columns:repeat(3,auto);display:grid;gap:0 14px;font-size:11px}
+.headtokens .row{border:0;padding:0;gap:6px}
+
+/* Raster nach Vorgabe: Radar/Grow/Fake links, Essensplan daneben,
+   Schalter und Gauges in der Mitte, Ausgabe ganz rechts. */
+.cockpit{grid-template-columns:repeat(12,1fr);gap:8px}
+.cockL>.hudpanel:first-child{grid-column:1/4;grid-row:1}
+#hudGrow{min-height:74px}
+.cockL>.hudpanel:nth-child(2){grid-column:1/4;grid-row:2}
+.factpanel{grid-column:1/4;grid-row:3}
+.cockD>.hudpanel{grid-column:4/6;grid-row:1/4}
+.cockL>.hudpanel:nth-child(3){grid-column:6/9;grid-row:1}
+.gaugerow.top{grid-column:6/9;grid-row:2;grid-template-columns:repeat(4,1fr)}
+.cockC>.core{grid-column:6/8;grid-row:3;min-height:0}
+.gaugerow.bottom{grid-column:8/9;grid-row:3;grid-template-columns:1fr}
+.output{grid-column:9/13;grid-row:1/4}
+.hudmap{height:236px}
+.hudmeals{align-content:start}
+/* Essensplan und Ausgabe fuellen ihre Rasterzeilen; ohne align-self bleiben sie
+   auf Inhaltshoehe stehen, weil .cockpit auf align-items:start steht. */
+.cockD>.hudpanel,.output{align-self:stretch}
+/* Der Kern trieb Zeile 3 auf 305px und zog Essensplan/Ausgabe mit. Gedeckelt
+   richtet sich die Zeile nach den linken Karten. */
+.cockC>.core{max-height:200px;align-self:start}
+
+/* ==================== Farbregel + kompaktes Systemband ===================== */
+/* Kontrastmessung (WCAG): Off-White auf Schwarz 17.0, Gold auf Schwarz 8.2,
+   Text auf Gruen nur als Schwarz lesbar (6.9). Gruen traegt ab jetzt keine
+   Schrift mehr, sondern nur Boegen, Kanten und Aktivzustaende. */
+body{background:var(--paper)}                        /* Gruenschimmer raus */
+.gauge b,.corelabel b,.hudweather b{color:var(--ink)}
+.toggle.on{color:var(--ink)}.toggle.on small{color:var(--ink)}
+.ticker{background:#0d110b;border:1px solid #2f4a33;border-radius:0;
+  clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
+.ticker .tick div{color:var(--ink)}
+nav button.active{background:var(--green);color:#08130b}
+
+/* Systemband: Schalter und alle Gauges in EINER Reihe, deutlich kleiner. */
+.bandpanel{grid-column:6/10;grid-row:1}
+.output{grid-column:10/13}
+.cockD>.hudpanel{grid-column:4/6}
+.factpanel{grid-column:1/4;grid-row:3}
+.hudband{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;overflow-x:auto}
+.hudband .toggles{display:flex;gap:6px;flex:0 0 auto}
+.hudband .toggle{width:44px;height:44px;aspect-ratio:auto;font-size:13px;padding:2px;border-width:1px}
+.hudband .toggle small{font-size:7px}
+.hudband .gauge{flex:0 0 60px;width:60px;aspect-ratio:1;padding:3px}
+.hudband .gauge b{font-size:13px}
+.hudband .gauge small{font-size:7px;letter-spacing:.05em}
+.hudband .gauge::before{inset:-2px}
+/* Kontextbalken in der Titelleiste */
+.headtokens{grid-template-columns:repeat(4,auto)}
+.headtokens .ctx{display:flex;align-items:center;gap:6px}
+.ctxbar{display:inline-block;width:56px;height:5px;background:#ffffff14;overflow:hidden}
+.ctxbar i{display:block;height:100%;background:var(--green)}
+.ctx.warn .ctxbar i{background:var(--gold)}.ctx.hot .ctxbar i{background:var(--accent)}
+.ctx.warn b{color:var(--gold)}.ctx.hot b{color:var(--accent)}
+/* Band passgenau: 4 Schalter + 7 Gauges muessen ohne Scrollen in die Zeile. */
+.hudband{gap:6px}
+.hudband .toggles{gap:4px}
+.hudband .toggle{width:40px;height:40px;font-size:12px}
+.hudband .gauge{flex:0 0 52px;width:52px}
+.hudband .gauge b{font-size:12px}
+.hudband{gap:5px}.hudband .toggles{gap:3px}
+
+/* ============ Lesbarkeit: neutrale Flaechen, Gold-Titel, echte Schalter ===== */
+/* Gruen-auf-Gruen abgeschafft: Ueberschriften Gold (Kontrast 7.7 auf Panel),
+   Flaechen neutral dunkel, Kopfleiste dunkel statt gruenem Verlauf. */
+:root{--paper:#070807;--panel:#0e100e;--line:#2c332c}
+header{background:#0b0d0b;border-bottom:1px solid #39423a}
+.hudpanel h3{color:var(--gold);border-bottom-color:#2c332c}
+.hudpanel,.output,.factpanel{background:linear-gradient(180deg,#111411,#0b0d0b);border-color:#39423a}
+.badge{background:#0b0d0b;border-color:#39423a}
+.ticker{background:#0b0d0b;border-color:#39423a}
+
+/* Spalten: links 20 %, Essensplan 15 %, Systemband 40 %, Ausgabe 25 % */
+.cockpit{grid-template-columns:repeat(20,1fr)}
+.cockL>.hudpanel:first-child{grid-column:1/5;grid-row:1}
+.cockL>.hudpanel:nth-child(2){grid-column:1/5;grid-row:2}
+.factpanel{grid-column:1/5;grid-row:3}
+.cockD>.hudpanel{grid-column:5/8}
+.bandpanel{grid-column:8/16;grid-row:1}
+.output{grid-column:16/21}
+
+/* Schalter: beschriftete Tasten statt Mini-Kreise. Aktiv = Gruen mit
+   schwarzer Schrift (einzige lesbare Schrift auf Gruen, gemessen 6.9). */
+.hudband{gap:8px}
+.hudband .toggles{display:grid;grid-template-columns:repeat(2,auto);gap:5px;flex:0 0 auto}
+.hudband .toggle{width:auto;height:27px;flex-direction:row;gap:6px;border-radius:2px;aspect-ratio:auto;
+  padding:2px 10px;border:1px solid #39423a;color:var(--muted);box-shadow:none}
+.hudband .toggle span{font-size:13px}
+.hudband .toggle small{font-size:10px;letter-spacing:.09em;color:inherit;text-transform:uppercase}
+.hudband .toggle.on{background:var(--green);border-color:var(--green);color:#08130b;box-shadow:none}
+.hudband .toggle.on small{color:#08130b}
+/* Mehr Bandbreite -> Gauges wieder groesser und beschriftbar */
+.hudband .gauge{flex:0 0 64px;width:64px}
+.hudband .gauge b{font-size:14px}
+.hudband .gauge small{font-size:8px;letter-spacing:.07em}
+/* Growcontroller-Kachel exakt auf Radar-Kachelhoehe (Ansage Tino) */
+.cockL>.hudpanel:nth-child(2){min-height:535px}
+.cockL>.hudpanel:nth-child(2){min-height:268px}
+
+/* ==== Systemband: echte Tasten + klare Gauges (Ansage Tino) ==== */
+/* Schalter als 3D-Tasten: sichtbare Kante, drueckt beim Klick ein. */
+.hudband .toggle{height:36px;width:auto;padding:4px 14px;border-radius:6px;
+  background:linear-gradient(180deg,#2c3331,#181c1a);border:1px solid #0a0c0b;
+  color:#d6dcd4;font-weight:600;
+  box-shadow:0 3px 0 #060807,0 5px 9px #000000aa,inset 0 1px 0 #ffffff1f;
+  transition:transform .05s,box-shadow .05s}
+.hudband .toggle:active{transform:translateY(3px);box-shadow:0 0 0 #060807,inset 0 2px 6px #000000cc}
+.hudband .toggle.on{background:linear-gradient(180deg,#49bd69,#2c8a49);border-color:#164726;
+  color:#06130a;box-shadow:0 3px 0 #164726,0 5px 12px #3fae5f44,inset 0 1px 0 #ffffff55}
+.hudband .toggle.on:active{transform:translateY(3px);box-shadow:0 0 0 #164726,inset 0 2px 6px #00000088}
+.hudband .toggle small{font-size:11px;letter-spacing:.05em;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+.hudband .toggle span{font-size:14px}
+
+/* Gauges: dicker Bogen statt Haarlinie, Zierkranz weg, Wert mittig. */
+.hudband .gauge{flex:0 0 68px;width:68px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px}
+.hudband .gauge::before{content:none}
+.hudband .gauge .ring{background:conic-gradient(var(--green) calc(var(--p,0)*1%),#ffffff1c 0);
+  -webkit-mask:radial-gradient(circle,transparent 55%,#000 56%);mask:radial-gradient(circle,transparent 55%,#000 56%)}
+.gauge.warn .ring{background:conic-gradient(var(--gold) calc(var(--p,0)*1%),#ffffff1c 0)}
+.gauge.hot .ring{background:conic-gradient(var(--accent) calc(var(--p,0)*1%),#ffffff1c 0)}
+.hudband .gauge b{font:700 16px/1 Inter,ui-sans-serif,system-ui,sans-serif;color:#f2efe6}
+.hudband .gauge small{font:600 9px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;
+  letter-spacing:.04em;color:#aab3a6;text-transform:uppercase}

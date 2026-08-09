@@ -13,7 +13,7 @@ class RadarService:
     ZIP = os.getenv("JUDE_RADAR_ZIP", "35039")
     CITY = os.getenv("JUDE_RADAR_CITY", "Marburg")
     ADDRESS = os.getenv("JUDE_RADAR_ADDRESS", f"Berliner Straße, {ZIP} {CITY}, Germany")
-    ZOOM = int(os.getenv("JUDE_RADAR_ZOOM", "9"))
+    ZOOM = int(os.getenv("JUDE_RADAR_ZOOM", "10"))
 
     def frames(self) -> dict:
         response = requests.get("https://api.rainviewer.com/public/weather-maps.json", timeout=15)

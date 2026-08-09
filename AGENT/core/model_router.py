@@ -321,6 +321,7 @@ class GoogleAdapter(ProviderAdapter):
 
 class ModelRouter:
     def __init__(self, config_path: str | Path | None = None):
+        self.last_context: dict | None = None
         path = Path(config_path) if config_path else Path(__file__).parents[1] / "config" / "models.yaml"
         with path.open(encoding="utf-8") as handle:
             self.config = yaml.safe_load(handle)
@@ -510,6 +511,11 @@ class ModelRouter:
             cost = ((uncached * spec.cost_input) + (cached * spec.cost_cached_input)
                     + (cache_write * spec.cost_input * 1.25) + (output_tokens * spec.cost_output)) / 1000 * multiplier
             self.budget_used += cost
+            # Kontextfuellung des letzten Aufrufs: prompt_eval_count ist die
+            # exakte Tokenzahl des gesamten Gespraechs, wie es beim Modell ankam.
+            if input_tokens:
+                self.last_context = {"model": spec.name, "input_tokens": input_tokens,
+                                     "context_length": spec.context_length}
             with connection() as db:
                 db.execute("INSERT INTO model_usage(created_at,provider,model,input_tokens,output_tokens,cached_input_tokens,"
                            "cache_write_tokens,reasoning_tokens,service_tier,tariff,cost_multiplier,request_id,cost_usd) "
@@ -584,6 +590,13 @@ class ModelRouter:
             raise KeyError("Routing-Entscheidung nicht gefunden.")
         return dict(row)
 
+    def context_budget(self) -> int:
+        """Kleinstes Kontextfenster der lokalen Modelle. Der Verlauf muss in
+        jedes Modell der Fallback-Kette passen – die Cloud-Fenster sind riesig,
+        der Engpass ist immer das lokale Basismodell."""
+        local = [spec.context_length for spec in self.models.values() if spec.provider == "ollama"]
+        return min(local) if local else 16384
+
     def status(self) -> dict[str, Any]:
         month = datetime.now(timezone.utc).strftime("%Y-%m")
         with connection() as db:
@@ -618,6 +631,7 @@ class ModelRouter:
             "request_cost_limit_usd": self.request_cost_limit,
             "month": month,
             "usage": dict(totals),
+            "context": self.last_context,
             "routing_training": dict(decisions),
             "usage_by_model": [dict(row) for row in by_model],
             "recent_routes": [dict(row) for row in recent],

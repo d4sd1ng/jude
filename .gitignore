@@ -17,3 +17,5 @@ tmp/
 
 # LibreOffice lock files
 .~lock.*#
+.env.bak*
+*.env.bak*

@@ -7,6 +7,7 @@ Abfrage gebildet, der Zustand dafür liegt in der Service-Instanz.
 
 from __future__ import annotations
 
+import shutil
 import time
 from pathlib import Path
 
@@ -46,6 +47,17 @@ class SystemMonitorService:
         used = total - available
         return {"total_mb": total // 1024, "used_mb": used // 1024,
                 "percent": round(used / total * 100.0, 1) if total else 0.0}
+
+    @staticmethod
+    def _disk() -> dict:
+        """Belegung der Partition, auf der die Laufzeitdaten liegen – nicht die
+        des Systemlaufwerks. Volläuft eher die Datenplatte."""
+        from core.paths import DATA_DIR
+        target = DATA_DIR if DATA_DIR.exists() else Path.home()
+        usage = shutil.disk_usage(target)
+        return {"total_gb": round(usage.total / 1024**3, 1),
+                "used_gb": round(usage.used / 1024**3, 1),
+                "percent": round(usage.used / usage.total * 100.0, 1) if usage.total else 0.0}
 
     # ---------------------------------------------------------- Netzwerk
 
@@ -106,6 +118,7 @@ class SystemMonitorService:
             "cpu_percent": self._cpu_percent(),
             "load": {"1m": load1, "5m": load5, "15m": load15},
             "memory": self._memory(),
+            "disk": self._disk(),
             "network": self._network(),
             "temperatures": {
                 "cpu": self._pick(temps, ("k10temp", "coretemp", "zenpower")),

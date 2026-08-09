@@ -22,6 +22,9 @@ class FakeRouter:
     def __init__(self):
         self.calls = 0
 
+    def context_budget(self):
+        return 16384
+
     def call_with_fallback(self, messages, tools=None, allow_uncensored=False):
         self.calls += 1
         if self.calls == 1:

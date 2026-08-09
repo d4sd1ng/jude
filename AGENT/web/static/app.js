@@ -1,7 +1,8 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const pages=$$('section').map(s=>s.dataset.page); const nav=$('#nav');
 pages.forEach((p,i)=>{let b=document.createElement('button');b.textContent=p;b.onclick=()=>show(p);if(!i)b.className='active';nav.append(b)});
-function show(p){$$('section').forEach(s=>s.classList.toggle('active',s.dataset.page===p));[...nav.children].forEach(b=>b.classList.toggle('active',b.textContent===p));if(p==='Bestätigungen')loadConfirmations();if(p==='ICT / SMC')loadICT();if(p==='Gedächtnis')loadMemory();if(p==='Routing')loadRouting();if(p==='Bilder')loadImages();if(p==='Radar')loadRadar();if(p==='Team')loadAgents();if(p==='System')loadSystem();if(p==='Wissen')loadDocs()};show(pages[0]);
+function show(p){$$('section').forEach(s=>s.classList.toggle('active',s.dataset.page===p));[...nav.children].forEach(b=>b.classList.toggle('active',b.textContent===p));if(p==='Märkte')loadICT();if(p==='Werkzeuge')loadImages();
+ if(p==='System'){loadSystem();loadConfirmations();loadMemory();loadRouting();loadAgents();loadDocs()}};show(pages[0]);
 function toast(x){let t=$('#toast');t.textContent=x;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500)}
 async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let d=await r.json().catch(()=>({error:r.statusText}));if(!r.ok||d.error)throw Error(d.error||r.statusText);return d}
 api('/api/status').then(s=>{$('#health').textContent='lokal bereit';$('#health').style.color='#28765b';$('#stats').innerHTML=`<div class=stat><b>${s.router.models.length}</b>Modelle</div><div class=stat><b>${s.mail.filter(x=>x.configured).length}/5</b>Mailkonten</div><div class=stat><b>${s.memory.active_memories}</b>Erinnerungen</div><div class=stat><b>${s.ict.scheduler.enabled?'AN':'AUS'}</b>Kill Zones</div>`;$('#mailStatus').innerHTML=s.mail.map(x=>`<div class=source>${esc(x.address)} · ${x.configured?'bereit':'Schlüssel fehlt'}</div>`).join('');loadLights()}).catch(e=>toast(e.message));
@@ -11,17 +12,36 @@ function drawCandles(rows){let c=$('#chart'),dpr=devicePixelRatio||1,w=c.clientW
 async function loadICT(){try{let s=await api('/api/ict/status'),c=await api('/api/ict/cards');$('#killzones').innerHTML=`<b>Zeitzone ${esc(s.scheduler.timezone)}</b><p>${s.scheduler.zones.map(z=>`${esc(z.name)} ${z.start}–${z.end}`).join(' · ')}</p><small>${esc(s.scheduler.source_note)}</small>`;$('#cards').innerHTML=c.map(cardHTML).join('')||'<p>Noch keine Trading Cards.</p>'}catch(e){toast(e.message)}}
 function cardHTML(c){return `<article class="card ${c.status==='SETUP_FOUND'?'setup':c.status==='TRADE_BLOCKED'?'blocked':''}"><span class=eyebrow>${esc(c.status)}</span><h3>${esc(c.symbol)} · ${esc(c.direction||'WAIT')}</h3><p><b>H4:</b> ${esc(str(c.h4_bias))}<br><b>H1:</b> ${esc(str(c.h1_context))}<br><b>M1:</b> ${esc(str(c.m1_entry))}</p><p>${esc(str(c.confluence))}</p><small>${esc(c.kill_zone||'')} · ${new Date(c.created_at).toLocaleString()}</small></article>`}
 $$('.ictRun').forEach(b=>b.onclick=async()=>{b.disabled=true;toast(`${b.dataset.symbol} wird analysiert…`);try{let c=await api('/api/ict/analyse/'+b.dataset.symbol,{method:'POST'});$('#cards').insertAdjacentHTML('afterbegin',cardHTML(c))}catch(e){toast(e.message)}finally{b.disabled=false}});
-let _rmap,_rbase,_rlayer,_rframes=[],_rhost='',_rzoom=9,_rplaying=false,_rtimer=null,_rmarker;
-function radarFrameLabel(f){const d=new Date(f.time*1000),t=d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});return f.kind==='forecast'?`<span class=fc>Vorhersage ${t}</span>`:(f===_rframes[_rnowIdx]?`<span class=now>Jetzt ${t}</span>`:t)}
+let _rmap,_rbase,_rlayer,_rframes=[],_rhost='',_rzoom=9,_rmarker,_rsizer,_rmode='rainviewer',_rbounds=null,_rsource='RainViewer';
+function radarFrameLabel(f){const d=new Date(f.time*1000),t=d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+ if(f.kind==='forecast'){const plus=Math.round((f.time*1000-Date.now())/60000);return `<span class=fc>${t} (+${Math.max(plus,0)} min)</span>`}
+ return (f.kind==='now'||f===_rframes[_rnowIdx])?`<span class=now>Jetzt ${t}</span>`:t}
 let _rnowIdx=0;
-function showRadarFrame(i){if(!_rframes.length)return;i=Math.max(0,Math.min(_rframes.length-1,i));const f=_rframes[i];$('#radarFrame').value=i;if(_rlayer)_rmap.removeLayer(_rlayer);_rlayer=L.tileLayer(`${_rhost}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,{opacity:0.72,zIndex:5,maxNativeZoom:7,maxZoom:12}).addTo(_rmap);$('#radarMeta').innerHTML=`${radarFrameLabel(f)} · RainViewer · 35039 Marburg`}
-async function loadRadar(){try{const d=await api('/api/radar');_rframes=d.frames||[];_rhost=d.host;_rzoom=d.zoom||9;_rnowIdx=(d.past_count||_rframes.length)-1;if(!_rframes.length)throw Error('Keine Radardaten');
+function showRadarFrame(i){if(!_rframes.length)return;i=Math.max(0,Math.min(_rframes.length-1,i));const f=_rframes[i];$('#radarFrame').value=i;if(_rlayer)_rmap.removeLayer(_rlayer);
+ // DWD liefert fertig georeferenzierte PNG-Frames, RainViewer klassische Kacheln.
+ _rlayer=_rmode==='dwd'
+  ?L.imageOverlay(`/api/radar/frame/${f.key}.png`,_rbounds,{opacity:0.8,zIndex:5})
+  :L.tileLayer(`${_rhost}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,{opacity:0.72,zIndex:5,maxNativeZoom:10,maxZoom:12});
+ _rlayer.addTo(_rmap);$('#radarMeta').innerHTML=`${radarFrameLabel(f)} · ${_rsource} · 35039 Marburg`}
+async function loadRadar(){try{const d=await api('/api/radar');_rframes=d.frames||[];_rmode=d.mode||'rainviewer';_rhost=d.host;_rzoom=d.zoom||9;_rsource=d.source||'RainViewer';
+ _rbounds=d.bounds?[[d.bounds.lat_min,d.bounds.lon_min],[d.bounds.lat_max,d.bounds.lon_max]]:null;
+ const nowAt=_rframes.findIndex(f=>f.kind==='now');
+ _rnowIdx=nowAt>=0?nowAt:(d.past_count||_rframes.length)-1;
+ if(!_rframes.length)throw Error('Keine Radardaten');
   if(!_rmap){_rmap=L.map('radarMap',{zoomControl:true,attributionControl:false}).setView([d.latitude,d.longitude],_rzoom);_rbase=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:12,className:'radarbase'}).addTo(_rmap);_rmarker=L.marker([d.latitude,d.longitude],{icon:L.divIcon({className:'',html:'<div class=radarpin>●</div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(_rmap);_rmarker.bindPopup(`${esc(d.zip)} ${esc(d.city)}`)}
   $('#radarPlace').textContent=`${d.zip} ${d.city}`.toUpperCase();
-  const sl=$('#radarFrame');sl.max=_rframes.length-1;sl.value=_rnowIdx;sl.oninput=()=>{stopRadar();showRadarFrame(+sl.value)};
-  showRadarFrame(_rnowIdx);setTimeout(()=>_rmap.invalidateSize(),200)}catch(e){toast(e.message)}}
-function stopRadar(){_rplaying=false;if(_rtimer){clearInterval(_rtimer);_rtimer=null}$('#radarPlay').textContent='▶︎ Abspielen'}
-$('#radarPlay')&&($('#radarPlay').onclick=()=>{if(_rplaying){stopRadar();return}if(!_rframes.length)return;_rplaying=true;$('#radarPlay').textContent='⏸ Pause';let i=+$('#radarFrame').value;_rtimer=setInterval(()=>{i=(i+1)%_rframes.length;showRadarFrame(i)},600)});
+  const sl=$('#radarFrame');sl.max=_rframes.length-1;sl.value=_rnowIdx;sl.oninput=()=>showRadarFrame(+sl.value);
+  showRadarFrame(_rnowIdx);
+  // Die Karte startet, bevor das Flex-Layout der Cockpit-Spalte steht; ohne
+  // erneutes invalidateSize rutscht Marburg aus der Mitte. Ein Timeout traf
+  // das nur zufaellig – der Observer greift bei jeder Groessenaenderung.
+  if(!_rsizer){_rsizer=new ResizeObserver(()=>_rmap.invalidateSize());_rsizer.observe($('#radarMap'))}
+  setTimeout(loadRadar,300000)          // Frames altern: alle 5 Minuten nachladen
+ }catch(e){
+  // Ein einziger Fehlversuch (Server gerade weg, Netz kurz zu) liess den Radar
+  // frueher dauerhaft leer zurueck. Jetzt wird still erneut versucht.
+  $('#radarMeta').textContent='Radar nicht erreichbar – neuer Versuch…';
+  setTimeout(loadRadar,15000)}}
 $('#factForm').onsubmit=async e=>{e.preventDefault();$('#factResult').innerHTML='<div class=panel>Quellen werden geprüft…</div>';try{let d=await api('/api/fact-check',{method:'POST',body:JSON.stringify({url:$('#factUrl').value})});$('#factResult').innerHTML=`<div class=panel><span class=eyebrow>${esc(d.verdict)}</span><h3>${esc(d.source.title)}</h3><p>${esc(d.notice)}</p></div>`+d.claims.map(c=>`<article class=card><b>${esc(c.status)}</b><h3>${esc(c.claim)}</h3><p>${esc(c.explanation||'')}</p>${[...(c.supporting_urls||[]),...(c.contradicting_urls||[])].map(u=>`<a class=source href="${esc(u)}" target=_blank rel=noopener>${esc(u)}</a>`).join('')}</article>`).join('')}catch(e){toast(e.message);$('#factResult').innerHTML=''}};
 $('#ocrForm').onsubmit=async e=>{e.preventDefault();let r=await fetch('/api/ocr',{method:'POST',body:new FormData(e.target)}),d=await r.json();if(d.error)return toast(d.error);$('#ocrText').textContent=d.text};
 $('#shopRun').onclick=async()=>{try{let d=await api('/api/shopping',{method:'POST',body:JSON.stringify({category:$('#shopCategory').value})});$('#shopResult').innerHTML=d.products.map(p=>`<a class=source href="${esc(p.url)}" target=_blank>${esc(p.title)} ${esc(p.prices.join(', '))}</a>`).join('')||'Keine Treffer'}catch(e){toast(e.message)}};
@@ -54,25 +74,46 @@ function tick2(){const d=new Date();$('#clockTime').textContent=d.toLocaleTimeSt
 setInterval(tick2,1000);tick2();
 function setGauge(id,val,max,text,warn=.7,hot=.88){const g=$(id);if(!g)return;const p=Math.max(0,Math.min(100,(val/max)*100));g.style.setProperty('--p',p);g.classList.toggle('warn',p>=warn*100&&p<hot*100);g.classList.toggle('hot',p>=hot*100);g.querySelector('b').textContent=text}
 async function pollSystem(){try{const s=await api('/api/system');
-  setGauge('#gCpu',s.cpu_percent,100,`${s.cpu_percent.toFixed(0)}`);
   setGauge('#gRam',s.memory.percent,100,`${s.memory.percent.toFixed(0)}`);
+  if(s.disk)setGauge('#gDisk',s.disk.percent,100,`${s.disk.percent.toFixed(0)}`);
   const net=s.network.rx_kbps+s.network.tx_kbps;setGauge('#gNet',Math.min(net,100000),100000,net>=1024?`${(net/1024).toFixed(1)}M`:`${net.toFixed(0)}`);
   const t=s.temperatures;if(t.cpu!=null)setGauge('#gCpuTemp',t.cpu,100,`${t.cpu.toFixed(0)}`);
   if(t.gpu!=null)setGauge('#gGpuTemp',t.gpu,110,`${t.gpu.toFixed(0)}`);
   if(t.nvme!=null)setGauge('#gNvme',t.nvme,90,`${t.nvme.toFixed(0)}`);
-  $('#coreCpu').textContent=`${s.cpu_percent.toFixed(0)}`;
+  setGauge('#gCpu',s.cpu_percent,100,`${s.cpu_percent.toFixed(0)}`);
 }catch(e){}finally{setTimeout(pollSystem,2500)}}
 async function pollWeather(){try{const w=await api('/api/weather');
   $('#hudWeather').innerHTML=`<b>${w.temperature!=null?w.temperature.toFixed(1):'–'}°C</b> <span class=cond>${esc(w.condition)}</span><br><span class=small>gefühlt ${w.feels_like??'–'}° · ${w.min??'–'}°/${w.max??'–'}° · Wind ${w.wind_kmh??'–'} km/h · ${esc(w.location.split(',')[1]||'')}</span>`
 }catch(e){$('#hudWeather').textContent='Wetter nicht erreichbar'}finally{setTimeout(pollWeather,600000)}}
-async function pollHudRadar(){if(!toggles.radar){setTimeout(pollHudRadar,60000);return}
- try{const d=await api('/api/radar'),f=d.frames.at(-1);if(f){const z=7,n=2**z,x=Math.floor((d.longitude+180)/360*n),lat=d.latitude*Math.PI/180,y=Math.floor((1-Math.asinh(Math.tan(lat))/Math.PI)/2*n);
-  $('#hudRadar').src=`${d.host}${f.path}/256/${z}/${x}/${y}/2/1_1.png`;$('#hudRadarBase').src=`https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
-  const fx=((d.longitude+180)/360*n)%1,fy=((1-Math.asinh(Math.tan(lat))/Math.PI)/2*n)%1,mk=document.querySelector('.hudradar .marker');mk.style.left=`${(fx*100).toFixed(1)}%`;mk.style.top=`${(fy*100).toFixed(1)}%`;
-  $('#hudRadarMeta').textContent=`Stand ${new Date(f.time*1000).toLocaleTimeString('de-DE')}`}}catch(e){}finally{setTimeout(pollHudRadar,300000)}}
-async function pollTokens(){try{const s=await api('/api/status'),u=s.router.usage;
-  $('#hudTokens').innerHTML=`<div class=row><span>Input</span><b>${Number(u.input_tokens).toLocaleString('de-DE')}</b></div><div class=row><span>Output</span><b>${Number(u.output_tokens).toLocaleString('de-DE')}</b></div><div class=row><span>Budget</span><b>$${Number(s.router.budget_used_usd).toFixed(3)} / $${Number(s.router.budget_limit_usd).toFixed(0)}</b></div>`
-}catch(e){}finally{setTimeout(pollTokens,60000)}}
+// Growcontroller: nur die in HA_GROW_SENSORS_JSON freigegebenen Messwerte.
+async function pollGrow(){try{const d=await api('/api/grow');const box=$('#hudGrow');
+  if(!d.configured){box.innerHTML='<span class="muted small">nicht eingerichtet</span>';return}
+  box.innerHTML=(d.sensors||[]).map(s=>`<div class="row"><span>${esc(s.label)}</span><b>${esc(s.value)}${s.unit?' '+esc(s.unit):''}</b></div>`).join('')
+    ||'<span class="muted small">keine Werte</span>'}
+ catch(e){$('#hudGrow').innerHTML='<span class="muted small">nicht erreichbar</span>'}
+ finally{setTimeout(pollGrow,60000)}}
+
+// Rezept des Tages aus der Notion-DB „Küchenmanagement".
+async function pollMeals(){const box=$('#hudMeals');try{const d=await api('/api/recipes/today');
+  if(!d.configured){box.innerHTML='<span class="muted small">Notion nicht eingerichtet</span>';return}
+  const r=d.recipe;if(!r){box.innerHTML='<span class="muted small">kein Rezept</span>';return}
+  const meta=[r.category,r.minutes?r.minutes+' Min':'',r.portions?r.portions+' Portionen':'']
+    .filter(Boolean).map(esc).join(' · ');
+  const block=(title,text)=>text?`<details><summary>${title}</summary><p class="small">${esc(text)}</p></details>`:'';
+  box.innerHTML=`<b class="mealname">${esc(r.name)}</b><p class="muted small">${meta}</p>`
+    +block('Zutaten',r.ingredients)+block('Zubereitung',r.preparation)
+    +block('Airfryer',r.airfryer)+block('Einkaufshinweis',r.note)
+    +(r.devices&&r.devices.length?`<p class="muted small">${r.devices.map(esc).join(' · ')}</p>`:'')}
+ catch(e){box.innerHTML='<span class="muted small">nicht erreichbar</span>'}
+ finally{setTimeout(pollMeals,900000)}}
+async function pollTokens(){try{const s=await api('/api/status'),u=s.router.usage,c=s.router.context;
+  // Kontextfenster: exakter Stand vom letzten Modellaufruf (prompt_eval_count).
+  let ctx='<div class=row><span>Kontext</span><b>–</b></div>';
+  if(c&&c.context_length){const p=Math.min(100,c.input_tokens/c.context_length*100);
+    const cls=p>=88?'hot':(p>=70?'warn':'');
+    ctx=`<div class="row ctx ${cls}" title="${c.model}: ${c.input_tokens.toLocaleString('de-DE')} von ${c.context_length.toLocaleString('de-DE')} Token"><span>Kontext</span><b>${p.toFixed(0)}%</b><i class=ctxbar><i style="width:${p.toFixed(1)}%"></i></i></div>`}
+  $('#hudTokens').innerHTML=`<div class=row><span>Input</span><b>${Number(u.input_tokens).toLocaleString('de-DE')}</b></div><div class=row><span>Output</span><b>${Number(u.output_tokens).toLocaleString('de-DE')}</b></div><div class=row><span>Budget</span><b>$${Number(s.router.budget_used_usd).toFixed(3)} / $${Number(s.router.budget_limit_usd).toFixed(0)}</b></div>`+ctx
+}catch(e){}finally{setTimeout(pollTokens,15000)}}
 async function pollTicker(){if(toggles.market){try{const x=await api('/api/market/XAU%2FUSD?interval=1h&limit=2&refresh=true');const c=x.candles.at(-1),pr=x.candles.at(-2);if(c)$('#tickXau').innerHTML=`<span class="${!pr||c.close>=pr.close?'up':'down'}">${c.close.toFixed(2)}</span>`}catch(e){}
  try{const b=await api('/api/market/BTC%2FUSD?interval=1h&limit=2&refresh=true');const c=b.candles.at(-1),pr=b.candles.at(-2);if(c)$('#tickBtc').innerHTML=`<span class="${!pr||c.close>=pr.close?'up':'down'}">${Number(c.close).toLocaleString('de-DE',{maximumFractionDigits:0})}</span>`}catch(e){}}
  setTimeout(pollTicker,120000)}
@@ -86,7 +127,7 @@ function renderToggles(){$('#tglMarket').classList.toggle('on',toggles.market);$
 for(const[id,key]of[['#tglMarket','market'],['#tglNews','news'],['#tglRadar','radar']])$(id).onclick=()=>{toggles[key]=!toggles[key];localStorage.setItem('judeToggles',JSON.stringify(toggles));renderToggles()};
 $('#tglVoice').onclick=()=>$('#voiceToggle').click();
 const _vb=voiceBadge;voiceBadge=s=>{_vb(s);$('#tickVoice').textContent=s.running?(s.state||'an'):'aus';renderToggles()};
-renderToggles();pollSystem();pollWeather();pollHudRadar();pollTokens();pollTicker();pollNews();
+renderToggles();pollSystem();pollWeather();loadRadar();pollGrow();pollMeals();pollTokens();pollTicker();pollNews();
 
 // Thema überspringen
 $('#voiceSkip').onclick=async()=>{try{await api('/api/voice/skip',{method:'POST'});toast('Thema übersprungen')}catch(e){toast(e.message)}};

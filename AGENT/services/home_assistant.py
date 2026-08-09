@@ -32,6 +32,31 @@ class HomeAssistantService:
         return [{"entity_id": item["entity_id"], "state": item["state"], "friendly_name": item.get("attributes", {}).get("friendly_name")}
                 for item in response.json() if item["entity_id"] in wanted]
 
+    def grow_sensors(self) -> dict:
+        """Messwerte des Growcontrollers. Gelesen wird ausschließlich, was in
+        ``HA_GROW_SENSORS_JSON`` als ``{"Beschriftung": "sensor.entity_id"}``
+        freigegeben ist – dieselbe Allowlist-Logik wie beim Schalten."""
+        raw = os.getenv("HA_GROW_SENSORS_JSON", "{}").strip() or "{}"
+        try:
+            wanted = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("HA_GROW_SENSORS_JSON enthält kein gültiges JSON.") from exc
+        if not isinstance(wanted, dict):
+            raise RuntimeError("HA_GROW_SENSORS_JSON muss ein JSON-Objekt sein.")
+        if not self.url or not self.token or not wanted:
+            return {"configured": False, "sensors": []}
+        response = requests.get(f"{self.url}/api/states", headers=self._headers(), timeout=15)
+        response.raise_for_status()
+        states = {item["entity_id"]: item for item in response.json()}
+        sensors = []
+        for label, entity_id in wanted.items():
+            item = states.get(entity_id)
+            if item is None:
+                continue
+            sensors.append({"label": label, "value": item.get("state", "–"),
+                            "unit": item.get("attributes", {}).get("unit_of_measurement", "")})
+        return {"configured": True, "sensors": sensors}
+
     def switch_light(self, room: str, state: str) -> str:
         if room not in self.entities() or state not in {"on", "off"}:
             raise ValueError("Erlaubt sind wohnzimmer/schlafzimmer/flur und on/off.")

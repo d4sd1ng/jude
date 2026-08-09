@@ -99,14 +99,35 @@ class Agent:
                 })
         raise RuntimeError("Maximale Anzahl der Tool-Schritte überschritten.")
 
-    def _trim_history(self, max_messages: int = 64) -> None:
-        if len(self.conversation_history) <= max_messages:
-            return
+    def _trim_history(self) -> None:
+        """Kürzt den Verlauf tokenbasiert statt nach Nachrichtenzahl.
+
+        Früher wurden stumpf 64 Nachrichten behalten – lange Nachrichten
+        sprengten damit das lokale 8k-Fenster (Ollama schnitt dann unbemerkt
+        ab), kurze verschenkten Platz. Jetzt wird gegen das kleinste lokale
+        Kontextfenster budgetiert; 25 % bleiben für Antwort und Tools frei.
+        Die Tokenzahl ist eine Schätzung (~3,6 Zeichen je Token im Deutschen),
+        der Kontextzähler in der GUI zeigt nach jedem Aufruf den echten Wert.
+        """
+        def cost(message: dict) -> int:
+            content = message.get("content")
+            text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False) if content else ""
+            return int(len(text) / 3.6) + 8  # Overhead je Nachricht (Rolle, Rahmen)
+
+        budget = int(self.router.context_budget() * 0.75)
         system = self.conversation_history[0]
-        tail = self.conversation_history[-(max_messages - 1):]
-        while tail and tail[0].get("role") == "tool":
-            tail.pop(0)
-        self.conversation_history = [system, *tail]
+        total = cost(system)
+        kept: list[dict] = []
+        for message in reversed(self.conversation_history[1:]):
+            total += cost(message)
+            if total > budget and kept:
+                break
+            kept.append(message)
+        kept.reverse()
+        # Ein Tool-Ergebnis ohne den zugehörigen Aufruf verwirrt die Modelle.
+        while kept and kept[0].get("role") == "tool":
+            kept.pop(0)
+        self.conversation_history = [system, *kept]
 
     def _tool_call_from_content(self, content: Any) -> list[dict]:
         """Akzeptiert den von einigen Ollama-Modellen als JSON-Text gelieferten Tool-Aufruf."""
