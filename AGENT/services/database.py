@@ -84,6 +84,16 @@ def initialize_database(path: Path | None = None) -> None:
             model TEXT, training_allowed INTEGER NOT NULL DEFAULT 1,
             exclusion_reason TEXT NOT NULL DEFAULT ''
         );
+        CREATE TABLE IF NOT EXISTS agent_runs (
+            id TEXT PRIMARY KEY, created_at TEXT NOT NULL,
+            agent TEXT NOT NULL, person TEXT, task TEXT NOT NULL,
+            status TEXT NOT NULL, answer TEXT NOT NULL DEFAULT '',
+            blockers TEXT NOT NULL DEFAULT '', model TEXT,
+            input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0,
+            cost_usd REAL DEFAULT 0, duration_ms INTEGER DEFAULT 0,
+            tool_calls TEXT NOT NULL DEFAULT '',
+            rating INTEGER, training_allowed INTEGER NOT NULL DEFAULT 1
+        );
         CREATE TABLE IF NOT EXISTS memory_items (
             id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
             kind TEXT NOT NULL, content TEXT NOT NULL, normalized TEXT NOT NULL,

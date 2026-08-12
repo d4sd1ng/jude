@@ -10,11 +10,16 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import logging
+
 from core.paths import DATA_DIR
+
+logger = logging.getLogger(__name__)
 
 _NAME_RE = re.compile(r"^[A-Za-zÄÖÜäöüß0-9 _-]{2,40}$")
 
@@ -177,6 +182,15 @@ class SubAgentService:
         if not task:
             raise ValueError("Es wurde keine Aufgabe angegeben.")
         agent = self._build_agent(spec)
+        # Werkzeugaufrufe mitschreiben: ohne sie ist hinterher nicht
+        # nachvollziehbar, woran ein Lauf haengengeblieben ist.
+        werkzeuge: list[str] = []
+        original = agent.tools.execute
+        def mitschreiben(werkzeug, argumente):
+            werkzeuge.append(werkzeug)
+            return original(werkzeug, argumente)
+        agent.tools.execute = mitschreiben
+        begonnen = time.monotonic()
         vorher = self.router_verbrauch()
         try:
             answer, status, blockers = agent.process_input(task), "abgeschlossen", []
@@ -186,9 +200,13 @@ class SubAgentService:
         # Ergebnisformat nach dem Adapter-Vertrag der Agenten-Standards:
         # agent_id, task_id, status, output, blockers und token_usage sind Pflicht.
         nachher = self.router_verbrauch()
+        dauer = int((time.monotonic() - begonnen) * 1000)
+        ergebnis_id = uuid.uuid4().hex[:12]
+        self._protokollieren(ergebnis_id, spec, task, status, answer, blockers,
+                             agent.last_model, nachher, vorher, dauer, werkzeuge)
         return {
             "agent_id": self._key(spec["name"]),
-            "task_id": uuid.uuid4().hex[:12],
+            "task_id": ergebnis_id,
             "agent": spec["name"],
             "person": spec.get("person"),
             "alter": spec.get("alter"),
@@ -206,7 +224,29 @@ class SubAgentService:
                 "estimated_cost": round(nachher["cost"] - vorher["cost"], 6),
                 "currency": "USD",
             },
+            "duration_ms": dauer,
+            "tool_calls": werkzeuge,
         }
+
+    def _protokollieren(self, lauf_id, spec, task, status, answer, blockers,
+                        modell, nachher, vorher, dauer, werkzeuge) -> None:
+        """Jeden Lauf festhalten – Nachweis, Fehlersuche und spaeter die
+        Grundlage fuer das Training des Teams. Ein Protokollfehler darf den
+        Lauf selbst nie scheitern lassen."""
+        try:
+            from services.database import connection
+            with connection() as db:
+                db.execute(
+                    "INSERT INTO agent_runs(id,created_at,agent,person,task,status,answer,blockers,"
+                    "model,input_tokens,output_tokens,cost_usd,duration_ms,tool_calls) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (lauf_id, datetime.now(timezone.utc).isoformat(), spec["name"],
+                     spec.get("person"), task[:4000], status, (answer or "")[:8000],
+                     " | ".join(blockers)[:2000], modell,
+                     nachher["input"] - vorher["input"], nachher["output"] - vorher["output"],
+                     round(nachher["cost"] - vorher["cost"], 6), dauer, ",".join(werkzeuge)[:1000]))
+        except Exception as exc:
+            logger.warning("Agentenlauf nicht protokolliert: %s", exc)
 
     def router_verbrauch(self) -> dict:
         """Zwischenstand des Monatsverbrauchs – Differenz vor/nach einem Lauf

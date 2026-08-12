@@ -45,6 +45,27 @@ VERSION = "2022-06-28"
 #: ``felder`` werden angelegt, wenn sie fehlen; ``optionen`` werden an
 #: bestehende Auswahlfelder angehängt, wenn sie noch nicht vorhanden sind.
 SOLLZUSTAND = {
+    "kontakte": {
+        "env": "NOTION_DB_CONTACTS",
+        "zweck": "Prospects aus den Akquise-Trackern (company/outreach)",
+        "felder": {
+            # Die Tracker fuehren Angaben, fuer die es in Notion keine Felder gab.
+            # Rein additiv - bestehende Eintraege und Relationen bleiben unberuehrt.
+            "Website": {"url": {}},
+            "Ort": {"rich_text": {}},
+            "PLZ": {"rich_text": {}},
+            "Groesse": {"rich_text": {}},
+            "Entscheider": {"rich_text": {}},
+            "Passende Module": {"rich_text": {}},
+            "Entfernung km": {"number": {}},
+            "Geprueft": {"checkbox": {}},
+        },
+        "optionen": {
+            # Die Tracker recherchieren ueber Kartendienste und Impressen.
+            "Lead-Quelle": ["Google Maps", "Impressum", "Recherche"],
+            "Branche": ["Pflege", "Handel", "Gastronomie", "Bildung"],
+        },
+    },
     "social_posts": {
         "env": "NOTION_DB_SOCIAL",
         "zweck": "Kurze Plattform-Beiträge (bestehende DB '📱 Social Media Posting')",
