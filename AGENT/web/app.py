@@ -248,6 +248,12 @@ async def voice_stop():
     return await asyncio.to_thread(voice.stop)
 
 
+@app.post("/api/voice/phrases")
+def voice_phrases(payload: dict):
+    return voice.set_phrases(str(payload.get("wake_word", "")), str(payload.get("sleep_word", "")),
+                             str(payload.get("greeting", "")), str(payload.get("farewell", "")))
+
+
 @app.post("/api/voice/skip")
 def voice_skip():
     return voice.skip()
@@ -537,7 +543,9 @@ async def ict_train(symbol: str):
 
 
 @app.post("/api/shopping")
-def compare(payload: dict): return shopping.compare(str(payload.get("category", "")))
+def compare(payload: dict):
+    return shopping.compare(str(payload.get("category", "")), str(payload.get("brand", "gstar")),
+                            str(payload.get("size", "XXL")))
 
 
 @app.get("/api/grow")

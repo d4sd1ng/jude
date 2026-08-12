@@ -162,6 +162,28 @@ def register_documents(registry: ToolRegistry, documents) -> None:
                            documents.forget_document, _schema({"path": {"type": "string"}}, ["path"])))
 
 
+def register_notion(registry: ToolRegistry, notion) -> None:
+    """Werkzeuge für die eingerichteten Notion-Datenbanken (Kontakte, Sequenzen,
+    Mail-Inhalte, Content-Stücke, Scheduling, Rezepte).
+
+    Schemagetrieben: die Agenten holen sich erst die Feldliste, dann schreiben
+    sie. Ohne das raten sie Feldnamen und schreiben ins Leere."""
+    registry.register(Tool("notion_databases", "Zeigt, welche Notion-Datenbanken eingerichtet sind.",
+                           notion.databases, _schema({})))
+    registry.register(Tool("notion_schema", "Feldnamen, Feldtypen und die erlaubten Werte der Auswahlfelder einer Notion-Datenbank. Vor jedem Schreiben aufrufen.",
+                           notion.schema, _schema({"name": {"type": "string"}}, ["name"])))
+    registry.register(Tool("notion_query", "Einträge aus einer Notion-Datenbank lesen, optional nach Text gefiltert.",
+                           notion.query, _schema({"name": {"type": "string"}, "limit": {"type": "integer"},
+                                                  "search": {"type": "string"}}, ["name"]),
+                           untrusted=True))
+    registry.register(Tool("notion_create", "Neuen Eintrag in einer Notion-Datenbank anlegen (Felder als Objekt).",
+                           notion.create, _schema({"name": {"type": "string"}, "fields": {"type": "object"}},
+                                                  ["name", "fields"])))
+    registry.register(Tool("notion_update", "Felder eines vorhandenen Notion-Eintrags ändern.",
+                           notion.update, _schema({"name": {"type": "string"}, "page_id": {"type": "string"},
+                                                   "fields": {"type": "object"}}, ["name", "page_id", "fields"])))
+
+
 def register_backup(registry: ToolRegistry, backup) -> None:
     registry.register(Tool("run_backup", "Sofort eine Sicherung von Datenbank und Konfiguration erstellen.",
                            backup.run, _schema({})))
@@ -202,8 +224,12 @@ def register_team(registry: ToolRegistry, team) -> None:
                            "Aufgabenbereich davon profitiert (z.B. 'ServerAdmin' für SSH-Wartung, 'Rechercheur' fürs Web). "
                            "Gib Name, Rolle und die passende Skill-Liste an; danach kannst du ihm mit delegate_to_agent "
                            "Aufgaben übergeben. Anlegen erfolgt nach ausdrücklicher Bestätigung.",
-                           lambda name, role, skills, model=None: team.create(name, role, skills, model),
+                           lambda name, role, skills, model=None, person=None, alter=None:
+                               team.create(name, role, skills, model, person, alter),
                            _schema({"name": {"type": "string"}, "role": {"type": "string"},
                                     "skills": {"type": "array", "items": {"type": "string"}},
-                                    "model": {"type": "string"}}, ["name", "role", "skills"]),
+                                    "model": {"type": "string"},
+                                    "person": {"type": "string", "description": "Vorname des Mitarbeiters"},
+                                    "alter": {"type": "integer", "description": "Alter in Jahren"}},
+                                   ["name", "role", "skills"]),
                            confirm_action="create_agent"))

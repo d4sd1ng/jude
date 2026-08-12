@@ -9,7 +9,8 @@ Klang lässt sich per Umgebungsvariable einstellen, ohne den Code zu ändern:
 - ``JUDE_TTS_PITCH``    Tonhöhe, 1.0 = neutral, >1 heller/weniger tief (Standard 1.06)
 - ``JUDE_TTS_SPEED``    Sprechtempo, 1.0 = neutral, <1 langsamer
 - ``JUDE_TTS_RATE``     Ausgabe-Samplerate der Soundkarte (Standard 44100)
-- ``JUDE_TTS_PAUSE``    Pause zwischen Sätzen in Sekunden (Standard 0.25)
+- ``JUDE_TTS_PAUSE``    Pause zwischen Sätzen in Sekunden (Standard 0.1)
+- ``JUDE_TTS_HEADROOM`` Aussteuerungsreserve, 0.89 = 1 dB unter Vollausschlag
 - ``PIPER_NOISE_SCALE`` / ``PIPER_NOISE_W`` feinkörnige Aussprachevariation
 - ``PIPER_SPEAKER``     Sprecher-ID bei Mehrsprecher-Modellen
 
@@ -94,10 +95,95 @@ def _resample(audio, source_rate: int, target_rate: int):
             count = max(1, round(len(source) * target_rate / source_rate))
             positions = np.linspace(0, len(source) - 1, count)
             source = np.interp(positions, np.arange(len(source)), source)
+    # Piper gibt mit 100 % Vollaussteuerung aus. Wird das ungedämpft an die
+    # Soundkarte gereicht, übersteuert jede weitere Stufe (PulseAudio mischt und
+    # rechnet auf die Geräterate um) – hörbar als Kratzen und Rauschen.
+    # 3 dB Reserve lassen die Kette sauber arbeiten.
+    headroom = max(0.1, min(1.0, _env_float("JUDE_TTS_HEADROOM", 0.89)))
     peak = float(np.abs(source).max()) if len(source) else 0.0
-    if peak > 32767.0:  # Überschwinger zurückskalieren statt abschneiden
-        source *= 32767.0 / peak
+    limit = 32767.0 * headroom
+    if peak > limit:
+        source *= limit / peak
     return np.clip(source, -32768.0, 32767.0).astype(np.int16)
+
+
+# --------------------------------------------------------------- Aussprache
+
+_ONES = ("null", "ein", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun",
+         "zehn", "elf", "zwölf", "dreizehn", "vierzehn", "fünfzehn", "sechzehn", "siebzehn",
+         "achtzehn", "neunzehn")
+_TENS = ("", "", "zwanzig", "dreißig", "vierzig", "fünfzig", "sechzig", "siebzig", "achtzig", "neunzig")
+_MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
+           "August", "September", "Oktober", "November", "Dezember")
+
+
+def _below_hundred(value: int) -> str:
+    if value < 20:
+        return _ONES[value]
+    tens, ones = divmod(value, 10)
+    return _TENS[tens] if not ones else f"{_ONES[ones]}und{_TENS[tens]}"
+
+
+def number_words(value: int) -> str:
+    """Ganze Zahl bis 999.999 als deutsches Zahlwort."""
+    if value < 0:
+        return "minus " + number_words(-value)
+    if value < 100:
+        return _below_hundred(value)
+    if value < 1000:
+        hundreds, rest = divmod(value, 100)
+        head = ("hundert" if hundreds == 1 else _ONES[hundreds] + "hundert")
+        return head + (_below_hundred(rest) if rest else "")
+    if value < 1_000_000:
+        thousands, rest = divmod(value, 1000)
+        head = ("tausend" if thousands == 1 else number_words(thousands) + "tausend")
+        return head + (number_words(rest) if rest else "")
+    return str(value)
+
+
+def spoken_german(text: str) -> str:
+    """Schreibt Uhrzeiten, Datumsangaben und Zahlen aus.
+
+    Piper spricht Ziffern und Satzzeichen wörtlich: aus „21:29 Uhr“ wurde
+    Kauderwelsch. Die Umschrift geschieht vor der Synthese, damit die Ausgabe
+    klingt wie gesprochene Sprache.
+    """
+    import re
+
+    def time_repl(m):
+        hour, minute = int(m.group(1)), int(m.group(2))
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            return m.group(0)
+        if minute == 0:
+            return f"{number_words(hour)} Uhr"
+        return f"{number_words(hour)} Uhr {number_words(minute)}"
+
+    def date_repl(m):
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if not (1 <= day <= 31 and 1 <= month <= 12):
+            return m.group(0)
+        day_word = _below_hundred(day) + ("ster" if day in (1, 3, 7, 8) else "ter")
+        day_word = {"einster": "erster", "dreister": "dritter", "siebenster": "siebter",
+                    "achtster": "achter"}.get(day_word, day_word)
+        return f"{day_word} {_MONTHS[month]} {number_words(year)}"
+
+    def plain_number(m):
+        raw = m.group(0)
+        digits = raw.replace(".", "")            # Tausenderpunkte
+        whole, _, frac = digits.partition(",")
+        try:
+            spoken = number_words(int(whole))
+        except ValueError:
+            return raw
+        if frac:
+            spoken += " Komma " + " ".join(_ONES[int(d)] for d in frac if d.isdigit())
+        return spoken
+
+    text = re.sub(r"\b(\d{1,2}):(\d{2})(?:\s*Uhr)?", time_repl, text)
+    text = re.sub(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b", date_repl, text)
+    text = re.sub(r"\b\d{1,3}(?:\.\d{3})+(?:,\d+)?\b|\b\d+(?:,\d+)?\b", plain_number, text)
+    text = text.replace("°C", " Grad").replace("%", " Prozent").replace("€", " Euro")
+    return text
 
 
 def speak(text: str, should_stop=None) -> None:
@@ -111,14 +197,16 @@ def speak(text: str, should_stop=None) -> None:
     if not piper:
         raise RuntimeError("Piper wurde nicht gefunden.")
 
-    pitch = max(0.5, min(2.0, _env_float("JUDE_TTS_PITCH", 1.06)))
+    # Standard neutral: Piper 1.6 dehnt bei length-scale nicht mehr zuverlaessig;
+    # jede Verschiebung machte die Stimme messbar ~6 % zu schnell und gepresst.
+    pitch = max(0.5, min(2.0, _env_float("JUDE_TTS_PITCH", 1.0)))
     speed = max(0.5, min(2.0, _env_float("JUDE_TTS_SPEED", 1.0)))
     # length_scale > 1 dehnt die Sprache; das anschließende Stauchen beim
     # Resampling hebt die Dehnung wieder auf und hebt dabei die Tonhöhe.
     length_scale = pitch / speed
 
     command = [piper, "--model", model, "--output-raw", "--length-scale", f"{length_scale:.3f}"]
-    pause = _env_float("JUDE_TTS_PAUSE", 0.25)
+    pause = _env_float("JUDE_TTS_PAUSE", 0.1)
     if pause > 0:
         command += ["--sentence-silence", f"{pause:.2f}"]
     for flag, env in (("--noise-scale", "PIPER_NOISE_SCALE"), ("--noise-w-scale", "PIPER_NOISE_W")):
@@ -129,7 +217,8 @@ def speak(text: str, should_stop=None) -> None:
     if speaker:
         command += ["--speaker", speaker]
 
-    result = subprocess.run(command, input=text.encode("utf-8"), capture_output=True)
+    spoken = spoken_german(text)
+    result = subprocess.run(command, input=spoken.encode("utf-8"), capture_output=True)
     if result.returncode != 0 or not result.stdout:
         raise RuntimeError("Sprachausgabe ist fehlgeschlagen: "
                            + result.stderr.decode("utf-8", "replace")[:300])

@@ -15,6 +15,10 @@
         <div class="radarbar"><input id="radarFrame" type="range" min="0" max="0" value="0" step="1" aria-label="Radarzeit"></div>
         <p id="radarMeta" class="muted small"></p></div>
       <div class="panel hudpanel"><h3>Growcontroller</h3><div id="hudGrow" class="hudgrow"><span class="muted small">–</span></div></div>
+      <div class="panel hudpanel factpanel"><h3>Fake-Checker</h3>
+        <form id="factForm"><input id="factUrl" type="url" placeholder="URL zu Bericht, Post oder Video" required><button>Prüfen</button></form>
+        <p class="muted small">Bestätigt erst mit zwei unabhängigen seriösen Quellen.</p>
+        <div id="factResult"></div></div>
     </div>
     <div class="cockC">
       <div class="panel hudpanel bandpanel"><h3>System</h3><div class="hudband">
@@ -32,16 +36,21 @@
         <div class="gauge" id="gGpuTemp"><div class="ring"></div><b>–</b><small>GPU °C</small></div>
         <div class="gauge" id="gNvme"><div class="ring"></div><b>–</b><small>NVMe °C</small></div>
       </div></div>
-      <div class="panel hudpanel factpanel"><h3>Fake-Checker</h3>
-        <form id="factForm"><input id="factUrl" type="url" placeholder="URL zu Bericht, Post oder Video" required><button>Prüfen</button></form>
-        <p class="muted small">Bestätigt erst mit zwei unabhängigen seriösen Quellen.</p>
-        <div id="factResult"></div></div>
+      <div class="panel hudpanel wakepanel"><h3>Aktivierungswort</h3>
+        <form id="wakeForm" class="controls">
+          <input id="wakeWord" placeholder="Jude angetreten" aria-label="Aktivierungswort">
+          <input id="sleepWord" placeholder="Jude Zapfenstreich" aria-label="Schlafwort">
+          <input id="wakeGreeting" placeholder="Antwort beim Aufwachen" aria-label="Begrüßung">
+          <input id="wakeFarewell" placeholder="Antwort beim Schlafen" aria-label="Verabschiedung">
+          <button>Übernehmen</button>
+        </form>
+        <p id="wakeState" class="muted small"></p></div>
     </div>
     <div class="cockR">
       <div class="panel hudpanel output"><h3>Ausgabe</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jude tun?" required><button>Senden</button></form></div>
     </div>
     <div class="cockD">
-      <div class="panel hudpanel"><h3>Essensplan heute</h3><div id="hudMeals" class="hudmeals"><span class="muted small">–</span></div></div>
+      <div class="panel hudpanel"><h3>Kalender</h3><form id="calendarForm"><input id="calendarTitle" placeholder="Termin" required><label>Beginn <input id="calendarStart" type="datetime-local" required></label><label>Ende <input id="calendarEnd" type="datetime-local" required></label><input id="calendarLocation" placeholder="Ort"><textarea id="calendarDescription" placeholder="Beschreibung"></textarea><button>Termin vormerken</button></form><div id="calendarEvents"></div></div>
     </div>
   </div>
   <div class="ticker">
@@ -60,19 +69,19 @@
 </section>
 <section data-page="Werkzeuge">
   <div class="sectionhead"><div><span class="eyebrow">CONNECTED SERVICES</span><h2>Dienste</h2></div></div><div class="toolgrid">
-    <article class="panel"><h3>Crypto-News</h3><button id="newsRun">Journalistisches Briefing</button><div id="newsResult"></div></article>
-    <article class="panel"><h3>Licht</h3><p>Wohnzimmer · Schlafzimmer · Flur</p><div id="lights"></div></article>
-    <article class="panel"><h3>Alexa / Growcontroller</h3><p>Nur explizit konfigurierte Home-Assistant-Aktionen.</p><div id="homeActions"></div></article>
+    <article class="panel"><h3>News</h3><button id="newsRun">Journalistisches Briefing</button><div id="newsResult"></div></article>
     <article class="panel"><h3>Postfächer</h3><div id="mailStatus"></div><select id="mailAccount"><option value="gmx">GMX</option><option value="yahoo">Yahoo</option><option value="gmail">Gmail</option><option value="proton_nurovelle">Proton Nurovelle</option><option value="proton_mongojude">Proton MongoJude</option></select><div class="controls"><input id="mailQuery" value="ALL" aria-label="Mailsuche"><button id="mailSearch">Suchen</button></div><div id="mailResults"></div><h4>Entwurf / Versand</h4><form id="mailCompose"><input id="mailTo" type="email" placeholder="Empfänger" required><input id="mailSubject" placeholder="Betreff" required><textarea id="mailBody" placeholder="Nachricht" required></textarea><div class="controls"><button name="mode" value="draft">Entwurf speichern</button><button name="mode" value="send">Versand vormerken</button></div></form></article>
-    <article class="panel"><h3>Kalender</h3><form id="calendarForm"><input id="calendarTitle" placeholder="Termin" required><label>Beginn <input id="calendarStart" type="datetime-local" required></label><label>Ende <input id="calendarEnd" type="datetime-local" required></label><input id="calendarLocation" placeholder="Ort"><textarea id="calendarDescription" placeholder="Beschreibung"></textarea><button>Termin vormerken</button></form><div id="calendarEvents"></div></article>
     <article class="panel"><h3>Coding / Tests</h3><button id="reposRun">Repositories laden</button><div id="repos"></div></article>
   </div>
 
   <div class="sectionhead"><div><span class="eyebrow">AGENTS</span><h2>Werkzeuge</h2></div></div><div class="toolgrid">
     <article class="panel"><h3>OCR</h3><form id="ocrForm"><input name="file" type="file" required><select name="language"><option>deu+eng</option><option>deu</option><option>eng</option></select><button>Text erkennen</button></form><pre id="ocrText"></pre></article>
-    <article class="panel"><h3>Shopping</h3><select id="shopCategory"><option value="t-shirt">T-Shirts XXL</option><option value="sweater">Sweater XXL</option><option value="schuhe">Schuhe 44</option></select><button id="shopRun">Vergleichen</button><div id="shopResult"></div></article>
-    <article class="panel"><h3>Essensplan</h3><div class="controls"><select id="mealDays"><option>7</option><option>8</option><option>9</option><option>10</option></select><select id="mealPeople"><option>1</option><option selected>2</option></select><button id="mealRun">PDF erstellen</button></div><div id="mealResult"></div></article>
-    <article class="panel"><h3>Web-Scraper</h3><form id="scrapeForm"><input id="scrapeUrl" type="url" placeholder="Öffentliche URL" required><button>Extrahieren</button></form><div id="scrapeResult"></div></article>
+    <article class="panel"><h3>Shopping</h3><div class="controls">
+      <select id="shopBrand"><option value="gstar">G-Star</option><option value="nike">Nike</option></select>
+      <select id="shopCategory"><option value="t-shirt">T-Shirts</option><option value="sweater">Sweater</option><option value="jeans">Jeans</option><option value="jogginghose">Jogginghose</option><option value="schuhe">Schuhe (Air Max)</option></select>
+      <select id="shopSize"><option>L</option><option>XL</option><option selected>XXL</option></select>
+      <button id="shopRun">Vergleichen</button></div><div id="shopResult"></div></article>
+    <article class="panel"><h3>Essensplan</h3><div id="hudMeals" class="hudmeals"><span class="muted small">–</span></div><div class="controls"><select id="mealDays"><option>7</option><option>8</option><option>9</option><option>10</option></select><select id="mealPeople"><option>1</option><option selected>2</option></select><button id="mealRun">PDF erstellen</button></div><div id="mealResult"></div></article>
   </div>
 
   <div class="sectionhead"><div><span class="eyebrow">LOCAL &amp; CLOUD</span><h2>Bilder</h2></div></div>

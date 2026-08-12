@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from typing import Any
 
 from services.memory import MemoryService
@@ -21,18 +22,20 @@ class Agent:
     )
 
     def __init__(self, model_router: ModelRouter, tool_registry: ToolRegistry, max_tool_steps: int = 8,
-                 system_prompt: str | None = None):
+                 system_prompt: str | None = None, force_model: str | None = None):
         self.router = model_router
         self.tools = tool_registry
         self.max_tool_steps = max_tool_steps
+        self.force_model = force_model
         self.memory = MemoryService()
         if system_prompt:
             # Sub-Agent mit eigener Rolle; Sicherheitsregeln bleiben verbindlich.
             self._base_system = system_prompt.strip() + self._SECURITY
         else:
             user_name = os.getenv("JUDE_USER_NAME", "Tino").strip()
-            address = (f" Der Nutzer heißt {user_name} und wird geduzt; begrüße ihn freundlich mit seinem "
-                       f"Namen (z.B. „Hey {user_name}, wie geht's?“) und sprich ihn natürlich an." if user_name else "")
+            address = (f" Der Nutzer heißt {user_name} und wird geduzt. Antworte knapp und sachlich, "
+                       "ohne Begrüßungsfloskeln und ohne Rückfragen wie „kann ich sonst noch helfen“."
+                       if user_name else "")
             self._base_system = (
                 "Du bist Jude, ein hilfreicher lokaler Assistent. Deutsch ist die Standardsprache. "
                 "Passe dich an die Sprache des Nutzers an; verwende bei Coding, Trading und technischen "
@@ -57,7 +60,14 @@ class Agent:
         if directive_response is not None:
             return directive_response
         memory_context = self.memory.context(user_text)
-        self.conversation_history[0]["content"] = self._base_system + (
+        # Ohne Zeitangabe erfindet das Modell Datum und Uhrzeit (es meldete 12:00
+        # statt 21:26). Es gibt kein Zeit-Werkzeug, deshalb kommt der Zeitstempel
+        # bei jeder Anfrage frisch in den Systemprompt.
+        from datetime import datetime
+        now = datetime.now().astimezone()
+        stamp = ("\nAktueller Zeitpunkt (verlass dich darauf, rate nicht): "
+                 + now.strftime("%A, %d.%m.%Y, %H:%M Uhr %Z"))
+        self.conversation_history[0]["content"] = self._base_system + stamp + (
             "\nLokales Gedächtnis für diese Anfrage:\n" + memory_context if memory_context else ""
         )
         allow_uncensored = "unzensiert" in user_text.lower()
@@ -66,7 +76,8 @@ class Agent:
         tools = self.tools.get_tools_openai() or None
 
         for _ in range(self.max_tool_steps + 1):
-            response = self.router.call_with_fallback(self.conversation_history, tools, allow_uncensored)
+            response = self.router.call_with_fallback(self.conversation_history, tools, allow_uncensored,
+                                                      force_model=self.force_model)
             self.last_model = response.pop("_model", None)
             self.last_route_id = response.pop("_route_id", None)
             calls = response.get("tool_calls") or []
@@ -75,6 +86,14 @@ class Agent:
                 if calls:
                     response["content"] = ""
                     response["tool_calls"] = calls
+            # Ollama liefert Werkzeugaufrufe ohne 'id' und 'type'; OpenAI-kompatible
+            # Anbieter verlangen beides, und das Ergebnis muss per tool_call_id
+            # zugeordnet werden. Einmal hier ergaenzt, passt der Verlauf zu jedem
+            # Anbieter der Fallback-Kette – sonst scheiterte jeder Wechsel.
+            for call in calls:
+                call.setdefault("type", "function")
+                if not call.get("id"):
+                    call["id"] = f"call_{uuid.uuid4().hex[:12]}"
             self.conversation_history.append(response)
             if not calls:
                 answer = str(response.get("content") or "")

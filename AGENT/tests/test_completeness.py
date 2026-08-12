@@ -142,16 +142,20 @@ def test_radar_parsing():
     assert data["status"] == "live" and data["address"].startswith("Berliner")
 
 
-def test_shopping_combines_official_brands_and_sorts_price():
-    nike = [{"brand": "Nike", "title": "Nike Shirt", "url": "https://nike.com/de/t/x", "snippet": "",
-             "prices": ["49,99 €"], "price_eur": 49.99, "size": "XXL", "availability": "laut Größenfilter"}]
+def test_shopping_separates_brands_and_fixes_special_sizes():
     gstar = [{"brand": "G-Star", "title": "G-Star Shirt", "url": "https://g-star.com/de_de/x", "snippet": "",
-              "prices": ["39,95 €"], "price_eur": 39.95, "size": "XXL", "availability": "InStock"}]
-    with patch.object(ShoppingService, "_nike_products", return_value=nike), patch.object(
-            ShoppingService, "_gstar_products", return_value=gstar):
-        data = ShoppingService().compare("t-shirt")
-    assert data["brands"] == {"Nike": 1, "G-Star": 1}
-    assert [item["brand"] for item in data["products"]] == ["G-Star", "Nike"]
+              "prices": ["39,95 €"], "price_eur": 39.95, "size": "XL", "availability": "InStock"}]
+    with patch.object(ShoppingService, "_gstar_products", return_value=gstar):
+        data = ShoppingService().compare("t-shirt", brand="gstar", size="XL")
+    assert data["brand"] == "G-Star" and data["size"] == "XL" and data["count"] == 1
+    nike = [{"brand": "Nike", "title": "Nike Air Max 90", "url": "https://nike.com/de/t/x", "snippet": "",
+             "prices": ["149,99 €"], "price_eur": 149.99, "size": "44", "availability": "laut Größenfilter"}]
+    with patch.object(ShoppingService, "_nike_products", return_value=nike):
+        data = ShoppingService().compare("schuhe", brand="gstar", size="XXL")  # wird auf Nike/44 gezwungen
+    assert data["brand"] == "Nike" and data["size"] == "44"
+    with patch.object(ShoppingService, "_gstar_products", return_value=gstar):
+        data = ShoppingService().compare("jeans", brand="nike", size="L")     # wird auf G-Star/W33 L34 gezwungen
+    assert data["brand"] == "G-Star" and data["size"] == "W33 L34"
 
 
 def test_real_ocr_german_and_english():
@@ -205,7 +209,7 @@ def test_remote_gui_requires_auth_and_status_is_fast(monkeypatch):
     assert response.status_code == 200
     assert response.json()["ict"]["connection"]["ready"] is None
     page = client.get("/", auth=("jude", "secret"))
-    assert page.status_code == 200 and 'id="mealResult"' in page.text and 'id="scrapeForm"' in page.text
+    assert page.status_code == 200 and 'id="mealResult"' in page.text and 'id="shopBrand"' in page.text
 
 
 def test_gui_downloads_recorded_meal_pdf(monkeypatch):

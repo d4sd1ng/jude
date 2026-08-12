@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -88,7 +89,10 @@ class OllamaAdapter(ProviderAdapter):
         for _ in range(self.retries + 1):
             try:
                 response = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=self.timeout)
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    # Ollama begruendet Ablehnungen im Rumpf; ohne diesen Text war
+                    # aus "400 Bad Request" nicht erkennbar, was am Verlauf stoert.
+                    raise ValueError(f"HTTP {response.status_code}: {response.text[:400]}")
                 data = response.json()
                 message = data.get("message", {})
                 message["usage"] = {
@@ -173,13 +177,24 @@ class OpenAICompatAdapter(ProviderAdapter):
         self.extra_headers = extra_headers or {}
 
     def call(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None) -> dict:
+        # Tief kopieren: dict(message) waere nur eine flache Kopie – die
+        # tool_calls darin sind dieselben Objekte wie im echten Gespraechsverlauf.
+        # Das Umschreiben der Argumente in JSON-Strings traf damit das Original,
+        # und jede nachfolgende Fallback-Stufe (Ollama, Anthropic) wies den so
+        # veraenderten Verlauf mit HTTP 400 ab.
         outgoing: list[dict] = []
         for message in messages:
-            item = dict(message)
+            item = copy.deepcopy(dict(message))
             for call in item.get("tool_calls", []) or []:
                 arguments = call.get("function", {}).get("arguments")
                 if not isinstance(arguments, str):
                     call["function"]["arguments"] = json.dumps(arguments or {})
+                # Ollama laesst 'type' und 'id' weg, OpenAI-kompatible Anbieter
+                # verlangen beides. Ohne das brach der Wechsel von einer lokalen
+                # Stufe zurueck in die Cloud mit HTTP 400 ab.
+                call.setdefault("type", "function")
+                if not call.get("id"):
+                    call["id"] = f"call_{uuid.uuid4().hex[:12]}"
             item.pop("usage", None)
             outgoing.append(item)
         payload: dict[str, Any] = {"model": spec.model_name, "messages": outgoing,
@@ -191,12 +206,26 @@ class OpenAICompatAdapter(ProviderAdapter):
             headers={"Authorization": f"Bearer {os.environ[self.api_key_env]}", **self.extra_headers},
             timeout=self.timeout,
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            # Ohne den Rumpf ist "400 Bad Request" nicht diagnostizierbar.
+            raise ValueError(f"HTTP {response.status_code}: {response.text[:400]}")
         data = response.json()
         message = data.get("choices", [{}])[0].get("message", {})
         result: dict[str, Any] = {"role": "assistant", "content": message.get("content") or ""}
         if message.get("tool_calls"):
-            result["tool_calls"] = message["tool_calls"]
+            # OpenAI-kompatible Anbieter liefern die Argumente als JSON-String.
+            # So gespeichert bricht jeder spaetere Ollama-Aufruf mit
+            # "Value looks like object, but can't find closing '}' symbol" ab.
+            # Deshalb hier einmal zurueck in ein Objekt wandeln.
+            calls = copy.deepcopy(message["tool_calls"])
+            for call in calls:
+                arguments = call.get("function", {}).get("arguments")
+                if isinstance(arguments, str):
+                    try:
+                        call["function"]["arguments"] = json.loads(arguments or "{}")
+                    except json.JSONDecodeError:
+                        call["function"]["arguments"] = {}
+            result["tool_calls"] = calls
         usage = data.get("usage", {}) or {}
         cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
         result["usage"] = {"input_tokens": usage.get("prompt_tokens", 0),
@@ -526,13 +555,18 @@ class ModelRouter:
             return response
 
     def call_with_fallback(self, messages: list[dict], tools: list[dict] | None = None,
-                           allow_uncensored: bool = False) -> dict:
+                           allow_uncensored: bool = False, force_model: str | None = None) -> dict:
         # Routing an der eigentlichen Nutzeranfrage ausrichten, nicht an Tool-Ergebnissen –
         # so bleibt eine Aktion über den gesamten Werkzeug-Loop beim passenden Modell.
         user_messages = [m for m in messages if m.get("role") == "user"]
         prompt = str((user_messages[-1] if user_messages else messages[-1]).get("content", ""))
         complexity, task_type = self.estimate_complexity(prompt), self.task_type(prompt)
-        selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools))
+        # Sub-Agenten geben ihr Modell fest vor: die Routing-Heuristik waehlte fuer
+        # Werkzeugketten das Basismodell, das damit ueberfordert war.
+        if force_model and force_model in self.models:
+            selected = self.models[force_model]
+        else:
+            selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools))
         route_id = uuid.uuid4().hex[:16]
         started = time.monotonic()
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()

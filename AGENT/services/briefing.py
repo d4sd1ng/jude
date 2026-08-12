@@ -202,24 +202,10 @@ class BriefingService:
                 break
         return titles
 
-    @staticmethod
-    def _newsapi(query: str, limit: int) -> list[str]:
-        key = os.getenv("NEWS_API_KEY")
-        if not key:
-            return []
-        response = requests.get("https://newsapi.org/v2/everything", headers={"X-Api-Key": key},
-                                params={"q": query, "language": "de", "sortBy": "publishedAt",
-                                        "pageSize": max(1, min(limit, 10))}, timeout=15)
-        response.raise_for_status()
-        return [a["title"] for a in response.json().get("articles", []) if a.get("title")][:limit]
-
     def _topic_headlines(self, query: str, limit: int) -> list[str]:
-        try:
-            headlines = self._newsapi(query, limit)
-            if headlines:
-                return headlines
-        except Exception:
-            pass
+        # Google-News-RSS ist kostenlos und unlimitiert – richtig für den
+        # 10-Minuten-Ticker. Die frühere newsapi.org-Stufe lief mit dem
+        # newsdata.io-Schlüssel ins Leere (401 bei jedem Poll) und ist raus.
         try:
             return self._google_news(query, limit)
         except Exception:

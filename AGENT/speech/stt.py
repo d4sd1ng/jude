@@ -8,9 +8,13 @@ import time
 from collections import deque
 from functools import lru_cache
 
+import logging
+
 import numpy as np
 
 from speech.wakeword import JudeWakeWordModel
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16_000
 WAKE_BLOCK = 1_280  # 80 ms, Vorgabe des Wake-Word-Modells
@@ -32,10 +36,26 @@ def _model():
     return WhisperModel(configured, device=os.getenv("WHISPER_DEVICE", "cpu"), compute_type="int8")
 
 
-def transcribe(audio: np.ndarray) -> str:
-    segments, _ = _model().transcribe(audio.astype(np.float32) / 32768.0,
+def normalize(audio: np.ndarray, target_peak: float = 0.5) -> np.ndarray:
+    """Hebt eine Aufnahme auf einen brauchbaren Pegel.
+
+    Tinos Mikrofon steuert nur ~6 % aus. Whispers vorgeschaltete
+    Sprachaktivitätserkennung (Silero) verwirft so leises Material vollständig
+    als Stille – die Transkription lieferte durchgehend leeren Text, und das
+    Aktivierungswort wurde nur aus nächster Nähe erkannt. Reines Rauschen wird
+    nicht hochgezogen (Untergrenze), damit die Stille auch Stille bleibt.
+    """
+    peak = float(np.abs(audio).max()) if len(audio) else 0.0
+    if peak < 40:                      # praktisch Stille: nicht verstärken
+        return audio.astype(np.float32) / 32768.0
+    scaled = audio.astype(np.float32) / peak * target_peak
+    return np.clip(scaled, -1.0, 1.0)
+
+
+def transcribe(audio: np.ndarray, use_vad: bool = True) -> str:
+    segments, _ = _model().transcribe(normalize(audio),
                                       language=os.getenv("WHISPER_LANGUAGE") or "de",
-                                      vad_filter=True, beam_size=1,
+                                      vad_filter=use_vad, beam_size=1,
                                       condition_on_previous_text=False)
     return " ".join(segment.text.strip() for segment in segments).strip()
 
@@ -51,7 +71,66 @@ def listen(seconds: float = 5.0, sample_rate: int = SAMPLE_RATE) -> str:
     return transcribe(np.ravel(audio))
 
 
-class WakeWordListener:
+class PhraseWakeListener:
+    """Aktivierungswort über Whisper statt über ein trainiertes Modell.
+
+    Das selbst trainierte ONNX-Modell verlangte eine nahezu identische
+    Aussprache (Schwelle 0,99 = niedrigster Score der Trainingsaufnahmen) und
+    versagte schon ab einem halben Meter Abstand. Jarvis erkannte das
+    Aktivierungswort dagegen rein über den transkribierten Text – jede Phrase
+    funktioniert sofort, ohne Training, und lässt sich in der GUI ändern.
+
+    Gehört wird in einem gleitenden Fenster: alle ``hop`` Sekunden werden die
+    letzten ``window`` Sekunden transkribiert. Die Überlappung sorgt dafür, dass
+    eine Phrase nicht an der Fenstergrenze zerrissen wird. Whisper filtert
+    Stille selbst heraus, ein Energie-Schwellwert ist nicht nötig.
+    """
+
+    def __init__(self, phrase: str | None = None, window: float = 3.0, hop: float = 1.0):
+        self.phrase = _spoken_phrase(phrase or os.getenv("JUDE_WAKE_PHRASE", "Jude angetreten"))
+        self.window = max(1.5, float(os.getenv("JUDE_WAKE_WINDOW", window)))
+        self.hop = max(0.4, float(os.getenv("JUDE_WAKE_HOP", hop)))
+        self._stream = None
+
+    def _open(self):
+        import sounddevice as sd
+        if self._stream is None:
+            self._stream = sd.RawInputStream(samplerate=SAMPLE_RATE, channels=1,
+                                             dtype="int16", blocksize=int(0.1 * SAMPLE_RATE))
+            self._stream.start()
+        return self._stream
+
+    def wait(self, timeout: float | None = None) -> float:
+        stream = self._open()
+        buffer: deque[np.ndarray] = deque(maxlen=int(self.window / 0.1))
+        started = time.monotonic()
+        since_check = 0.0
+        while timeout is None or time.monotonic() - started < timeout:
+            raw, overflowed = stream.read(int(0.1 * SAMPLE_RATE))
+            if overflowed:
+                continue
+            buffer.append(np.frombuffer(raw, dtype=np.int16).copy())
+            since_check += 0.1
+            if since_check < self.hop or len(buffer) < buffer.maxlen // 2:
+                continue
+            since_check = 0.0
+            heard = _spoken_phrase(transcribe(np.concatenate(buffer), use_vad=False))
+            if not heard:
+                continue
+            if self.phrase in heard:
+                buffer.clear()
+                return 1.0
+            logger.info("gehört: %r (warte auf %r)", heard, self.phrase)
+        raise TimeoutError("Aktivierungswort nicht erkannt.")
+
+    def close(self) -> None:
+        if self._stream is not None:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+
+
+class OnnxWakeWordListener:
     def __init__(self, threshold: float | None = None):
         try:
             from pyopen_wakeword import OpenWakeWordFeatures
@@ -91,6 +170,10 @@ class WakeWordListener:
                             heard = _spoken_phrase(transcribe(np.frombuffer(b"".join(recent_audio), dtype=np.int16)))
                             if expected in heard:
                                 return peak
+                            # Der Klassifikator hat angeschlagen, Whisper widerspricht:
+                            # ohne diese Meldung bleibt das Aufwachen unerklaerlich stumm.
+                            logger.warning("Wake-Word verworfen (Score %.3f): Whisper verstand %r statt %r",
+                                           peak, heard or "<nichts>", expected)
                             consecutive, peak = 0, 0.0
                             self.detector.reset()
         raise TimeoutError("Aktivierungswort nicht erkannt.")
@@ -98,6 +181,14 @@ class WakeWordListener:
     def close(self) -> None:
         self.detector.close()
         self.features.close()
+
+
+def WakeWordListener(*args, **kwargs):
+    """Wählt die Erkennung: standardmäßig Whisper (jede Phrase, kein Training),
+    per ``JUDE_WAKE_ENGINE=onnx`` das alte trainierte Modell."""
+    if os.getenv("JUDE_WAKE_ENGINE", "whisper").strip().lower() == "onnx":
+        return OnnxWakeWordListener(*args, **kwargs)
+    return PhraseWakeListener()
 
 
 def _ready_tone() -> None:

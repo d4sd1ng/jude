@@ -311,3 +311,119 @@ header{background:#0b0d0b;border-bottom:1px solid #39423a}
 .hudband .gauge b{font:700 16px/1 Inter,ui-sans-serif,system-ui,sans-serif;color:#f2efe6}
 .hudband .gauge small{font:600 9px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;
   letter-spacing:.04em;color:#aab3a6;text-transform:uppercase}
+
+/* ==== Dunkleres Gruen (Ansage Tino): helles #3fae5f ueberall ersetzt ==== */
+:root{--green:#2e6b40;--ok:#2e6b40;--blue:#1d5c31}
+.hudpanel,.output,.factpanel{border-color:#26302a}
+.ticker{border-color:#26302a}
+.hudband .toggle.on{background:linear-gradient(180deg,#2f7c47,#1d5c31);border-color:#11331c;
+  color:#eaf2e9;box-shadow:0 3px 0 #11331c,0 5px 10px #00000088,inset 0 1px 0 #ffffff33}
+.hudband .toggle.on:active{box-shadow:0 0 0 #11331c,inset 0 2px 6px #00000088}
+.hudband .toggle.on small{color:#eaf2e9}
+nav button.active{background:#2e6b40;color:#eaf2e9}
+input[type=range]{accent-color:#2e6b40}
+.radarpin{color:var(--accent)}
+/* Tausch (Ansage Tino): Ausgabe an die alte Essensplan-Position, Essensplan nach rechts aussen */
+.output{grid-column:5/8}
+.cockD>.hudpanel{grid-column:16/21}
+/* Ausgabe breit (25 %), Essensplan schmal (15 %) - Positionen bleiben getauscht */
+.output{grid-column:5/10}
+.bandpanel{grid-column:10/18}
+.factpanel{grid-column:1/5}
+.cockD>.hudpanel{grid-column:18/21}
+
+/* Kopfzeile: Temperatur nicht groesser als die Uhr */
+.headweather b{font-size:22px}
+/* Links waren zu dunkel (Browser-Standardblau auf Schwarz) */
+a{color:#8fbf9c}
+a:hover{color:#b8d9c0}
+.source{color:#cfd8cc}
+.source b{color:var(--ink)}
+.source small{color:#9aa38f}
+/* Shopping-Treffer mit Produktbild */
+.shopitem{display:flex;align-items:center;gap:10px}
+.shopitem .thumb{width:52px;height:52px;object-fit:cover;flex:0 0 52px;background:#0f130c}
+.message.thinking{color:#9aa38f;font-style:italic;animation:voicepulse 1.6s ease-in-out infinite}
+.message.error{border-left-color:#d4583b;color:#e8a99a}
+
+/* ============ Layout- und Lesbarkeitskorrekturen (Ansage Tino) ============ */
+/* 1) Growcontroller füllt die mittlere Zeile bis zum Fake-Checker.
+   2) Kalender nur so hoch wie sein Inhalt.
+   3) Aktivierungswort direkt darunter in dieselbe Spalte. */
+.cockpit{grid-template-rows:auto 1fr auto}
+.cockL>.hudpanel:nth-child(2){min-height:0;align-self:stretch;grid-row:2}
+.cockD>.hudpanel{grid-column:18/21;grid-row:1;align-self:start}
+.wakepanel{grid-column:18/21;grid-row:2;align-self:start}
+.output{grid-row:1/4;align-self:stretch}
+.bandpanel{align-self:start}
+.factpanel{grid-row:3;align-self:start}
+
+/* 4) + 5) Kein Grün auf Grün, kein Weiß auf hellem Grün.
+   Gemessen: auf grünen Flächen ist nur Schwarz lesbar (6.9), Weiß liegt bei 2.5.
+   Also tragen alle grünen Knöpfe schwarze Schrift. */
+button,.button{background:#2e6b40;color:#08130b;font-weight:700}
+button:hover,.button:hover{background:#367a4a;filter:none}
+button.ghost{background:transparent;color:#8fbf9c}
+nav button{background:transparent;color:var(--muted);font-weight:600}
+nav button.active{background:#2e6b40;color:#08130b}
+.hudband .toggle{color:#c9d2c6}
+.hudband .toggle.on,.hudband .toggle.on small{color:#08130b}
+
+/* Badges in der Kopfzeile: helle Schrift auf dunklem Grund statt grün auf grün */
+.badge{background:#0b0d0b;border-color:#39423a;color:#d6dcd4}
+.badge.on{border-color:#4f9e69;color:#a8d9b8}
+#health,#voiceState{color:#d6dcd4}
+/* Nach dem Abdunkeln des Grüns trägt Schwarz nur noch 3,0 Kontrast.
+   Off-White auf #2e6b40 ergibt 5,6 – das ist die richtige Kombination. */
+button,.button{color:#f2efe6}
+nav button.active{color:#f2efe6}
+.hudband .toggle.on,.hudband .toggle.on small{color:#f2efe6}
+
+/* ================= Schluss mit Grün auf Grün ==================
+   Grün war Fläche, Rahmen, Knopf und Zustand zugleich – dadurch hob sich
+   nichts mehr voneinander ab. Ab jetzt gilt:
+     Flächen  = neutrales Anthrazit (kein Grünstich)
+     Schrift  = Off-White, Überschriften Gold
+     Knöpfe   = neutrale Tasten mit heller Schrift
+     Grün     = ausschließlich Zustand (aktiv, Messwert, Bestätigung) */
+:root{--paper:#080a09;--panel:#101312;--line:#2b312e}
+body{background:var(--paper)}
+header{background:#0c0f0e;border-bottom:1px solid #2b312e}
+nav{background:rgba(8,10,9,.94);border-bottom:1px solid #2b312e}
+
+.hudpanel,.output,.factpanel,.panel{background:#101312;border:1px solid #2b312e}
+.hudpanel h3{color:var(--gold);border-bottom-color:#2b312e}
+.ticker{background:#0c0f0e;border-color:#2b312e}
+
+/* Knöpfe: neutrale Taste, klar abgesetzt von der Panelfläche */
+button,.button{background:linear-gradient(180deg,#39413d,#252b28);color:#f2efe6;
+  border:1px solid #4a534e;border-radius:5px;font-weight:600;
+  box-shadow:0 2px 0 #171b19,inset 0 1px 0 #ffffff14}
+button:hover,.button:hover{background:linear-gradient(180deg,#454e49,#2c332f)}
+button:active,.button:active{transform:translateY(2px);box-shadow:none}
+button.ghost{background:transparent;border-color:#3a423c;color:#c9d2c6;box-shadow:none}
+
+/* Zustände tragen Grün – und nur die */
+nav button{background:transparent;border:0;box-shadow:none;color:var(--muted)}
+nav button.active{background:#2e6b40;color:#f2efe6;border:0}
+.hudband .toggle{background:linear-gradient(180deg,#39413d,#252b28);border:1px solid #4a534e;color:#c9d2c6}
+.hudband .toggle.on{background:linear-gradient(180deg,#3d9159,#26663a);border-color:#4f9e69;color:#f2efe6}
+.hudband .toggle.on small{color:#f2efe6}
+.badge{background:#0c0f0e;border:1px solid #3a423c;color:#d6dcd4}
+.badge.on{border-color:#4f9e69;color:#a8d9b8}
+/* Growcontroller füllt die Lücke zwischen Radar und Fake-Checker vollständig:
+   oben direkt unter dem Radar beginnen (align-self:start reichte nicht, die
+   Kachel wurde in der Zeile zentriert), nach unten bis an den Fake-Checker. */
+.cockL>.hudpanel:nth-child(2){align-self:stretch;justify-self:stretch;margin:0;height:auto}
+.cockL>.hudpanel:first-child{align-self:start}
+/* Linke Spalte als eigener Stapel statt drei Rasterzeilen: Radar und
+   Fake-Checker so hoch wie ihr Inhalt, der Growcontroller nimmt exakt den
+   Rest – damit gibt es weder über noch unter ihm eine Lücke. */
+.cockL{display:flex;flex-direction:column;gap:8px;grid-column:1/5;grid-row:1/4;min-height:0}
+.cockL>.hudpanel{grid-column:auto;grid-row:auto;align-self:auto}
+.cockL>.hudpanel:first-child,.cockL>.factpanel{flex:0 0 auto}
+.cockL>.hudpanel:nth-child(2){flex:1 1 auto;min-height:120px}
+.cockL>.factpanel{flex:0 0 auto;grid-column:auto;grid-row:auto}
+/* Ohne definierte Gesamthöhe bedeutet "1fr" nichts – der Growcontroller hatte
+   nichts zu füllen. Das Raster reicht jetzt bis zum unteren Fensterrand. */
+.cockpit{min-height:calc(100vh - 250px)}

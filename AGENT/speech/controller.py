@@ -52,9 +52,10 @@ class VoiceController:
         self.sleep_word = sleep_word or os.getenv("JUDE_SLEEP_PHRASE", "Jude Zapfenstreich")
         self.record_seconds = max(6.0, float(record_seconds))
         user_name = os.getenv("JUDE_USER_NAME", "Tino").strip()
-        default_greeting = f"Hey {user_name}, wie geht's?" if user_name else "Hey, wie geht's?"
-        self.greeting = os.getenv("JUDE_GREETING", default_greeting)
-        self.farewell = os.getenv("JUDE_FAREWELL", "Bis später.")
+        # Passend zu Weck- und Schlafwort ("angetreten" / "Zapfenstreich"):
+        # knappe Meldung statt Small Talk. Beides in der GUI überschreibbar.
+        self.greeting = os.getenv("JUDE_GREETING", "Zu Befehl.")
+        self.farewell = os.getenv("JUDE_FAREWELL", "Zapfenstreich.")
         self._events: deque[dict] = deque(maxlen=200)
         self._ids = itertools.count(1)
         self._state = "aus"
@@ -89,12 +90,38 @@ class VoiceController:
         self._set_state("aus")
         return self.status()
 
+    def set_phrases(self, wake_word: str | None = None, sleep_word: str | None = None,
+                    greeting: str | None = None, farewell: str | None = None) -> dict:
+        """Aktivierungs- und Schlafwort zur Laufzeit ändern (GUI-Feld).
+
+        Mit der Whisper-Erkennung genügt der reine Text – kein Training nötig.
+        Der Sprach-Thread wird neu gestartet, damit er die neue Phrase hört.
+        """
+        if wake_word and wake_word.strip():
+            self.wake_word = wake_word.strip()
+            os.environ["JUDE_WAKE_PHRASE"] = self.wake_word
+        if sleep_word and sleep_word.strip():
+            self.sleep_word = sleep_word.strip()
+            os.environ["JUDE_SLEEP_PHRASE"] = self.sleep_word
+        if greeting is not None and greeting.strip():
+            self.greeting = greeting.strip()
+            os.environ["JUDE_GREETING"] = self.greeting
+        if farewell is not None and farewell.strip():
+            self.farewell = farewell.strip()
+            os.environ["JUDE_FAREWELL"] = self.farewell
+        if self._thread and self._thread.is_alive():
+            self.stop()
+            self.start()
+        return self.status()
+
     def status(self) -> dict:
         return {
             "running": bool(self._thread and self._thread.is_alive()),
             "state": self._state,
             "wake_word": self.wake_word,
             "sleep_word": self.sleep_word,
+            "greeting": self.greeting,
+            "farewell": self.farewell,
             "error": self._error,
         }
 
@@ -218,7 +245,11 @@ class VoiceController:
             answer = self.agent.process_input(text)
         self._emit("answer", answer, model=self.agent.last_model)
         self._set_state("spricht")
-        self._speak(answer)
+        # Auch normale Antworten müssen abbrechbar sein (Ansage Tino) – vorher
+        # ließ sich nur das Briefing überspringen, lange Antworten liefen durch.
+        self._skip.clear()
+        self._speak(answer, interruptible=True)
+        self._skip.clear()
 
     def _run(self) -> None:
         from speech.stt import (
