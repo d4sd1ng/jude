@@ -57,7 +57,15 @@ class DocumentService:
         return target.read_text(encoding="utf-8", errors="replace")
 
     @staticmethod
-    def _chunk(text: str, size: int = 900, overlap: int = 150) -> list[str]:
+    def _chunk(text: str, size: int = 220, overlap: int = 40) -> list[str]:
+        """Zerlegt den Text in Abschnitte. ``size`` zaehlt WOERTER.
+
+        Vorher standen hier 900 Woerter – rund 6.000 Zeichen. Das Einbettungs-
+        modell (nomic-embed-text) bricht darueber mit
+        "the input length exceeds the context length" ab, jedes Einlesen
+        scheiterte also. 220 Woerter (~1.500 Zeichen) liegen sicher darunter
+        und liefern zudem praezisere Treffer als lange Bloecke.
+        """
         words = re.split(r"\s+", text.strip())
         chunks, step = [], max(1, size - overlap)
         for start in range(0, len(words), step):
