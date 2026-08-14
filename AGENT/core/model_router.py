@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+from contextlib import suppress
 import threading
 import time
 import uuid
@@ -206,6 +207,16 @@ class OpenAICompatAdapter(ProviderAdapter):
             headers={"Authorization": f"Bearer {os.environ[self.api_key_env]}", **self.extra_headers},
             timeout=self.timeout,
         )
+        # Groq meldet den Rest seines kostenfreien Tageskontingents in den
+        # Kopfzeilen mit – die belastbarste Quelle, weil sie auch Anfragen
+        # kennt, die nicht ueber Jude liefen.
+        if self.api_key_env == "GROQ_API_KEY":
+            with suppress(Exception):
+                from services import kontingent
+                if response.status_code == 429:
+                    kontingent.grenze_merken(response.text[:600])
+                else:
+                    kontingent.kopfzeilen_merken(response.headers)
         if response.status_code >= 400:
             # Ohne den Rumpf ist "400 Bad Request" nicht diagnostizierbar.
             raise ValueError(f"HTTP {response.status_code}: {response.text[:400]}")
@@ -477,16 +488,40 @@ class ModelRouter:
 
         return max(candidates, key=score)
 
-    def _resolve_fallbacks(self, selected: ModelSpec, allow_uncensored: bool) -> list[ModelSpec]:
+    def _resolve_fallbacks(self, selected: ModelSpec, allow_uncensored: bool,
+                           needs_tools: bool = False) -> list[ModelSpec]:
         result = [selected]
         for entry in self.router_cfg.get("fallback_chain", []):
             matches = ([m for m in self.models.values() if entry[5:] in m.tags] if entry.startswith("tags:")
                        else [self.models[entry]] if entry in self.models else [])
             for model in sorted(matches, key=lambda item: item.priority, reverse=True):
                 if model not in result and self._provider_enabled(model.provider):
+                    # Ein Modell ohne 'tools' kann eine Werkzeugkette nicht
+                    # bedienen – es beschreibt den Aufruf hoechstens. Gemessen:
+                    # ein Lauf fiel auf dolphin3 zurueck und brauchte 679
+                    # Sekunden fuer nichts. Solche Stufen gehoeren nicht in die
+                    # Kette, sobald Werkzeuge im Spiel sind.
+                    if needs_tools and "tools" not in model.tags:
+                        continue
                     if not allow_uncensored or "unzensiert" in model.tags:
                         result.append(model)
         return result
+
+    @staticmethod
+    def _groq_verfuegbar(spec: ModelSpec, messages: list[dict]) -> bool:
+        """Reicht das freie Tageskontingent noch für diese Anfrage?"""
+        if spec.provider != "groq":
+            return True
+        try:
+            from services import kontingent
+            geschaetzt = (sum(len(str(m.get("content", ""))) for m in messages) // 4
+                          + min(spec.max_tokens, 2048))
+            frei = kontingent.verfuegbar(geschaetzt)
+            if not frei:
+                logger.warning("Groq uebersprungen – Kontingent: %s", kontingent.stand())
+            return frei
+        except Exception:
+            return True                 # Buchhaltung darf nie blockieren
 
     def _cloud_affordable(self, spec: ModelSpec, messages: list[dict]) -> bool:
         if spec.provider == "ollama":
@@ -565,6 +600,14 @@ class ModelRouter:
         # Werkzeugketten das Basismodell, das damit ueberfordert war.
         if force_model and force_model in self.models:
             selected = self.models[force_model]
+            # Schutz gegen genau den Fehler, der die Mitarbeiter lahmgelegt hat:
+            # ein fest vorgegebenes Modell ohne 'tools' bekam eine Werkzeugkette
+            # und schrieb den Aufruf als Fliesstext hin. Wird die Vorgabe hier
+            # unbrauchbar, entscheidet wieder die Heuristik.
+            if tools and "tools" not in selected.tags:
+                logger.warning("Modell %s kann keine Werkzeuge – Vorgabe verworfen.", force_model)
+                selected = self.select_model(prompt, allow_uncensored=allow_uncensored,
+                                             needs_tools=True)
         else:
             selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools))
         route_id = uuid.uuid4().hex[:16]
@@ -575,7 +618,7 @@ class ModelRouter:
             db.execute("INSERT INTO route_decisions(id,created_at,task_type,complexity,selected_model,prompt_hash) VALUES(?,?,?,?,?,?)",
                        (route_id, datetime.now(timezone.utc).isoformat(), task_type, complexity, selected.name, prompt_hash))
         errors: list[str] = []
-        chain = self._resolve_fallbacks(selected, allow_uncensored)
+        chain = self._resolve_fallbacks(selected, allow_uncensored, needs_tools=bool(tools))
 
         def _has_stronger_tier(index: int) -> bool:
             return any(self._provider_enabled(chain[j].provider) for j in range(index + 1, len(chain)))
@@ -583,6 +626,12 @@ class ModelRouter:
         for position, spec in enumerate(chain):
             if not self._cloud_affordable(spec, messages):
                 attempts.append({"model": spec.name, "status": "skipped_cost_limit"})
+                continue
+            # Kostenfrei heisst nicht unbegrenzt: unterhalb der Reserve wird
+            # Groq uebersprungen, statt das Tageskontingent leerzuraeumen und
+            # danach fuer Stunden ohne dazustehen.
+            if not self._groq_verfuegbar(spec, messages):
+                attempts.append({"model": spec.name, "status": "skipped_kontingent"})
                 continue
             try:
                 attempt_started = time.monotonic()

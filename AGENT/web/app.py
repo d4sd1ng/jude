@@ -44,6 +44,7 @@ from services.dwd_radar import DWDRadarService
 from services.radar import RadarService
 from services.images import ImageService
 from services.render3d import BlenderService
+from services.review import ReviewQueue
 from services.scraper import ScraperService
 from services.shopping import ShoppingService
 from services.system_monitor import SystemMonitorService
@@ -55,6 +56,7 @@ STATIC = Path(__file__).parent / "static"
 agent, _creator = build_application()
 team = agent.team
 confirmations, executor = ConfirmationQueue(), ActionExecutor(team=team)
+reviews = ReviewQueue()
 market, news, radar = MarketService(), CryptoNewsService(), RadarService()
 dwd_radar = DWDRadarService()
 ha, mail, ocr = HomeAssistantService(), MailService(), OCRService()
@@ -184,7 +186,9 @@ def index():
 
 @app.get("/api/status")
 def status():
-    return {"router": agent.router.status(), "mail": mail.account_status(), "ict": ict.stack_status(probe=False),
+    from services import kontingent
+    return {"router": agent.router.status(), "groq": kontingent.stand(),
+            "mail": mail.account_status(), "ict": ict.stack_status(probe=False),
             "home_assistant_configured": bool(ha.url and ha.token), "news_configured": bool(os.getenv("NEWS_API_KEY")),
             "home_actions": ha.action_status(), "fake_checker": "ready", "scraper": "public_http_only",
             "memory": memory.training_stats()}
@@ -647,3 +651,44 @@ def confirmation_decide(action_id: str, decision: str):
     if decision not in {"approve", "reject"}:
         raise HTTPException(400, "Entscheidung muss approve oder reject sein")
     return confirmations.decide(action_id, decision == "approve", executor)
+
+
+# --- Abnahme ----------------------------------------------------------------
+# Nicht zu verwechseln mit den Bestaetigungen darueber: die halten eine Aktion
+# an, bis Tino zustimmt. Hier legt ein Mitarbeiter etwas Fertiges vor und
+# arbeitet sofort weiter; Tino nimmt ab oder schickt es mit einer Anmerkung
+# zurueck.
+
+@app.get("/api/reviews")
+def review_list(status: str = "offen", limit: int = 50, art: str | None = None):
+    return {"vorlagen": reviews.liste(status, limit, art),
+            "zusammenfassung": reviews.zusammenfassung(),
+            "offen_nach_art": reviews.offen_nach_art()}
+
+
+@app.get("/api/reviews/{review_id}")
+def review_show(review_id: str):
+    try:
+        return reviews.zeigen(review_id)
+    except KeyError:
+        raise HTTPException(404, "Unbekannte Vorlage")
+
+
+@app.post("/api/reviews/{review_id}/{entscheidung}")
+def review_decide(review_id: str, entscheidung: str, payload: dict | None = None):
+    if entscheidung not in {"abnehmen", "revision"}:
+        raise HTTPException(400, "Entscheidung muss abnehmen oder revision sein")
+    anmerkung = str((payload or {}).get("anmerkung", "")).strip()
+    if entscheidung == "revision" and not anmerkung:
+        raise HTTPException(400, "Für eine Revision wird eine Anmerkung benötigt")
+    try:
+        if entscheidung == "abnehmen":
+            return reviews.abnehmen(review_id, anmerkung)
+        ergebnis = reviews.revision(review_id, anmerkung)
+    except KeyError:
+        raise HTTPException(404, "Unbekannte Vorlage")
+    # Tinos Anmerkung wiegt schwerer als jede andere: sie wird zur Lehre, damit
+    # derselbe Einwand nicht bei jeder Vorlage aufs Neue kommt.
+    with suppress(Exception):
+        team.lehre_merken(ergebnis["agent"], anmerkung, quelle="Tino")
+    return ergebnis

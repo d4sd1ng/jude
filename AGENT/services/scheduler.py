@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from core.paths import DATA_DIR
 from services.notifications import NotificationService
@@ -90,13 +90,41 @@ class SchedulerService:
 
     # --------------------------------------------------------------- Lauf
 
+    #: Ein gescheiterter Lauf wird einmal wiederholt – so lange danach.
+    WIEDERHOLUNG_MIN = 30
+    MAX_VERSUCHE = 2
+
     @staticmethod
-    def _is_due(task: dict, now: datetime) -> bool:
+    def _lokal(wert: str | None, now: datetime) -> datetime | None:
+        """Zeitstempel in der Zeitzone von ``now`` lesen.
+
+        ``last_run`` wird in UTC abgelegt, ``now`` ist Ortszeit. Ohne Umrechnung
+        vergleicht der Tagesabgleich unten UTC-Datum mit Ortsdatum: eine Aufgabe
+        um 00:30 Ortszeit (UTC+2) gilt danach den ganzen Vormittag als noch
+        nicht gelaufen und feuert alle 30 Sekunden erneut.
+        """
+        if not wert:
+            return None
+        try:
+            stamp = datetime.fromisoformat(wert)
+        except ValueError:
+            return None
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return stamp.astimezone(now.tzinfo)
+
+    @classmethod
+    def _is_due(cls, task: dict, now: datetime) -> bool:
         if not task.get("enabled", True):
             return False
         schedule = task.get("schedule", {})
-        last = task.get("last_run")
-        last_dt = datetime.fromisoformat(last) if last else None
+        last_dt = cls._lokal(task.get("last_run"), now)
+        # Nachholtermin nach einem Fehlschlag: ein Netzaussetzer am Vormittag
+        # hat den Tageslauf bisher endgueltig gekostet – die Aufgabe galt als
+        # erledigt und war bis zum naechsten Tag gesperrt.
+        wieder = cls._lokal(task.get("retry_at"), now)
+        if wieder is not None and now >= wieder:
+            return True
         if schedule.get("type") == "daily":
             if now.strftime("%H:%M") < schedule.get("at", "99:99"):
                 return False
@@ -133,13 +161,38 @@ class SchedulerService:
                     except Exception:
                         pass
                 fired.append({"id": task["id"], "name": task["name"], "ok": True})
+                self._abschluss(task, now, fehler=None)
             except Exception as exc:
                 NotificationService.create("scheduled_error", task["name"], str(exc)[:1000], {"task_id": task["id"]})
                 fired.append({"id": task["id"], "name": task["name"], "ok": False, "error": str(exc)})
-            finally:
-                with self._lock:
-                    data = self._load()
-                    if task["id"] in data:
-                        data[task["id"]]["last_run"] = now.astimezone(timezone.utc).isoformat()
-                        self._save(data)
+                self._abschluss(task, now, fehler=str(exc))
         return fired
+
+    def _abschluss(self, task: dict, now: datetime, fehler: str | None) -> None:
+        """Lauf festschreiben.
+
+        ``last_run`` bekommt die **Endzeit**, nicht die Startzeit des Ticks:
+        die Aufgaben laufen nacheinander, und ein Lauf kann Minuten dauern –
+        bisher trugen alle Aufgaben eines Durchgangs denselben Zeitstempel.
+        """
+        ende = datetime.now(timezone.utc)
+        with self._lock:
+            data = self._load()
+            eintrag = data.get(task["id"])
+            if eintrag is None:
+                return
+            eintrag["last_run"] = ende.isoformat()
+            versuche = int(eintrag.get("versuche") or 0)
+            if fehler is None:
+                eintrag.pop("retry_at", None)
+                eintrag.pop("versuche", None)
+                eintrag.pop("last_error", None)
+            elif versuche + 1 < self.MAX_VERSUCHE:
+                eintrag["versuche"] = versuche + 1
+                eintrag["retry_at"] = (ende + timedelta(minutes=self.WIEDERHOLUNG_MIN)).isoformat()
+                eintrag["last_error"] = fehler[:500]
+            else:                       # ausgereizt: erst morgen wieder
+                eintrag.pop("retry_at", None)
+                eintrag["versuche"] = 0
+                eintrag["last_error"] = fehler[:500]
+            self._save(data)

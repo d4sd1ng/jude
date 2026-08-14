@@ -68,7 +68,7 @@ input,select,textarea{background:#0f130c;border-color:#31402a;color:var(--ink)}
 .gauge.warn .ring{--gc:var(--accent)}.gauge.hot .ring{--gc:#d43b3b}
 /* Ausgabespalte + Ticker */
 .cockR .output .feed{max-height:460px;min-height:320px}
-.ticker{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;margin-top:16px;
+.ticker{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-top:16px;
   background:linear-gradient(90deg,#0f2c18,#123a1e);border:1px solid #1f4d2c;border-radius:12px;padding:12px 16px}
 .tick{min-width:0}.tick div{color:var(--ink);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .tick .up{color:var(--green)}.tick .down{color:var(--accent)}
@@ -427,3 +427,39 @@ nav button.active{background:#2e6b40;color:#f2efe6;border:0}
 /* Ohne definierte Gesamthöhe bedeutet "1fr" nichts – der Growcontroller hatte
    nichts zu füllen. Das Raster reicht jetzt bis zum unteren Fensterrand. */
 .cockpit{min-height:calc(100vh - 250px)}
+
+/* Abnahme: fertige Arbeit, die auf Tinos Entscheidung wartet. Der Auszug
+   bleibt niedrig, damit zehn Vorlagen nebeneinander noch überschaubar sind –
+   den Volltext holt der Knopf nach. */
+#reviews .card pre{max-height:150px;font-size:12px;background:#0b0e0c;border:1px solid var(--line);border-radius:8px;padding:10px;margin:10px 0}
+#reviews .agentrun{margin-top:10px;flex-wrap:wrap}
+#reviews .agentrun input{min-width:180px}
+
+/* Systemkachel: Gauges oben in voller Breite, darunter eine Reihe aus acht
+   Knöpfen – die vier Schalter und die vier Freigabe-Ampeln. Die Schalter saßen
+   vorher als 2×2-Block im Gauge-Band; der frei gewordene Platz geht an die
+   Gauges, die dadurch von 68 auf bis zu 96 px wachsen. */
+.hudband{overflow-x:visible}
+.hudband .gauge{flex:1 1 0;width:auto;min-width:62px;max-width:96px}
+.hudrow{display:flex;align-items:flex-end;gap:10px;margin-top:12px;flex-wrap:wrap}
+/* Beide Vierergruppen teilen sich die Zeile: gleiche Flex-Basis, damit acht
+   gleich breite Knöpfe nebeneinander stehen statt umzubrechen. */
+.hudrow .toggles{display:flex;gap:8px;flex:1 1 250px;min-width:0}
+.hudrow .toggle{flex:1 1 0;min-width:0}
+.freigabe{flex:1 1 250px;min-width:0}
+.freigabe .eyebrow{display:block;margin-bottom:5px;color:var(--gold)}
+.freigabebtns{display:flex;gap:8px}
+/* Ampel: nur der aktuelle Zustand. Grün = da liegt etwas, Rot = nichts.
+   Der Knopf selbst bleibt neutral, damit das Licht die Aussage trägt. */
+.toggle.rev .lamp{width:11px;height:11px;border-radius:50%;background:#7d2f2f;
+  box-shadow:inset 0 1px 2px #00000099;flex:0 0 auto}
+.toggle.rev.hat .lamp{background:#3fae5f;box-shadow:0 0 8px #3fae5faa,inset 0 1px 2px #0006}
+.toggle.rev.hat{border-color:#2e6b40}
+.toggle.rev{cursor:pointer}
+@media(max-width:1500px){.hudrow{gap:8px}.hudrow .toggles,.freigabebtns{gap:6px}
+  .hudrow .toggle small{font-size:10px}}
+/* Die Knopfreihe trägt zusätzlich .hudband, damit die vorhandene 3D-Optik der
+   Schalter greift; Ausrichtung und Umbruch kommen aber von .hudrow. */
+.hudrow{display:flex;align-items:flex-end;flex-wrap:wrap;overflow:visible}
+.hudrow .toggle{height:36px}
+.hudrow .toggles{display:flex}

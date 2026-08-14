@@ -101,11 +101,36 @@ def _spoken_phrase(value: str) -> str:
     return " ".join(re.findall(r"[\wäöüß]+", value.casefold(), flags=re.UNICODE))
 
 
+def _logging_einrichten(verbose: bool) -> None:
+    """Protokoll auf die Platte, nicht nur nach stderr.
+
+    Bisher gab es keine einzige Log-Datei: die Ausgabe hing am laufenden
+    Prozess und war nach einem Neustart weg. Fehlersuche bestand damit aus
+    Raten. Der Server laeuft tagelang durch, deshalb rotierend.
+    """
+    from logging.handlers import RotatingFileHandler
+    from core.paths import DATA_DIR
+
+    stufe = logging.DEBUG if verbose else logging.INFO
+    handler: list[logging.Handler] = [logging.StreamHandler()]
+    handler[0].setLevel(logging.DEBUG if verbose else logging.WARNING)
+    try:
+        ordner = DATA_DIR / "logs"
+        ordner.mkdir(parents=True, exist_ok=True)
+        datei = RotatingFileHandler(ordner / "jude.log", maxBytes=5_000_000,
+                                    backupCount=5, encoding="utf-8")
+        datei.setLevel(stufe)
+        handler.append(datei)
+    except OSError as exc:                      # z. B. Datentraeger nicht eingehaengt
+        print(f"Warnung: Log-Datei nicht schreibbar ({exc}) – nur Bildschirmausgabe.")
+    logging.basicConfig(level=stufe, handlers=handler, force=True,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
 def main() -> int:
     load_dotenv(Path(__file__).with_name(".env"))
     args = parse_args()
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING,
-                        format="%(levelname)s: %(message)s")
+    _logging_einrichten(args.verbose)
     try:
         if args.desktop or args.gui:
             # Sprachsteuerung läuft im GUI-Betrieb als Hintergrund-Thread der App.

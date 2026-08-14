@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import logging
 import shlex
 import subprocess
+import time
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,6 +17,8 @@ from services.ict_training import ICTTrainingService
 from services.notifications import NotificationService
 
 from core.paths import ICT_PROMPT_FILE as ICT_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 class MT5MCPClient:
@@ -70,6 +74,7 @@ class ICTService:
     def __init__(self, client: MT5MCPClient | None = None):
         self.client = client or MT5MCPClient()
         self.training = ICTTrainingService()
+        self._pause_bis: float | None = None
 
     def prompt(self) -> str:
         return ICT_PROMPT.read_text(encoding="utf-8")
@@ -213,9 +218,20 @@ Snapshot: {json.dumps(snapshot, ensure_ascii=False)}"""
                 active.append(zone)
         return active
 
+    #: Ist die Anbindung tot, wird sie so lange nicht erneut behelligt.
+    PAUSE_MIN = 30
+    #: Fehler, die nicht am Symbol liegen, sondern an der Verbindung selbst.
+    VERBINDUNGSFEHLER = ("initialize()", "authorization failed", "terminal:",
+                         "connection", "not connected")
+
     def run_due(self, router, moment: datetime | None = None) -> list[dict]:
         zones = self.due_zones(moment)
         if not zones:
+            return []
+        # Ohne angemeldetes MT5-Terminal scheitert jeder Lauf identisch. Das lief
+        # gemessen 8.836 Mal durch und schrieb zwei Fehlerzeilen pro Minute in
+        # die Datenbank – ohne dass irgendwo sichtbar wurde, dass nichts geht.
+        if self._pause_bis is not None and time.monotonic() < self._pause_bis:
             return []
         now = moment.astimezone(ZoneInfo(self.scheduler_config()["timezone"])) if moment else datetime.now(ZoneInfo(self.scheduler_config()["timezone"]))
         bucket = now.strftime("%Y%m%d%H%M")
@@ -232,9 +248,18 @@ Snapshot: {json.dumps(snapshot, ensure_ascii=False)}"""
                 results.append(card)
             except Exception as exc:
                 result = f"error: {exc}"
+                if any(muster in str(exc).casefold() for muster in self.VERBINDUNGSFEHLER):
+                    self._pause_bis = time.monotonic() + self.PAUSE_MIN * 60
+                    logger.warning("MT5 nicht erreichbar (%s) – Marktlaeufe pausieren %d Minuten.",
+                                   str(exc)[:120], self.PAUSE_MIN)
+                    with connection() as db:
+                        db.execute("INSERT INTO scheduler_runs(job_key,ran_at,result) VALUES(?,?,?)",
+                                   (job_key, now.isoformat(), result))
+                    return results          # die uebrigen Symbole scheitern genauso
             with connection() as db:
                 db.execute("INSERT INTO scheduler_runs(job_key,ran_at,result) VALUES(?,?,?)",
                            (job_key, now.isoformat(), result))
+        self._pause_bis = None
         return results
 
     @staticmethod

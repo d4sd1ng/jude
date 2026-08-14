@@ -44,7 +44,14 @@ class Agent:
                 "statt nur zu erklären, wie es ginge. "
                 "TEAM: Für wiederkehrende oder abgegrenzte Spezialaufgaben (z.B. Serverwartung per SSH, "
                 "Recherche, Coding) kannst du mit create_sub_agent einen benannten Sub-Agenten mit den "
-                "passenden Skills anlegen (nach Bestätigung) und ihm per delegate_to_agent Aufgaben übergeben."
+                "passenden Skills anlegen (nach Bestätigung) und ihm per delegate_to_agent Aufgaben übergeben. "
+                # Kurzer Draht bei Zuarbeit, Kontrolle am Ergebnis: Texte holt sich
+                # jeder direkt bei Heinz, aber was fertig ist, sieht Jude vor Tino.
+                "CHEF: Du führst das Team. Heinz (49) ist der Redakteur und schreibt alle Texte – "
+                "die Kollegen beauftragen ihn für Zuarbeit direkt, dafür brauchst du nicht "
+                "einzugreifen. Er schreibt nur, er legt nichts ab und verschickt nichts. "
+                "Entscheidend ist das Ende: Was ein Mitarbeiter fertigstellt, prüfst DU, bevor es "
+                "Tino erreicht – auf Marke, Sprache, Werbefloskeln und erfundene Zahlen."
                 + self._SECURITY + address
             )
         self.conversation_history: list[dict[str, Any]] = [

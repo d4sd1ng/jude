@@ -12,6 +12,7 @@ import json
 import re
 import time
 import uuid
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,15 +26,36 @@ _NAME_RE = re.compile(r"^[A-Za-zÄÖÜäöüß0-9 _-]{2,40}$")
 
 
 class SubAgentService:
-    #: Mitarbeiter laufen ueber Groq (llama-3.3-70b, kostenfreie Stufe): 70B statt
-    #: lokal 8B, 128k statt 16k Kontext, mit Werkzeug-Unterstuetzung – und
-    #: gemessen 0,3 s Antwortzeit gegen 138 s lokal. Judes eigenes Chat-Modell
-    #: bleibt davon unberuehrt (dolphin3).
-    #: Faellt Groq aus, greift die normale Fallback-Kette.
-    STANDARD_MODELL = "cloud_groq_llama"
+    #: Die Mitarbeiter fuehren Werkzeugketten aus – dafuer zaehlt nicht Groesse,
+    #: sondern ob das Modell einen Werkzeugaufruf tatsaechlich absetzt. Gemessen
+    #: ueber 13 Laeufe: qwen3:8b 10 von 10 mit echtem Aufruf (Median 115 s),
+    #: Groq 0 von 2 – es schreibt den Aufruf als Text hin. Deshalb ist die Basis
+    #: lokal; Groq bleibt fuer alles OHNE Werkzeuge erste Wahl (siehe
+    #: Judes Chefpruefung, den Redakteur und die Tags in ``config/models.yaml``).
+    #: Judes eigenes Chat-Modell bleibt davon unberuehrt (dolphin3).
+    STANDARD_MODELL = "local_qwen_coder"
+    #: Womit Jude prueft und Heinz textet: 70B, 128k Kontext, kostenfrei, 4 s.
+    #: Dem 8B-Modell sprachlich deutlich ueberlegen – es darf nur keine
+    #: Werkzeuge anfassen, deshalb laeuft beides ohne.
+    TEXT_MODELL = "cloud_groq_llama"
+    #: Der Redakteur. Schreibt alle Texte, fasst selbst nichts an.
+    REDAKTEUR = "redakteur"
+    #: Wer ihn direkt beauftragen darf. Fuer Text braucht es keinen Umweg ueber
+    #: Jude – er prueft ohnehin, was am Ende fertig vorgelegt wird. Bernd traegt
+    #: nur Adressen ein, Heike macht Bilder, Joana schreibt Code.
+    TEXTER = {"social", "content", "sequencer", "scraper", "leadmanager"}
+    #: Wer Kollegen von sich aus ansprechen darf. Bewusst eng: Zuruf ist
+    #: nuetzlich, wenn er selten ist, und Laerm, wenn ihn jeder darf.
+    HINWEISGEBER = {"beobachter", "scraper"}
     TOOL_SCHRITTE = 16       # suchen, lesen, pruefen, ablegen, notieren
     MAX_NOTES = 500          # Obergrenze je Agent
     PROMPT_NOTES = 40        # wie viele davon in den Systemprompt wandern
+    MAX_LEHREN = 40          # Beanstandungen je Mitarbeiter
+    PROMPT_LEHREN = 12       # die haeufigsten davon stehen im Prompt
+    #: Was nicht ins Gedaechtnis darf – Stoerungsmeldungen statt Ergebnisse.
+    KEINE_NOTIZ = ("fehler beim", "fehlgeschlagen", "nicht erreichbar",
+                   "kann nicht hergestellt werden", "keine verbindung",
+                   "verbindung zu", "timeout", "konnte nicht abgerufen")
 
     def __init__(self, registry, router):
         self.registry = registry
@@ -121,6 +143,14 @@ class SubAgentService:
         note = str(note).strip()
         if not note:
             raise ValueError("Die Notiz ist leer.")
+        # Das Gedaechtnis ist fuer Ergebnisse da, nicht fuer Stoerungen. Bernds
+        # Gedaechtnis bestand aus drei Fehlermeldungen und einem Platzhalter –
+        # beim naechsten Lauf las er als 'was ich bisher weiss', dass nichts geht.
+        # Stoerungen gehoeren in die Blocker des Laufs.
+        if any(muster in note.casefold() for muster in self.KEINE_NOTIZ):
+            raise ValueError("Stoerungen gehoeren nicht ins Gedaechtnis, sondern in die "
+                             "Antwort des Laufs. Halte hier nur Ergebnisse fest "
+                             "(z. B. 'Firma X, Adresse Y aus dem Impressum').")
         items = self.notes(name)
         items.append({"note": note[:800], "created_at": datetime.now(timezone.utc).isoformat()})
         items = items[-self.MAX_NOTES:]
@@ -134,6 +164,220 @@ class SubAgentService:
         removed = len(self.notes(name))
         path.unlink(missing_ok=True)
         return {"agent": name, "geloescht": removed}
+
+    # ---------------------------------------------------------- Aus Fehlern lernen
+
+    def _lehren_pfad(self, name: str) -> Path:
+        return DATA_DIR / "sub_agent_lessons" / f"{self._key(name)}.json"
+
+    def lehren(self, name: str) -> list[dict]:
+        """Was diesem Mitarbeiter schon einmal beanstandet wurde."""
+        try:
+            return json.loads(self._lehren_pfad(name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+
+    @staticmethod
+    def _kern(text: str) -> str:
+        """Vergleichsform einer Beanstandung – Interpunktion und Fuellwoerter raus."""
+        return re.sub(r"[^a-z0-9 ]+", "", str(text).casefold())[:90].strip()
+
+    def lehre_merken(self, name: str, beanstandung: str, quelle: str = "Jude") -> dict:
+        """Eine Beanstandung dauerhaft festhalten – einmal, nicht hundertmal.
+
+        Ohne das wiederholt ein Mitarbeiter denselben Fehler bei jedem Lauf:
+        er sieht die Revision, arbeitet sie ab und hat beim naechsten Mal
+        wieder keine Ahnung davon. Gleichlautende Beanstandungen werden
+        zusammengefasst und mitgezaehlt; was oft kam, steht oben.
+        """
+        beanstandung = str(beanstandung).strip()
+        if len(beanstandung) < 8:
+            return {"gemerkt": False}
+        kern = self._kern(beanstandung)
+        eintraege = self.lehren(name)
+        for eintrag in eintraege:
+            if eintrag.get("kern") == kern:
+                eintrag["anzahl"] = int(eintrag.get("anzahl", 1)) + 1
+                eintrag["zuletzt"] = datetime.now(timezone.utc).isoformat()
+                break
+        else:
+            eintraege.append({"kern": kern, "text": beanstandung[:400], "quelle": quelle,
+                              "anzahl": 1,
+                              "zuletzt": datetime.now(timezone.utc).isoformat()})
+        eintraege.sort(key=lambda e: (-int(e.get("anzahl", 1)), e.get("zuletzt", "")))
+        eintraege = eintraege[:self.MAX_LEHREN]
+        pfad = self._lehren_pfad(name)
+        pfad.parent.mkdir(parents=True, exist_ok=True)
+        pfad.write_text(json.dumps(eintraege, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"gemerkt": True, "lehren_gesamt": len(eintraege)}
+
+    def forget_lehren(self, name: str) -> dict:
+        pfad = self._lehren_pfad(name)
+        weg = len(self.lehren(name))
+        pfad.unlink(missing_ok=True)
+        return {"agent": name, "geloescht": weg}
+
+    def _hinweis_tool(self, spec: dict):
+        """Einen Kollegen direkt auf etwas hinweisen.
+
+        Ein Fund ist nur etwas wert, wenn er bei dem landet, der ihn braucht.
+        Der Hinweis geht ins Gedaechtnis des Kollegen und steht damit in seinem
+        naechsten Systemprompt – er muss nicht danach suchen und der Beobachter
+        muss nicht warten. Ueber Jude laeuft das nicht: eine Beobachtung ist
+        Zuarbeit, keine Entscheidung.
+        """
+        from core.tool_registry import Tool
+
+        wer = spec.get("person") or spec["name"]
+
+        def hinweisen(kollege: str, hinweis: str) -> dict:
+            kollege = str(kollege).strip().lower()
+            ziel = self.get(kollege)
+            if ziel is None:
+                bekannt = ", ".join(sorted(a["name"] for a in self.list()))
+                raise ValueError(f"Kein Kollege namens {kollege!r}. Bekannt: {bekannt}.")
+            if kollege == self._key(spec["name"]):
+                raise ValueError("Dir selbst brauchst du nichts mitzuteilen – nutze remember_finding.")
+            if len(str(hinweis).strip()) < 20:
+                raise ValueError("Der Hinweis ist zu duenn. Nenne Quelle, Kernaussage und "
+                                 "warum es fuer den Kollegen brauchbar ist.")
+            self.remember(kollege, f"[Hinweis von {wer}] {hinweis}")
+            return {"zugestellt": True, "an": ziel.get("person") or ziel["name"],
+                    "hinweis": "Steht in seinem naechsten Lauf im Systemprompt."}
+
+        return Tool(
+            name="inform_colleague",
+            description=("Gibt einen Fund direkt an den Kollegen weiter, der ihn brauchen kann "
+                         "(z. B. 'social' fuer Beitragsideen, 'content' fuer Langformate, "
+                         "'sequencer' fuer E-Mail-Themen). Nutze das, sobald du etwas findest, "
+                         "das jemand verwerten kann – sammle es nicht bei dir."),
+            func=hinweisen,
+            param_schema={"type": "object", "properties": {
+                "kollege": {"type": "string", "description":
+                            "Kurzname des Kollegen, z. B. social, content, sequencer."},
+                "hinweis": {"type": "string", "description":
+                            "Quelle, Kernaussage und warum es fuer ihn brauchbar ist."},
+            }, "required": ["kollege", "hinweis"]},
+        )
+
+    def _text_tool(self, spec: dict):
+        """Den Redakteur direkt beauftragen.
+
+        Getextet und orchestriert wird von verschiedenen Modellen, weil kein
+        verfuegbares beides gut kann: qwen3:8b setzt Werkzeugaufrufe zuverlaessig
+        ab (gemessen 10 von 10), schreibt aber merklich schwaecher als ein 70B;
+        Groqs llama-3.3 schreibt gut, bekommt aber keinen Werkzeugaufruf
+        zustande (0 von 2). Heinz laeuft deshalb auf der 70B-Stufe und hat gar
+        keine Werkzeuge – genau der Pfad, auf dem Groq nie gescheitert ist.
+
+        Der kurze Draht ist Absicht: Text ist keine Entscheidung, sondern
+        Zuarbeit. Geprueft wird am Ende ohnehin – aber von Jude, an dem fertigen
+        Erzeugnis, nicht an jedem Zwischenschritt.
+        """
+        from core.tool_registry import Tool
+
+        wer = spec.get("person") or spec["name"]
+
+        def beauftragen(auftrag: str, laenge: str = "mittel", ton: str = "sachlich",
+                        lead: str = "", branche: str = "", taetigkeit: str = "") -> str:
+            grenzen = {"kurz": "hoechstens 200 Zeichen", "mittel": "150 bis 250 Woerter",
+                       "lang": "500 bis 900 Woerter"}
+            # Der Empfaengerbezug trennt einen brauchbaren von einem beliebigen
+            # Text: derselbe Nutzen liest sich fuer eine Tagespflege anders als
+            # fuer einen Fahrdienst.
+            zum_empfaenger = "\n".join(
+                f"{marke}: {wert}" for marke, wert in
+                (("Empfaenger", lead), ("Branche", branche), ("Taetigkeit", taetigkeit))
+                if str(wert).strip())
+            # Ein Text wird selten schlecht, weil Heinz schlecht schreibt – er
+            # wird schlecht, weil der Auftrag nichts hergab. Das faellt sonst
+            # erst auf, wenn Jude das fertige Erzeugnis zurueckweist, und
+            # wiederholt sich bis dahin bei jedem Auftrag.
+            fehlt = [feld for feld, wert in (("Empfaenger", lead), ("Branche", branche),
+                                             ("Taetigkeit", taetigkeit))
+                     if not str(wert).strip()]
+            if len(fehlt) == 3:
+                self.lehre_merken(
+                    spec["name"],
+                    "Deine Auftraege an Heinz kamen ohne jede Angabe zum Empfaenger. "
+                    "Ohne Empfaenger, Branche und Taetigkeit kann er nur Allgemeinplaetze "
+                    "schreiben – gib sie mit, sonst wird der Text zurueckgewiesen.",
+                    quelle="Auftragspruefung")
+            ergebnis = self.run(self.REDAKTEUR, (
+                f"Auftrag von {wer}.\n"
+                f"Ton: {ton}. Laenge: {grenzen.get(laenge, grenzen['mittel'])}.\n"
+                + (zum_empfaenger + "\n" if zum_empfaenger else "") +
+                "Gib ausschliesslich den fertigen Text zurueck – keine Vorrede, keine "
+                "Erklaerung, keine Rueckfrage.\n\n"
+                f"Was gebraucht wird: {auftrag}"))
+            text = str(ergebnis.get("answer") or "").strip()
+            if not text:
+                return ("Heinz hat keinen Text geliefert (Status: "
+                        f"{ergebnis.get('status')}). Versuche es mit einem genaueren Auftrag.")
+            if fehlt:
+                return (text + "\n\n[Hinweis an dich: Dein Auftrag enthielt "
+                        + ", ".join(fehlt) + " nicht. Der Text ist dadurch allgemeiner "
+                        "als noetig – gib die Angaben beim naechsten Mal mit.]")
+            return text
+
+        return Tool(
+            name="write_copy",
+            description=("Beauftragt Heinz, den Redakteur, direkt mit einem fertigen Text "
+                         "(Post, E-Mail, Sequenzmail, Follow-up, Betreff, Abschnitt). Nutze das "
+                         "IMMER, wenn Text entstehen soll, statt selbst zu formulieren – Heinz "
+                         "schreibt sprachlich deutlich besser als du. Gib den Empfaenger so "
+                         "genau an, wie du ihn kennst. Seinen Text legst du danach mit deinen "
+                         "eigenen Werkzeugen ab und legst ihn zur Abnahme vor."),
+            func=beauftragen,
+            param_schema={"type": "object", "properties": {
+                "auftrag": {"type": "string", "description":
+                            "Was gebraucht wird: Art des Textes, Zweck, Kernaussage, Belege. "
+                            "z. B. 'Mail 2 der Nurturing-Sequenz, Nachfassen nach der "
+                            "Erstansprache, Ziel ist ein Telefontermin'."},
+                "lead": {"type": "string", "description":
+                         "Name des Empfaengers oder der Firma, falls bekannt."},
+                "branche": {"type": "string", "description":
+                            "z. B. ambulante Pflege, Tagespflege, Betreuungsdienst."},
+                "taetigkeit": {"type": "string", "description":
+                               "Was die Firma konkret macht – daraus zieht Heinz den Nutzen."},
+                "laenge": {"type": "string", "enum": ["kurz", "mittel", "lang"]},
+                "ton": {"type": "string", "description": "z. B. sachlich, direkt, warm"},
+            }, "required": ["auftrag"]},
+        )
+
+    def _review_tool(self, spec: dict):
+        """Fertiges vorlegen – ohne zu warten.
+
+        Der Mitarbeiter meldet ein Erzeugnis zur Abnahme und arbeitet sofort
+        weiter. Es geht ihn erst wieder etwas an, wenn eine Revision kommt.
+        """
+        from core.tool_registry import Tool
+        from services.review import ARTEN, ReviewQueue
+        queue = ReviewQueue()
+        return Tool(
+            name="submit_for_review",
+            description=("Ein FERTIGES Erzeugnis Tino zur Abnahme vorlegen (Post, E-Mail, Sequenz, "
+                         "Dokument, Recherche, Grafik). Du wartest nicht auf Antwort, sondern "
+                         "arbeitest weiter. Lege alles vor, was rausgehen soll."),
+            func=lambda art, titel, inhalt="", quelle="", ueberarbeitet="": (
+                # Eine Ueberarbeitung ist keine neue Vorlage: dieselbe Zeile geht
+                # eine Runde weiter zurueck zur Pruefung. Ohne das bliebe die alte
+                # ewig auf 'revision' stehen und wuerde bei jedem weiteren Lauf
+                # erneut als "ZUERST ERLEDIGEN" in den Prompt geschoben.
+                queue.erledigt(str(ueberarbeitet).strip(), inhalt or None, titel or None)
+                if str(ueberarbeitet).strip()
+                else queue.vorlegen(spec["name"], art, titel, inhalt, quelle, spec.get("person"))),
+            param_schema={"type": "object", "properties": {
+                "art": {"type": "string", "enum": sorted(ARTEN)},
+                "titel": {"type": "string"},
+                "inhalt": {"type": "string", "description": "Der fertige Text bzw. eine Zusammenfassung."},
+                "quelle": {"type": "string", "description": "Notion-URL oder Pfad, falls vorhanden."},
+                "ueberarbeitet": {"type": "string", "description":
+                                  "NUR wenn du eine Revision einarbeitest: die ID in eckigen "
+                                  "Klammern aus 'ZUERST ERLEDIGEN'. Dann wird die vorhandene "
+                                  "Vorlage ersetzt statt eine zweite anzulegen."},
+            }, "required": ["art", "titel"]},
+        )
 
     def _memory_tool(self, name: str):
         from core.tool_registry import Tool
@@ -152,11 +396,24 @@ class SubAgentService:
         from core.tool_registry import ToolRegistry
         sub = ToolRegistry()
         sub.set_confirmations(self.registry.confirmations)
-        for skill in spec["skills"]:
-            tool = self.registry.tools.get(skill)
-            if tool is not None:
-                sub.register(tool)
-        sub.register(self._memory_tool(spec["name"]))
+        modell = spec.get("model") or self.STANDARD_MODELL
+        # Ein Mitarbeiter, dessen Modell keine Werkzeuge bedienen kann, bekommt
+        # auch keine. Sonst entsteht genau der Schaden, der Mike lahmgelegt hat:
+        # das Modell schreibt den Aufruf als Fliesstext hin, nichts wird abgelegt
+        # und die Antwort sieht trotzdem aus wie Arbeit.
+        werkzeugfaehig = "tools" in getattr(
+            self.router.models.get(modell), "tags", ["tools"])
+        if werkzeugfaehig:
+            for skill in spec["skills"]:
+                tool = self.registry.tools.get(skill)
+                if tool is not None:
+                    sub.register(tool)
+            sub.register(self._memory_tool(spec["name"]))
+            sub.register(self._review_tool(spec))
+            if spec["name"] in self.TEXTER:
+                sub.register(self._text_tool(spec))
+            if spec["name"] in self.HINWEISGEBER:
+                sub.register(self._hinweis_tool(spec))
         person, alter = spec.get("person"), spec.get("alter")
         wer = f"{person} ({alter})" if person and alter else (person or spec["name"])
         vorstellung = (f"Du heißt {person} und bist {alter} Jahre alt. " if person and alter
@@ -166,13 +423,34 @@ class SubAgentService:
                   f"Deine Rolle: {spec['role']}. Nutze ausschließlich deine zugewiesenen Werkzeuge, "
                   f"bleibe bei deiner Aufgabe und antworte knapp und umsetzbar. "
                   f"Wenn du dich meldest, nenne deinen Namen.")
+        # Offene Revisionen haben Vorrang vor neuer Arbeit.
+        from services.review import ReviewQueue
+        revisionen = ReviewQueue().offene_revisionen(spec["name"])
+        if revisionen:
+            zeilen = "\n".join(
+                f"- [{r['id']}] {r['titel']} (Runde {r['runde']}): {r['anmerkung']}"
+                for r in revisionen)
+            prompt += ("\n\nZUERST ERLEDIGEN – Tino hat Überarbeitungen angefordert:\n"
+                       + zeilen +
+                       "\nArbeite jede Anmerkung ein und lege das Ergebnis erneut mit "
+                       "submit_for_review vor – dabei die ID aus der eckigen Klammer "
+                       "als 'ueberarbeitet' mitgeben, sonst bleibt die alte Fassung "
+                       "offen und du bekommst sie beim naechsten Lauf wieder vorgelegt.")
+        gelernt = self.lehren(spec["name"])[:self.PROMPT_LEHREN]
+        if gelernt:
+            zeilen = "\n".join(
+                f"- {e['text']}" + (f"  (schon {e['anzahl']}x beanstandet)"
+                                    if int(e.get("anzahl", 1)) > 1 else "")
+                for e in gelernt)
+            prompt += ("\n\nDAS WURDE DIR SCHON BEANSTANDET – mach es nicht wieder:\n"
+                       + zeilen)
         notes = self.notes(spec["name"])
         if notes:
             recent = "\n".join(f"- {item['note']}" for item in notes[-self.PROMPT_NOTES:])
             prompt += ("\n\nWas du bisher festgehalten hast (nicht doppelt bearbeiten):\n" + recent)
         return Agent(self.router, sub, system_prompt=prompt,
-                     max_tool_steps=self.TOOL_SCHRITTE,
-                     force_model=spec.get("model") or self.STANDARD_MODELL)
+                     max_tool_steps=self.TOOL_SCHRITTE if werkzeugfaehig else 0,
+                     force_model=modell)
 
     def run(self, name: str, task: str) -> dict:
         spec = self.get(name)
@@ -184,11 +462,21 @@ class SubAgentService:
         agent = self._build_agent(spec)
         # Werkzeugaufrufe mitschreiben: ohne sie ist hinterher nicht
         # nachvollziehbar, woran ein Lauf haengengeblieben ist.
+        #
+        # Die Werkzeugschicht wirft bei einem Fehlschlag keine Ausnahme, sondern
+        # gibt ihn als Text zurueck (tool_registry.execute). Der Agent formuliert
+        # daraus eine hoefliche Antwort, und der Lauf sah bisher gelungen aus:
+        # 11 von 11 Laeufen standen auf 'abgeschlossen', obwohl 6 nichts
+        # zustande gebracht hatten. Deshalb wird hier jeder Rueckgabewert geprueft.
         werkzeuge: list[str] = []
+        fehlschlaege: list[str] = []
         original = agent.tools.execute
         def mitschreiben(werkzeug, argumente):
             werkzeuge.append(werkzeug)
-            return original(werkzeug, argumente)
+            ergebnis = original(werkzeug, argumente)
+            if self._ist_fehlschlag(ergebnis):
+                fehlschlaege.append(str(ergebnis).strip()[:300])
+            return ergebnis
         agent.tools.execute = mitschreiben
         begonnen = time.monotonic()
         vorher = self.router_verbrauch()
@@ -197,6 +485,9 @@ class SubAgentService:
         except Exception as exc:
             answer, status = "", "fehlgeschlagen"
             blockers = [f"{type(exc).__name__}: {exc}"]
+        if status != "fehlgeschlagen":
+            status, blockers = self._bewerten(werkzeuge, fehlschlaege,
+                                              hat_werkzeuge=bool(agent.tools.tools))
         # Ergebnisformat nach dem Adapter-Vertrag der Agenten-Standards:
         # agent_id, task_id, status, output, blockers und token_usage sind Pflicht.
         nachher = self.router_verbrauch()
@@ -204,6 +495,10 @@ class SubAgentService:
         ergebnis_id = uuid.uuid4().hex[:12]
         self._protokollieren(ergebnis_id, spec, task, status, answer, blockers,
                              agent.last_model, nachher, vorher, dauer, werkzeuge)
+        # Der Mitarbeiter ist hier fertig – die Chefpruefung haelt ihn nicht auf.
+        # Der Redakteur legt nichts vor, bei ihm gaebe es nichts zu pruefen.
+        geprueft = ([] if spec["name"] == self.REDAKTEUR
+                    else self._chefpruefung(spec["name"]))
         return {
             "agent_id": self._key(spec["name"]),
             "task_id": ergebnis_id,
@@ -226,7 +521,118 @@ class SubAgentService:
             },
             "duration_ms": dauer,
             "tool_calls": werkzeuge,
+            "chefpruefung": geprueft,
         }
+
+    #: Rueckgabetexte, mit denen ``ToolRegistry.execute`` einen Fehlschlag meldet.
+    FEHLERMUSTER = ("' fehlgeschlagen:", "' nicht gefunden.",
+                    "Tool-Argumente müssen ein Objekt sein.",
+                    "Aktion konnte nicht vorgemerkt werden:")
+
+    @classmethod
+    def _ist_fehlschlag(cls, ergebnis) -> bool:
+        text = str(ergebnis)
+        return any(muster in text for muster in cls.FEHLERMUSTER)
+
+    @staticmethod
+    def _bewerten(werkzeuge: list[str], fehlschlaege: list[str],
+                  hat_werkzeuge: bool = True) -> tuple[str, list[str]]:
+        """Ehrlicher Status statt pauschalem 'abgeschlossen'.
+
+        Bewertet wird ausschliesslich Gemessenes – welche Werkzeuge liefen und
+        welche meldeten einen Fehler. Der Antworttext wird bewusst nicht
+        ausgewertet: ein Modell, das seinen Misserfolg schoenschreibt, wuerde
+        sonst genau die Luecke wieder aufreissen.
+
+        ``fehlgeschlagen``  kein Werkzeug hat funktioniert
+        ``teilweise``       einzelne Werkzeuge scheiterten, oder es wurde gar
+                            keines benutzt (das Modell hat den Aufruf nur
+                            hingeschrieben statt ihn auszufuehren)
+        ``abgeschlossen``   alle Werkzeugaufrufe gingen durch
+        """
+        if not hat_werkzeuge:
+            # Der Redakteur hat keine Werkzeuge; sein Ergebnis IST der Text.
+            return "abgeschlossen", []
+        if not werkzeuge:
+            return "teilweise", ["Kein Werkzeug benutzt – das Ergebnis wurde nirgends abgelegt."]
+        if not fehlschlaege:
+            return "abgeschlossen", []
+        if len(fehlschlaege) >= len(werkzeuge):
+            return "fehlgeschlagen", fehlschlaege
+        return "teilweise", fehlschlaege
+
+    #: Woran Jude ein Erzeugnis misst, bevor er es Tino vorlegt.
+    CHEF_MASSSTAB = (
+        "0. Auftritt: hochwertig und ruhig, dunkelgruen und Gold auf mattem Schwarz. "
+        "Marktgeschrei, Ausrufezeichen-Ketten, Emoji-Teppiche und Rabattsprache sind "
+        "Ausschluss – wir wirken wie eine teure Manufaktur, nicht wie eine Werbeagentur.\n"
+        "1. Marke: Nurovelle, 'Building Intelligent Systems'. 'Autonova' und 'Politara' "
+        "duerfen nirgends vorkommen. Von KI zu sprechen ist richtig, aber nie als "
+        "Schlagwort ohne einen Ablauf, den der Leser kennt.\n"
+        "2. Sprache: durchgehend Deutsch, kein englisches Wort, keine Platzhalter "
+        "wie {{name}}, kein abgeschnittener Satz.\n"
+        "3. Kein Werbedeutsch: 'Loesung', 'benutzerfreundlich', 'innovativ', "
+        "'optimieren', 'auf Ihre Beduerfnisse zugeschnitten' sind Ausschluss.\n"
+        "4. Keine erfundenen Zahlen, Kundenstimmen oder Referenzen. Platzhalter jeder Art "
+        "sind Ausschluss – auch ein Hinweis wie 'vor Veroeffentlichung ersetzen'. Wer eine "
+        "Zahl nicht belegen kann, liefert eine Fassung, die ohne sie auskommt.\n"
+        "5. Konkreter Nutzen statt Schlagwort – der Empfaenger muss erkennen, "
+        "was sich in seinem Alltag aendert.\n"
+        "6. Kein Preis in einer Erstansprache.\n"
+        "7. Der Text ist vollstaendig und koennte so rausgehen."
+    )
+
+    def _chefpruefung(self, agent_name: str) -> list[dict]:
+        """Jude sieht als Vorgesetzter alles an, bevor es Tino erreicht.
+
+        Laeuft nach dem Lauf des Mitarbeiters, nicht waehrenddessen – er ist
+        dann laengst fertig und wartet auf nichts. Was Jude durchlaesst, geht
+        auf ``offen`` und erscheint in Tinos Abnahme; was er beanstandet, geht
+        als Revision an den Verfasser zurueck und taucht bei Tino nie auf.
+
+        Die Pruefung laeuft ohne Werkzeuge – deshalb darf hier die schnelle
+        70B-Stufe ran, die an Werkzeugketten scheitert.
+        """
+        from services.review import ReviewQueue
+
+        queue = ReviewQueue()
+        offene = [v for v in queue.zur_pruefung(limit=20) if v["agent"] == agent_name]
+        entschieden = []
+        for vorlage in offene:
+            try:
+                voll = queue.zeigen(vorlage["id"])
+                frage = (
+                    "Du bist Jude, Geschaeftsfuehrer von Nurovelle. Ein Mitarbeiter legt dir "
+                    "etwas Fertiges vor. Pruefe es, bevor es Tino erreicht.\n\n"
+                    f"Massstab:\n{self.CHEF_MASSSTAB}\n\n"
+                    f"Von: {voll.get('person') or voll['agent']}\n"
+                    f"Art: {voll['art']}\nTitel: {voll['titel']}\n"
+                    f"Inhalt:\n{(voll.get('inhalt') or '')[:4000]}\n\n"
+                    "Antworte in genau einer Zeile, beginnend mit FREIGABE oder REVISION, "
+                    "danach ein Doppelpunkt und eine kurze Begruendung. Bei REVISION nenne "
+                    "konkret, was zu aendern ist. Sei streng, aber beanstande nur, was gegen "
+                    "den Massstab verstoesst."
+                )
+                antwort = self.router.call_with_fallback(
+                    [{"role": "user", "content": frage}], force_model=self.TEXT_MODELL)
+                urteil = str(antwort.get("content", "")).strip()
+                begruendung = urteil.split(":", 1)[-1].strip()[:400] or "ohne Begruendung"
+                if urteil.upper().startswith("REVISION"):
+                    queue.revision(vorlage["id"], f"Jude: {begruendung}")
+                    # Damit derselbe Fehler nicht beim naechsten Lauf wiederkommt.
+                    self.lehre_merken(agent_name, begruendung, quelle="Jude")
+                    entschieden.append({"id": vorlage["id"], "urteil": "revision"})
+                else:
+                    queue.freigeben(vorlage["id"], f"Jude: {begruendung}")
+                    entschieden.append({"id": vorlage["id"], "urteil": "freigabe"})
+            except Exception as exc:
+                # Im Zweifel nach oben durchreichen: lieber legt Tino etwas
+                # Mittelmaessiges beiseite, als dass Arbeit unsichtbar liegen bleibt.
+                logger.warning("Chefpruefung fehlgeschlagen (%s): %s", vorlage["id"], exc)
+                with suppress(Exception):
+                    queue.freigeben(vorlage["id"], "Ungeprueft – Judes Pruefung fiel aus.")
+                entschieden.append({"id": vorlage["id"], "urteil": "ungeprueft"})
+        return entschieden
 
     def _protokollieren(self, lauf_id, spec, task, status, answer, blockers,
                         modell, nachher, vorher, dauer, werkzeuge) -> None:

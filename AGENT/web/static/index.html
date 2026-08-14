@@ -22,12 +22,6 @@
     </div>
     <div class="cockC">
       <div class="panel hudpanel bandpanel"><h3>System</h3><div class="hudband">
-        <div class="toggles">
-          <button class="toggle" id="tglVoice" title="Sprachsteuerung"><span>🎙️</span><small>Stimme</small></button>
-          <button class="toggle" id="tglMarket" title="Marktdaten automatisch aktualisieren"><span>📈</span><small>Markt</small></button>
-          <button class="toggle" id="tglNews" title="News automatisch aktualisieren"><span>📰</span><small>News</small></button>
-          <button class="toggle" id="tglRadar" title="Radar automatisch aktualisieren"><span>🌧️</span><small>Radar</small></button>
-        </div>
         <div class="gauge" id="gCpu"><div class="ring"></div><b>–</b><small>CPU %</small></div>
         <div class="gauge" id="gRam"><div class="ring"></div><b>–</b><small>RAM %</small></div>
         <div class="gauge" id="gDisk"><div class="ring"></div><b>–</b><small>Disk %</small></div>
@@ -35,6 +29,22 @@
         <div class="gauge" id="gCpuTemp"><div class="ring"></div><b>–</b><small>CPU °C</small></div>
         <div class="gauge" id="gGpuTemp"><div class="ring"></div><b>–</b><small>GPU °C</small></div>
         <div class="gauge" id="gNvme"><div class="ring"></div><b>–</b><small>NVMe °C</small></div>
+      </div>
+      <div class="hudrow hudband">
+        <div class="toggles">
+          <button class="toggle" id="tglVoice" title="Sprachsteuerung"><span>🎙️</span><small>Stimme</small></button>
+          <button class="toggle" id="tglMarket" title="Marktdaten automatisch aktualisieren"><span>📈</span><small>Markt</small></button>
+          <button class="toggle" id="tglNews" title="News automatisch aktualisieren"><span>📰</span><small>News</small></button>
+          <button class="toggle" id="tglRadar" title="Radar automatisch aktualisieren"><span>🌧️</span><small>Radar</small></button>
+        </div>
+        <div class="freigabe"><span class="eyebrow">ZUR FREIGABE</span>
+          <div class="freigabebtns">
+            <button class="toggle rev" data-art="grafik" title="Grafiken zur Freigabe"><span class="lamp"></span><small>Grafik</small></button>
+            <button class="toggle rev" data-art="post" title="Posts zur Freigabe"><span class="lamp"></span><small>Post</small></button>
+            <button class="toggle rev" data-art="email" title="E-Mails zur Freigabe"><span class="lamp"></span><small>E-Mail</small></button>
+            <button class="toggle rev" data-art="newsletter" title="Newsletter zur Freigabe"><span class="lamp"></span><small>Newsletter</small></button>
+          </div>
+        </div>
       </div></div>
       <div class="panel hudpanel wakepanel"><h3>Aktivierungswort</h3>
         <form id="wakeForm" class="controls">
@@ -59,6 +69,7 @@
     <div class="tick"><span class="eyebrow">BTC/USD</span><div id="tickBtc">–</div></div>
     <div class="tick"><span class="eyebrow">MODELL</span><div id="tickModel">–</div></div>
     <div class="tick"><span class="eyebrow">STIMME</span><div id="tickVoice">aus</div></div>
+    <div class="tick"><span class="eyebrow">ABNAHME</span><div id="tickReview">–</div></div>
   </div>
 </section>
 <section data-page="Märkte">
@@ -138,5 +149,9 @@
   <div class="sectionhead"><div><span class="eyebrow">LOCAL FIRST</span><h2>Modell-Routing &amp; Verbrauch</h2></div><button id="loadRouting">Aktualisieren</button></div>
   <div id="routingStats" class="stats"></div>
   <div class="grid2"><article class="panel"><h3>Verbrauch je Modell</h3><div id="routingUsage"></div></article><article class="panel"><h3>Letzte Entscheidungen</h3><div id="routingHistory"></div></article></div>
+  <div class="sectionhead"><div><span class="eyebrow">FERTIGE ARBEIT</span><h2>Abnahme</h2></div><button id="loadReviews">Aktualisieren</button></div>
+  <p class="muted small">Was ein Mitarbeiter fertig gemeldet hat. Er arbeitet weiter — nur eine Revision kommt bei ihm wieder an.</p>
+  <div id="reviews" class="cards"></div>
+
 <div class="sectionhead"><div><span class="eyebrow">SAFETY GATE</span><h2>Bestätigungen</h2></div><button id="loadConfirmations">Aktualisieren</button></div><div id="confirmations" class="cards"></div></section>
 </main><div id="toast" role="status"></div><script src="/static/vendor/leaflet.js"></script><script src="/static/app.js"></script></body></html>

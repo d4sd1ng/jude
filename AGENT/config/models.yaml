@@ -104,7 +104,13 @@ models:
     avg_latency_ms: 350
     max_tokens: 8192
     context_length: 128000
-    tags: [cloud, schnell, allgemein, analyse, tools]
+    # Kein 'tools'-Tag, und das ist gemessen, nicht vermutet: llama-3.3 gibt den
+    # Werkzeugaufruf als Fliesstext aus statt ihn auszufuehren – einmal
+    # stillschweigend (Antwort enthielt "<function=notion_schema,{...}", null
+    # Aufrufe), einmal als HTTP 400 "tool_use_failed". Zwei von zwei Versuchen.
+    # Fuer alles ohne Werkzeuge bleibt es erste Wahl: 70B, 128k Kontext,
+    # kostenfrei und mit 4 s die schnellste Stufe ueberhaupt.
+    tags: [cloud, schnell, allgemein, analyse]
     priority: 8
 
   cloud_openrouter_dolphin:
