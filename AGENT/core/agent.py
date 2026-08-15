@@ -60,6 +60,35 @@ class Agent:
         self.last_model: str | None = None
         self.last_route_id: str | None = None
 
+    def _team_roster(self) -> str:
+        """Aktuelle Mitarbeiter in den Systemprompt.
+
+        Ohne die Liste erfindet das Modell Agentennamen (etwa
+        "SocialMediaPlanReview"), statt list_sub_agents aufzurufen –
+        deshalb steht das Roster wie der Zeitstempel bei jeder Anfrage
+        frisch im Prompt. Sub-Agenten selbst haben kein ``team``-Attribut
+        und bekommen nichts injiziert.
+        """
+        team = getattr(self, "team", None)
+        if team is None:
+            return ""
+        try:
+            mitglieder = team.list()
+        except Exception:
+            return ""
+        if not mitglieder:
+            return ""
+        zeilen = []
+        for m in mitglieder:
+            rolle = " ".join(str(m.get("role", "")).split())
+            if len(rolle) > 90:
+                rolle = rolle[:90].rsplit(" ", 1)[0] + " …"
+            skills = ", ".join(m.get("skills") or []) or "keine Werkzeuge"
+            zeilen.append(f"- {m['name']}: {rolle} (Werkzeuge: {skills})")
+        return ("\nDEIN TEAM – genau diese Mitarbeiter existieren. Delegiere mit "
+                "delegate_to_agent an exakt diese Namen, erfinde keine weiteren:\n"
+                + "\n".join(zeilen))
+
     def process_input(self, user_text: str) -> str:
         if not user_text.strip():
             return ""
@@ -74,7 +103,7 @@ class Agent:
         now = datetime.now().astimezone()
         stamp = ("\nAktueller Zeitpunkt (verlass dich darauf, rate nicht): "
                  + now.strftime("%A, %d.%m.%Y, %H:%M Uhr %Z"))
-        self.conversation_history[0]["content"] = self._base_system + stamp + (
+        self.conversation_history[0]["content"] = self._base_system + stamp + self._team_roster() + (
             "\nLokales Gedächtnis für diese Anfrage:\n" + memory_context if memory_context else ""
         )
         allow_uncensored = "unzensiert" in user_text.lower()

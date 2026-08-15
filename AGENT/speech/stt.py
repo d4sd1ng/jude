@@ -71,56 +71,81 @@ def listen(seconds: float = 5.0, sample_rate: int = SAMPLE_RATE) -> str:
     return transcribe(np.ravel(audio))
 
 
+_WHISPER_JUNK = re.compile(r"copyright|untertitel|\bzdf\b|\bwdr\b|\bswr\b|\bard\b")
+
+
 class PhraseWakeListener:
     """Aktivierungswort über Whisper statt über ein trainiertes Modell.
 
     Das selbst trainierte ONNX-Modell verlangte eine nahezu identische
     Aussprache (Schwelle 0,99 = niedrigster Score der Trainingsaufnahmen) und
-    versagte schon ab einem halben Meter Abstand. Jarvis erkannte das
-    Aktivierungswort dagegen rein über den transkribierten Text – jede Phrase
-    funktioniert sofort, ohne Training, und lässt sich in der GUI ändern.
+    versagte schon ab einem halben Meter Abstand. Erkannt wird deshalb rein
+    über den transkribierten Text – jede Phrase funktioniert sofort, ohne
+    Training, und lässt sich in der GUI ändern.
 
-    Gehört wird in einem gleitenden Fenster: alle ``hop`` Sekunden werden die
-    letzten ``window`` Sekunden transkribiert. Die Überlappung sorgt dafür, dass
-    eine Phrase nicht an der Fenstergrenze zerrissen wird. Whisper filtert
-    Stille selbst heraus, ein Energie-Schwellwert ist nicht nötig.
+    Die Aufnahme läuft über einen Callback kontinuierlich in einen Ringpuffer;
+    die (langsame) Transkription liest nur Schnappschüsse daraus. Vorher
+    blockierte das Transkribieren das Einlesen, der Treiberpuffer lief über
+    und die Phrase wurde zerstückelt – kurze Wörter kamen durch, das
+    Aktivierungswort nie. Der Abgleich ist unscharf (difflib) und prüft auch
+    das vorige Fenster mit, damit eine an der Fenstergrenze zerteilte Phrase
+    trotzdem zündet.
     """
 
-    def __init__(self, phrase: str | None = None, window: float = 3.0, hop: float = 1.0):
+    def __init__(self, phrase: str | None = None, window: float = 4.0, hop: float = 1.0):
         self.phrase = _spoken_phrase(phrase or os.getenv("JUDE_WAKE_PHRASE", "Jude angetreten"))
         self.window = max(1.5, float(os.getenv("JUDE_WAKE_WINDOW", window)))
         self.hop = max(0.4, float(os.getenv("JUDE_WAKE_HOP", hop)))
         self._stream = None
+        self._chunks: deque[bytes] | None = None
+        self._last_heard = ""
 
     def _open(self):
         import sounddevice as sd
         if self._stream is None:
+            self._chunks = deque(maxlen=max(2, int(self.window / 0.1)))
+
+            def _capture(indata, frames, time_info, status):
+                self._chunks.append(bytes(indata))
+
             self._stream = sd.RawInputStream(samplerate=SAMPLE_RATE, channels=1,
-                                             dtype="int16", blocksize=int(0.1 * SAMPLE_RATE))
+                                             dtype="int16", blocksize=int(0.1 * SAMPLE_RATE),
+                                             callback=_capture)
             self._stream.start()
         return self._stream
 
+    def _matches(self, heard: str) -> bool:
+        import difflib
+        needed = len(self.phrase.split())
+        for text in (heard, (self._last_heard + " " + heard).strip()):
+            if self.phrase in text:
+                return True
+            words = text.split()
+            for i in range(max(1, len(words) - needed + 1)):
+                candidate = " ".join(words[i:i + needed])
+                if difflib.SequenceMatcher(None, self.phrase, candidate).ratio() >= 0.75:
+                    return True
+        return False
+
     def wait(self, timeout: float | None = None) -> float:
-        stream = self._open()
-        buffer: deque[np.ndarray] = deque(maxlen=int(self.window / 0.1))
+        self._open()
         started = time.monotonic()
-        since_check = 0.0
         while timeout is None or time.monotonic() - started < timeout:
-            raw, overflowed = stream.read(int(0.1 * SAMPLE_RATE))
-            if overflowed:
+            time.sleep(0.25)
+            chunks = list(self._chunks or ())
+            if len(chunks) < (self._chunks.maxlen or 2) // 2:
                 continue
-            buffer.append(np.frombuffer(raw, dtype=np.int16).copy())
-            since_check += 0.1
-            if since_check < self.hop or len(buffer) < buffer.maxlen // 2:
+            audio = np.frombuffer(b"".join(chunks), dtype=np.int16)
+            if float(np.abs(audio).max()) < 40:  # Stille: Whisper würde nur halluzinieren
                 continue
-            since_check = 0.0
-            heard = _spoken_phrase(transcribe(np.concatenate(buffer), use_vad=False))
-            if not heard:
-                continue
-            if self.phrase in heard:
-                buffer.clear()
+            heard = _spoken_phrase(transcribe(audio, use_vad=False))
+            if heard and self._matches(heard):
+                self._chunks.clear()
+                self._last_heard = ""
                 return 1.0
-            logger.info("gehört: %r (warte auf %r)", heard, self.phrase)
+            if heard and heard != self._last_heard and not _WHISPER_JUNK.search(heard):
+                logger.info("gehört: %r (warte auf %r)", heard, self.phrase)
+            self._last_heard = heard
         raise TimeoutError("Aktivierungswort nicht erkannt.")
 
     def close(self) -> None:
@@ -128,6 +153,7 @@ class PhraseWakeListener:
             self._stream.stop()
             self._stream.close()
             self._stream = None
+            self._chunks = None
 
 
 class OnnxWakeWordListener:

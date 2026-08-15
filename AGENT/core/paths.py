@@ -34,7 +34,10 @@ def _detect_root() -> Path:
 
 
 AI_DATA_ROOT = _detect_root()
-JUDE_DIR = AI_DATA_ROOT / "Jude"
+# Judes eigener Bestand (Daten, Modelle, Sicherungen, tmp) liegt seit 2026-08
+# im Projektordner selbst – ein Ort für Code UND Daten. Ableitung über
+# __file__ statt AI_DATA_ROOT, damit das auf Debian und Windows greift.
+JUDE_DIR = Path(os.getenv("JUDE_DIR") or Path(__file__).resolve().parents[2])
 DATA_DIR = Path(os.getenv("JUDE_DATA_DIR") or (JUDE_DIR / "data"))
 MODELS_DIR = JUDE_DIR / "models"
 MEALS_DIR = AI_DATA_ROOT / "Essensplan"

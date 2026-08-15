@@ -422,7 +422,12 @@ class SubAgentService:
                   f"{vorstellung}"
                   f"Deine Rolle: {spec['role']}. Nutze ausschließlich deine zugewiesenen Werkzeuge, "
                   f"bleibe bei deiner Aufgabe und antworte knapp und umsetzbar. "
-                  f"Wenn du dich meldest, nenne deinen Namen.")
+                  f"Wenn du dich meldest, nenne deinen Namen. "
+                  # Ohne diese Zeile antworten qwen/llama englisch – und alles, was an der
+                  # Chefpruefung vorbeigeht (Antworten, Notizen, Notion), kommt englisch an.
+                  f"SPRACHE: Du arbeitest durchgehend auf Deutsch – jede Antwort, Notiz, "
+                  f"jeder Notion-Eintrag und jede Datei. Englisch nur, wenn der Auftrag es "
+                  f"ausdrücklich verlangt.")
         # Offene Revisionen haben Vorrang vor neuer Arbeit.
         from services.review import ReviewQueue
         revisionen = ReviewQueue().offene_revisionen(spec["name"])

@@ -106,7 +106,7 @@ def sammeln() -> tuple[list[dict], Counter]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Trainingsdaten exportieren (JSONL).")
     parser.add_argument("--write", action="store_true", help="Datei wirklich schreiben")
-    parser.add_argument("--out", default=None, help="Zieldatei (Standard: AI-Data/Jude/training/)")
+    parser.add_argument("--out", default=None, help="Zieldatei (Standard: training/ im Jude-Projektordner)")
     args = parser.parse_args()
 
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")

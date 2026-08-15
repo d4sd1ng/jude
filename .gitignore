@@ -19,3 +19,17 @@ tmp/
 .~lock.*#
 .env.bak*
 *.env.bak*
+
+# --- Datei-Austausch Tino <-> Team (Inhalte gehören nicht ins Repo) ---
+austausch/
+
+# --- Judes Datenbestand (umgezogen aus AI-Data/Jude, gehört nicht ins Repo) ---
+/data/
+/models/
+/images/
+/backups/
+/test-data/
+/test-repos/
+/tmp/
+/generated_tools/
+/training/
