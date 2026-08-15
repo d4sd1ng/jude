@@ -111,7 +111,18 @@ def stand() -> dict:
     """Was noch da ist – für die Anzeige und für die Bremse."""
     roh = _laden()
     limit = int(roh.get("limit") or TAGESLIMIT)
-    rest = int(roh.get("rest", limit))
+    # Groqs Tageslimit setzt sich täglich zurück – eine Messung von gestern
+    # sagt über heute nichts. Ohne diesen Reset bremste der Stand vom 13.08.
+    # noch am 15.08. jede Groq-Anfrage aus.
+    gemessen = roh.get("gemessen_am")
+    neuer_tag = False
+    if gemessen:
+        try:
+            neuer_tag = (datetime.fromisoformat(gemessen).date()
+                         < datetime.now(timezone.utc).date())
+        except ValueError:
+            neuer_tag = True
+    rest = limit if neuer_tag else int(roh.get("rest", limit))
     gesperrt = False
     frei_ab = roh.get("gesperrt_bis")
     if frei_ab:
@@ -128,7 +139,7 @@ def stand() -> dict:
         "gesperrt": gesperrt,
         "frei_ab": frei_ab if gesperrt else None,
         "gemessen_am": roh.get("gemessen_am"),
-        "quelle": roh.get("quelle"),
+        "quelle": "neuer Tag (zurückgesetzt)" if neuer_tag else roh.get("quelle"),
     }
 
 

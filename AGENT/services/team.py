@@ -427,7 +427,15 @@ class SubAgentService:
                   # Chefpruefung vorbeigeht (Antworten, Notizen, Notion), kommt englisch an.
                   f"SPRACHE: Du arbeitest durchgehend auf Deutsch – jede Antwort, Notiz, "
                   f"jeder Notion-Eintrag und jede Datei. Englisch nur, wenn der Auftrag es "
-                  f"ausdrücklich verlangt.")
+                  f"ausdrücklich verlangt. "
+                  # 21 Läufe, 1 Vorlage: Die Arbeit ging nach Notion und galt damit als
+                  # fertig – bei Tino kam nie etwas zur Abnahme an. Deshalb Pflicht.
+                  f"ABNAHME-PFLICHT: Nichts gilt als fertig, was nicht vorgelegt wurde. "
+                  f"Jedes Erzeugnis, das nach außen geht oder das Tino sehen soll (Post, "
+                  f"E-Mail, Newsletter, Sequenz, Dokument, Recherche-Ergebnis, Grafik), "
+                  f"legst du am Ende deines Laufs mit submit_for_review vor – auch wenn es "
+                  f"schon in Notion steht; nenne dann die Notion-URL als quelle. Interne "
+                  f"Zuarbeit (Notizen, Hinweise an Kollegen) braucht keine Vorlage.")
         # Offene Revisionen haben Vorrang vor neuer Arbeit.
         from services.review import ReviewQueue
         revisionen = ReviewQueue().offene_revisionen(spec["name"])
