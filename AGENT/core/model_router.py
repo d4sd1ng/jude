@@ -410,7 +410,12 @@ class ModelRouter:
         r"prüfe|überprüfe|klone|committe|pushe?|pulle?|deploy|sende|schicke|lösche|entferne|"
         r"installiere|aktualisiere|richte\s+.*\bein|kümmere?\s+dich|öffne|lade\b|hol(e)?\b|"
         r"schalte|zeig(e)?\s+mir\s+(die|den|das|aktuelle)|liste|suche|schreibe\s+.*\b(datei|in)\b|"
-        r"ssh|verbinde|run|execute|clone|create|delete|send|deploy|fetch|list)\b",
+        r"ssh|verbinde|run|execute|clone|create|delete|send|deploy|fetch|list|"
+        # Betriebsfragen (Abnahme, Kontingent, Team-Ergebnisse) brauchen Werkzeuge –
+        # ohne diese Begriffe blieb dolphin dran und schwafelte statt nachzusehen.
+        r"abnahme|abnehmen|abzunehmen|freigeben|freigabe|approve|review|"
+        r"kontingent|token|budget|verbraucht|verbrannt|burned|"
+        r"team|mitarbeiter|austausch|generiert|generated|produziert|erzeugt|erledigt)\b",
         re.IGNORECASE,
     )
 

@@ -223,6 +223,17 @@ def _chat_sync(text: str) -> dict:
         return {"answer": answer_text, "model": agent.last_model, "route_id": agent.last_route_id}
 
 
+@app.post("/api/austausch/upload")
+async def austausch_upload(file: UploadFile = File(...)):
+    """Dokument von Tino entgegennehmen: landet in austausch/an-team."""
+    from tools.austausch import AUSTAUSCH_DIR, _dateiname
+    name = _dateiname(file.filename or "dokument")
+    ziel = AUSTAUSCH_DIR / "an-team" / name
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    ziel.write_bytes(await file.read())
+    return {"name": name, "pfad": str(ziel)}
+
+
 @app.post("/api/chat")
 async def chat(payload: dict):
     text = str(payload.get("text", "")).strip()
