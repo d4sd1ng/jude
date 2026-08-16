@@ -33,3 +33,6 @@ austausch/
 /tmp/
 /generated_tools/
 /training/
+
+# Versehentliche Riesendatei im Stamm – wurde zweimal blind mitcommittet
+/pathlib
