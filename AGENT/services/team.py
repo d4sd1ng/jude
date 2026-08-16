@@ -33,7 +33,11 @@ class SubAgentService:
     #: lokal; Groq bleibt fuer alles OHNE Werkzeuge erste Wahl (siehe
     #: Judes Chefpruefung, den Redakteur und die Tags in ``config/models.yaml``).
     #: Judes eigenes Chat-Modell bleibt davon unberuehrt (dolphin3).
-    STANDARD_MODELL = "local_qwen_coder"
+    # Seit 15.08.2026: Cloud-Haiku statt lokalem qwen – qwen brauchte auf der
+    # RX 580 (Modell nur zu 73 % in der GPU) 9+ Minuten pro Lauf, Haiku ist
+    # werkzeugfaehig, zuverlaessig und in Sekunden fertig. Kosten: siehe
+    # models.yaml. Lokal bleibt als Fallback in der Kette erhalten.
+    STANDARD_MODELL = "cloud_claude_haiku"
     #: Womit Jude prueft und Heinz textet: 70B, 128k Kontext, kostenfrei, 4 s.
     #: Dem 8B-Modell sprachlich deutlich ueberlegen – es darf nur keine
     #: Werkzeuge anfassen, deshalb laeuft beides ohne.
@@ -199,6 +203,24 @@ class SubAgentService:
             if eintrag.get("kern") == kern:
                 eintrag["anzahl"] = int(eintrag.get("anzahl", 1)) + 1
                 eintrag["zuletzt"] = datetime.now(timezone.utc).isoformat()
+                # Häufung = Systemfehler, nicht Einzelfall: ab 3 gleichen
+                # Beanstandungen wird eine Prompt-Diagnose beauftragt (einmalig).
+                if int(eintrag.get("anzahl", 1)) == 3:
+                    try:
+                        from services.auftraege import Auftragsbuch
+                        buch = Auftragsbuch()
+                        titel = f"Prompt-Diagnose {name}"
+                        if not any(a["titel"] == titel and a["status"] in ("offen", "in_arbeit", "vorgelegt")
+                                   for a in buch.liste("alle", limit=200)):
+                            buch.erteilen("projektleitung", titel,
+                                          f"Der Mitarbeiter {name} wurde 3x wegen desselben Punkts beanstandet: "
+                                          f"'{eintrag.get('text', '')[:200]}'. Analysiere: Liegt es an seiner Rolle, "
+                                          f"an der Auftragsformulierung oder am Prüf-Maßstab? Lies seine Rolle mit "
+                                          f"list_sub_agents und mache einen konkreten Vorher/Nachher-Vorschlag. "
+                                          f"Lege das Ergebnis mit submit_for_review (art dokument) vor.",
+                                          quelle="jude")
+                    except Exception:
+                        pass
                 break
         else:
             eintraege.append({"kern": kern, "text": beanstandung[:400], "quelle": quelle,
@@ -354,19 +376,27 @@ class SubAgentService:
         from core.tool_registry import Tool
         from services.review import ARTEN, ReviewQueue
         queue = ReviewQueue()
+        def _einreichen(art, titel, inhalt="", quelle="", ueberarbeitet="", auftrag_id=""):
+            # Eine Ueberarbeitung ist keine neue Vorlage: dieselbe Zeile geht
+            # eine Runde weiter zurueck zur Pruefung.
+            if str(ueberarbeitet).strip():
+                ergebnis = queue.erledigt(str(ueberarbeitet).strip(), inhalt or None, titel or None)
+            else:
+                ergebnis = queue.vorlegen(spec["name"], art, titel, inhalt, quelle, spec.get("person"))
+            if str(auftrag_id).strip():
+                try:
+                    from services.auftraege import Auftragsbuch
+                    Auftragsbuch().verknuepfen(str(auftrag_id).strip(),
+                                               ergebnis.get("id") or str(ueberarbeitet).strip())
+                except Exception:
+                    pass
+            return ergebnis
         return Tool(
             name="submit_for_review",
             description=("Ein FERTIGES Erzeugnis Tino zur Abnahme vorlegen (Post, E-Mail, Sequenz, "
                          "Dokument, Recherche, Grafik). Du wartest nicht auf Antwort, sondern "
                          "arbeitest weiter. Lege alles vor, was rausgehen soll."),
-            func=lambda art, titel, inhalt="", quelle="", ueberarbeitet="": (
-                # Eine Ueberarbeitung ist keine neue Vorlage: dieselbe Zeile geht
-                # eine Runde weiter zurueck zur Pruefung. Ohne das bliebe die alte
-                # ewig auf 'revision' stehen und wuerde bei jedem weiteren Lauf
-                # erneut als "ZUERST ERLEDIGEN" in den Prompt geschoben.
-                queue.erledigt(str(ueberarbeitet).strip(), inhalt or None, titel or None)
-                if str(ueberarbeitet).strip()
-                else queue.vorlegen(spec["name"], art, titel, inhalt, quelle, spec.get("person"))),
+            func=_einreichen,
             param_schema={"type": "object", "properties": {
                 "art": {"type": "string", "enum": sorted(ARTEN)},
                 "titel": {"type": "string"},
@@ -376,6 +406,7 @@ class SubAgentService:
                                   "NUR wenn du eine Revision einarbeitest: die ID in eckigen "
                                   "Klammern aus 'ZUERST ERLEDIGEN'. Dann wird die vorhandene "
                                   "Vorlage ersetzt statt eine zweite anzulegen."},
+                "auftrag_id": {"type": "string", "description": "ID aus DEINE OFFENEN AUFTRÄGE, falls dieses Ergebnis einen Auftrag erfüllt."},
             }, "required": ["art", "titel"]},
         )
 
@@ -436,6 +467,23 @@ class SubAgentService:
                   f"legst du am Ende deines Laufs mit submit_for_review vor – auch wenn es "
                   f"schon in Notion steht; nenne dann die Notion-URL als quelle. Interne "
                   f"Zuarbeit (Notizen, Hinweise an Kollegen) braucht keine Vorlage.")
+        # Offene Aufträge: ohne diesen Block wusste niemand, dass etwas
+        # bestellt war – 21 Läufe, 1 Vorlage, die Donnerstag-Bestellung
+        # versickerte. Jetzt steht jede Schuld im Prompt.
+        try:
+            from services.auftraege import Auftragsbuch
+            offene_auftraege = Auftragsbuch().offene_fuer(spec["name"])
+        except Exception:
+            offene_auftraege = []
+        if offene_auftraege:
+            zeilen = "\n".join(
+                f"- [{a['id']}] {a['titel']}"
+                + (f" (fällig {a['faellig_am'][:10]})" if a.get("faellig_am") else "")
+                + (f": {a['beschreibung'][:200]}" if a.get("beschreibung") else "")
+                for a in offene_auftraege[:8])
+            prompt += ("\n\nDEINE OFFENEN AUFTRÄGE – erledige sie in dieser Reihenfolge "
+                       "und lege jedes Ergebnis mit submit_for_review vor; gib dabei "
+                       "auftrag_id aus der eckigen Klammer an:\n" + zeilen)
         # Offene Revisionen haben Vorrang vor neuer Arbeit.
         from services.review import ReviewQueue
         revisionen = ReviewQueue().offene_revisionen(spec["name"])
@@ -614,20 +662,63 @@ class SubAgentService:
         for vorlage in offene:
             try:
                 voll = queue.zeigen(vorlage["id"])
+                # Revisionsbremse: Nach 2 Runden entscheidet Tino, nicht die
+                # Schleife. Der Prüfer erfand sonst in jeder Runde neue Einwände.
+                if int(voll.get("runde") or 1) >= 3:
+                    rest = (voll.get("anmerkung") or "").strip()
+                    queue.freigeben(vorlage["id"],
+                                    "Jude: 2 Revisionen erreicht – Entscheidung bei Tino."
+                                    + (f" Restpunkte: {rest[:200]}" if rest else ""))
+                    entschieden.append({"id": vorlage["id"], "urteil": "vorbehalt"})
+                    try:
+                        from services.notifications import NotificationService
+                        NotificationService().create("abnahme",
+                                                     f"Zur Abnahme (mit Vorbehalt): {voll['titel'][:80]}",
+                                                     f"Von {voll.get('person') or voll['agent']} – von Jude mit Vorbehalt freigegeben.")
+                    except Exception:
+                        pass
+                    continue
+                auftrag_kontext = ""
+                try:
+                    from services.auftraege import Auftragsbuch
+                    auftrag = next((a for a in Auftragsbuch().liste("alle", limit=200)
+                                    if a.get("review_id") == vorlage["id"]), None)
+                    if auftrag:
+                        auftrag_kontext = (f"\nAUFTRAG (daran misst du das Ergebnis): "
+                                           f"{auftrag['titel']} – {auftrag['beschreibung'][:400]}\n")
+                except Exception:
+                    pass
+                verlauf = (voll.get("verlauf") or "").strip()
                 frage = (
                     "Du bist Jude, Geschaeftsfuehrer von Nurovelle. Ein Mitarbeiter legt dir "
                     "etwas Fertiges vor. Pruefe es, bevor es Tino erreicht.\n\n"
                     f"Massstab:\n{self.CHEF_MASSSTAB}\n\n"
-                    f"Von: {voll.get('person') or voll['agent']}\n"
+                    "FAKTEN (keine Platzhalter, nicht beanstanden): Die kostenlose "
+                    "KI-Potenzialanalyse auf nurovelle.de/analyse.html ist das echte "
+                    "Kernangebot und der gewollte Handlungsaufruf. Marke: Nurovelle, "
+                    "Claim 'Klarheit. Prozesse. Zukunft.'\n"
+                    f"{auftrag_kontext}"
+                    + (f"\nBISHERIGE BEANSTANDUNGEN (behobene Punkte NICHT erneut aufmachen):\n{verlauf[:800]}\n" if verlauf else "")
+                    + f"\nVon: {voll.get('person') or voll['agent']}\n"
                     f"Art: {voll['art']}\nTitel: {voll['titel']}\n"
                     f"Inhalt:\n{(voll.get('inhalt') or '')[:4000]}\n\n"
                     "Antworte in genau einer Zeile, beginnend mit FREIGABE oder REVISION, "
-                    "danach ein Doppelpunkt und eine kurze Begruendung. Bei REVISION nenne "
-                    "konkret, was zu aendern ist. Sei streng, aber beanstande nur, was gegen "
-                    "den Massstab verstoesst."
+                    "danach ein Doppelpunkt und eine kurze Begruendung. Beanstande NUR "
+                    "Verstoesse gegen Massstab oder Auftrag, die du woertlich zitieren "
+                    "kannst. Sei streng, aber fair."
                 )
+                # Groq ist erste Wahl; ist das Kontingent knapp, direkt zu Haiku
+                # statt in die allgemeine Kette – die beginnt lokal, und qwen
+                # kostete hier gemessen 300 s Timeout, bevor irgendwas passierte.
+                pruefmodell = self.TEXT_MODELL
+                try:
+                    from services import kontingent
+                    if not kontingent.verfuegbar(2000):
+                        pruefmodell = "cloud_claude_haiku"
+                except Exception:
+                    pass
                 antwort = self.router.call_with_fallback(
-                    [{"role": "user", "content": frage}], force_model=self.TEXT_MODELL)
+                    [{"role": "user", "content": frage}], force_model=pruefmodell)
                 urteil = str(antwort.get("content", "")).strip()
                 begruendung = urteil.split(":", 1)[-1].strip()[:400] or "ohne Begruendung"
                 if urteil.upper().startswith("REVISION"):
@@ -635,9 +726,23 @@ class SubAgentService:
                     # Damit derselbe Fehler nicht beim naechsten Lauf wiederkommt.
                     self.lehre_merken(agent_name, begruendung, quelle="Jude")
                     entschieden.append({"id": vorlage["id"], "urteil": "revision"})
+                    try:
+                        from services.notifications import NotificationService
+                        NotificationService().create("revision",
+                                                     f"Revision an {voll.get('person') or voll['agent']}: {voll['titel'][:80]}",
+                                                     f"Jude hat Überarbeitungen angefordert: {begruendung[:200]}")
+                    except Exception:
+                        pass
                 else:
                     queue.freigeben(vorlage["id"], f"Jude: {begruendung}")
                     entschieden.append({"id": vorlage["id"], "urteil": "freigabe"})
+                    try:
+                        from services.notifications import NotificationService
+                        NotificationService().create("abnahme",
+                                                     f"Zur Abnahme: {voll['titel'][:80]}",
+                                                     f"Von {voll.get('person') or voll['agent']} – von Jude freigegeben.")
+                    except Exception:
+                        pass
             except Exception as exc:
                 # Im Zweifel nach oben durchreichen: lieber legt Tino etwas
                 # Mittelmaessiges beiseite, als dass Arbeit unsichtbar liegen bleibt.

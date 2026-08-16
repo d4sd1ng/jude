@@ -51,7 +51,13 @@ class ReviewQueue:
                 inhalt TEXT NOT NULL DEFAULT '', quelle TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'offen',
                 anmerkung TEXT NOT NULL DEFAULT '',
+                verlauf TEXT NOT NULL DEFAULT '',
                 entschieden_am TEXT, runde INTEGER NOT NULL DEFAULT 1)""")
+            # Bestandsmigration: verlauf-Spalte nachrüsten (haelt die
+            # Beanstandungs-Historie; erledigt() loeschte sie frueher).
+            spalten = [z[1] for z in db.execute("PRAGMA table_info(reviews)")]
+            if "verlauf" not in spalten:
+                db.execute("ALTER TABLE reviews ADD COLUMN verlauf TEXT NOT NULL DEFAULT ''")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_agent ON reviews(agent)")
 
@@ -80,8 +86,15 @@ class ReviewQueue:
                 "hinweis": "Geht zur Prüfung an Jude. Arbeite weiter."}
 
     def zur_pruefung(self, limit: int = 50) -> list[dict]:
-        """Was beim Chef liegt und noch nicht bei Tino ist."""
-        return self.liste("pruefung", limit)
+        """Was beim Chef liegt und noch nicht bei Tino ist (älteste zuerst)."""
+        limit = max(1, min(int(limit), 200))
+        with connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT id,created_at,agent,person,art,titel,quelle,status,anmerkung,runde,"
+                "substr(inhalt,1,700) AS auszug, length(inhalt) AS laenge "
+                "FROM reviews WHERE status='pruefung' "
+                "ORDER BY created_at ASC LIMIT ?",
+                (limit,))]
 
     def freigeben(self, review_id: str, anmerkung: str = "") -> dict:
         """Jude reicht nach oben durch – ab jetzt sichtbar für Tino."""
@@ -117,14 +130,26 @@ class ReviewQueue:
         return dict(row)
 
     def abnehmen(self, review_id: str, anmerkung: str = "") -> dict:
-        return self._entscheiden(review_id, "abgenommen", anmerkung)
+        result = self._entscheiden(review_id, "abgenommen", anmerkung)
+        try:
+            from services.auftraege import Auftragsbuch
+            Auftragsbuch().sync_von_review(review_id, "abgenommen")
+        except Exception:
+            pass
+        return result
 
     def revision(self, review_id: str, anmerkung: str) -> dict:
         """Zurück an den Mitarbeiter. Die Anmerkung ist Pflicht — ohne sie weiß
         er nicht, was zu ändern ist, und liefert dasselbe noch einmal."""
         if not str(anmerkung).strip():
             raise ValueError("Für eine Revision wird eine Anmerkung benötigt.")
-        return self._entscheiden(review_id, "revision", anmerkung)
+        result = self._entscheiden(review_id, "revision", anmerkung)
+        try:
+            from services.auftraege import Auftragsbuch
+            Auftragsbuch().sync_von_review(review_id, "revision")
+        except Exception:
+            pass
+        return result
 
     def erledigt(self, review_id: str, inhalt: str | None = None,
                  titel: str | None = None) -> dict:
@@ -135,13 +160,22 @@ class ReviewQueue:
         Runde weiter, damit nachvollziehbar bleibt, wie oft etwas zurückkam.
         """
         with connection() as db:
-            if db.execute("SELECT id FROM reviews WHERE id=?", (review_id,)).fetchone() is None:
+            zeile = db.execute("SELECT id, status, runde, anmerkung FROM reviews WHERE id=?",
+                              (review_id,)).fetchone()
+            if zeile is None:
                 raise KeyError("Unbekannte Vorlage.")
-            db.execute("UPDATE reviews SET status='pruefung', runde=runde+1, anmerkung='', "
-                       "inhalt=COALESCE(?,inhalt), titel=COALESCE(?,titel), entschieden_am=NULL "
-                       "WHERE id=?",
-                       (str(inhalt)[:12000] if inhalt else None,
-                        str(titel)[:300] if titel else None, review_id))
+            if zeile["status"] == "abgenommen":
+                raise ValueError("Diese Vorlage ist bereits abgenommen – lege eine neue Vorlage an.")
+            db.execute(
+                "UPDATE reviews SET "
+                "verlauf = CASE WHEN anmerkung != '' "
+                "THEN verlauf || '— Runde ' || runde || ': ' || anmerkung || char(10) "
+                "ELSE verlauf END, "
+                "status='pruefung', runde=runde+1, anmerkung='', "
+                "inhalt=COALESCE(?,inhalt), titel=COALESCE(?,titel), entschieden_am=NULL "
+                "WHERE id=?",
+                (str(inhalt)[:12000] if inhalt else None,
+                 str(titel)[:300] if titel else None, review_id))
         return self.zeigen(review_id)
 
     def _entscheiden(self, review_id: str, status: str, anmerkung: str) -> dict:

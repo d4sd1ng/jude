@@ -234,6 +234,26 @@ class BriefingService:
         data = self.data()
         segments: list[dict] = []
 
+        # Schreibtisch zuerst: offene Abnahmen und überfällige Aufträge –
+        # bewusst außerhalb des data()-Caches, die Zahl muss frisch sein.
+        try:
+            from services.review import ReviewQueue
+            from services.auftraege import Auftragsbuch
+            zus = ReviewQueue().zusammenfassung()
+            offen = int(zus.get("offen") or 0)
+            ueber = len(Auftragsbuch().ueberfaellig())
+            if offen or ueber:
+                teile = []
+                if offen:
+                    teile.append(f"{offen} Vorlage{'n' if offen != 1 else ''} zur Abnahme")
+                if ueber:
+                    teile.append(f"{ueber} überfällige Aufträge" if ueber != 1
+                                 else "1 überfälliger Auftrag")
+                segments.insert(0, {"topic": "Schreibtisch",
+                                    "text": "Auf deinem Schreibtisch: " + " und ".join(teile) + "."})
+        except Exception:
+            pass
+
         market_parts = [self._market_sentence(m) for m in data.get("markets", [])]
         market_parts += [self._ict_sentence(r) for r in data.get("ict", [])]
         if market_parts:

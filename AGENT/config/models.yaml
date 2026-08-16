@@ -73,6 +73,21 @@ models:
     tags: [cloud, analyse, code, agentisch, grosserkontext, tools]
     priority: 8
 
+  # Team-Arbeitsmodell: werkzeugfaehig und in Sekunden statt Minuten fertig.
+  # ~1,5 Cent pro Durchschnittslauf (13k In / 0,5k Out); von Tino am
+  # 15.08.2026 freigegeben (~10 $/Monat, ~20 $ wenn Politara dazukommt).
+  cloud_claude_haiku:
+    provider: anthropic
+    model_name: claude-haiku-4-5
+    cost_per_1k_input: 0.001
+    cost_per_1k_cached_input: 0.0001
+    cost_per_1k_output: 0.005
+    avg_latency_ms: 400
+    max_tokens: 16384
+    context_length: 200000
+    tags: [cloud, schnell, tools, code, agentisch]
+    priority: 7
+
   cloud_claude_fable:
     provider: anthropic
     model_name: claude-fable-5
@@ -98,18 +113,21 @@ models:
 
   cloud_groq_llama:
     provider: groq
-    model_name: llama-3.3-70b-versatile
+    # Seit 16.08.2026: llama-3.3-70b-versatile wurde von Groq abgeschaltet.
+    # Nachfolger laut Groq-Empfehlung: gpt-oss-120b (per /models verifiziert,
+    # Deutsch-Qualitaet am 16.08. gegengelesen). Schluessel bleibt
+    # cloud_groq_llama, weil sub_agents.json (Heinz) und team.TEXT_MODELL
+    # darauf verweisen.
+    model_name: openai/gpt-oss-120b
     cost_per_1k_input: 0.0
     cost_per_1k_output: 0.0
-    avg_latency_ms: 350
+    avg_latency_ms: 500
     max_tokens: 8192
-    context_length: 128000
-    # Kein 'tools'-Tag, und das ist gemessen, nicht vermutet: llama-3.3 gibt den
-    # Werkzeugaufruf als Fliesstext aus statt ihn auszufuehren – einmal
-    # stillschweigend (Antwort enthielt "<function=notion_schema,{...}", null
-    # Aufrufe), einmal als HTTP 400 "tool_use_failed". Zwei von zwei Versuchen.
-    # Fuer alles ohne Werkzeuge bleibt es erste Wahl: 70B, 128k Kontext,
-    # kostenfrei und mit 4 s die schnellste Stufe ueberhaupt.
+    context_length: 131072
+    # Kein 'tools'-Tag: die alte Messung (llama-3.3 schrieb Werkzeugaufrufe als
+    # Fliesstext) gilt fuer das neue Modell nicht automatisch – erst messen,
+    # dann freischalten. Fuer alles ohne Werkzeuge bleibt Groq erste Wahl:
+    # kostenfrei und schnell.
     tags: [cloud, schnell, allgemein, analyse]
     priority: 8
 

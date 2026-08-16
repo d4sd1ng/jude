@@ -24,6 +24,27 @@ from services.database import connection
 
 logger = logging.getLogger(__name__)
 
+# Provider, die gerade mit 429 um sich werfen, 15 Minuten überspringen –
+# OpenAI stand einen ganzen Tag auf 429 und kostete in jeder Kette einen
+# vergeblichen Versuch samt Wartezeit.
+_PROVIDER_429: dict[str, dict] = {}
+_SPERRDAUER_S = 900
+
+
+def _provider_429_gesperrt(provider: str) -> bool:
+    eintrag = _PROVIDER_429.get(provider)
+    return bool(eintrag and eintrag.get("bis", 0) > time.time() and eintrag.get("zaehler", 0) >= 2)
+
+
+def _provider_429_merken(provider: str, war_429: bool) -> None:
+    if not war_429:
+        _PROVIDER_429.pop(provider, None)
+        return
+    eintrag = _PROVIDER_429.setdefault(provider, {"zaehler": 0, "bis": 0})
+    eintrag["zaehler"] += 1
+    if eintrag["zaehler"] >= 2:
+        eintrag["bis"] = time.time() + _SPERRDAUER_S
+
 
 @dataclass(frozen=True)
 class ModelSpec:
@@ -271,6 +292,11 @@ class AnthropicAdapter(ProviderAdapter):
                     "type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"],
                 }]})
         payload: dict[str, Any] = {"model": spec.model_name, "messages": chat, "max_tokens": spec.max_tokens,
+                                   # Auto-Caching: Cache-Punkt auf dem letzten cachebaren Block. Ohne das
+                                   # zahlte jede Werkzeug-Runde den kompletten Verlauf (Briefings!) erneut
+                                   # voll – gemessen 78k Input für eine Dokumentenprüfung. Cache-Reads
+                                   # kosten 10 %; die Verbrauchsfelder liest der Adapter bereits aus.
+                                   "cache_control": {"type": "ephemeral"},
                                    "service_tier": os.getenv("ANTHROPIC_SERVICE_TIER", "standard_only")}
         if system:
             payload["system"] = system
@@ -629,6 +655,12 @@ class ModelRouter:
             return any(self._provider_enabled(chain[j].provider) for j in range(index + 1, len(chain)))
 
         for position, spec in enumerate(chain):
+            # 429 von diesem Provider? Dann 15 Minuten gar nicht erst versuchen –
+            # das spart Wartezeit und Tokens.
+            if _provider_429_gesperrt(spec.provider):
+                attempts.append({"model": spec.name, "status": "skipped_429_throttle"})
+                logger.info("Provider %s: 429-Sperre aktiv, Versuch übersprungen.", spec.provider)
+                continue
             if not self._cloud_affordable(spec, messages):
                 attempts.append({"model": spec.name, "status": "skipped_cost_limit"})
                 continue
@@ -651,6 +683,8 @@ class ModelRouter:
                                  "latency_ms": int((time.monotonic() - attempt_started) * 1000)})
                 if not adequate:
                     continue
+                # Erfolg: Provider freigeben (nicht mehr als gesperrt merken).
+                _provider_429_merken(spec.provider, False)
                 response["_model"] = spec.name
                 response["_route_id"] = route_id
                 with connection() as db:
@@ -659,6 +693,9 @@ class ModelRouter:
                                 json.dumps(attempts), route_id))
                 return response
             except Exception as exc:
+                # War es eine 429-Antwort? Dann merken und nächstes Mal überspringen.
+                war_429 = "429" in str(exc)
+                _provider_429_merken(spec.provider, war_429)
                 errors.append(f"{spec.name}: {exc}")
                 attempts.append({"model": spec.name, "status": "error", "error": str(exc)[:500]})
                 logger.warning("Modell %s fehlgeschlagen: %s", spec.name, exc)

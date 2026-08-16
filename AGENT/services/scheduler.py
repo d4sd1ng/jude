@@ -16,6 +16,10 @@ from datetime import datetime, timedelta, timezone
 from core.paths import DATA_DIR
 from services.notifications import NotificationService
 
+#: Werkzeuge, die lange laufen und im Hintergrund starten sollen, um den
+#: Scheduler-Tick nicht zu blockieren (und damit chat_lock in web/app.py zu halten).
+HINTERGRUND_TOOLS = {"auftragswaechter", "delegate_to_agent", "auftrag_erteilen"}
+
 
 class SchedulerService:
     def __init__(self, agent=None, briefing=None, voice=None):
@@ -142,7 +146,32 @@ class SchedulerService:
         if action == "prompt" and self.agent is not None:
             return str(self.agent.process_input(task["prompt"]))
         if action == "tool" and self.agent is not None:
-            return str(self.agent.tools.execute(task["tool"], dict(task.get("tool_args") or {})))
+            # Werkzeuge, die lange laufen (z. B. Auftragswächter), können im
+            # Hintergrund starten – der Scheduler-Tick blockiert sonst Minuten lang.
+            if task.get("tool") in HINTERGRUND_TOOLS:
+                def _im_hintergrund():
+                    try:
+                        ergebnis = self.agent.tools.execute(task["tool"], dict(task.get("tool_args") or {}))
+                        if isinstance(ergebnis, str) and "fehlgeschlagen:" in ergebnis[:160]:
+                            raise RuntimeError(ergebnis[:300])
+                    except Exception as exc:
+                        try:
+                            NotificationService.create("scheduled_error",
+                                                       f"{task.get('name', task.get('tool'))} fehlgeschlagen",
+                                                       str(exc)[:300])
+                        except Exception:
+                            pass
+                threading.Thread(target=_im_hintergrund, daemon=True).start()
+                return "im Hintergrund gestartet"
+            # Normale Werkzeuge (schnell) laufen synchron, damit der Ergebnis sofort
+            # zur Benachrichtigung wird.
+            ergebnis = self.agent.tools.execute(task["tool"], dict(task.get("tool_args") or {}))
+            ergebnis_str = str(ergebnis)
+            # Werkzeugschicht wirft nicht, sondern liefert Fehler-Strings – diese
+            # müssen wir explizit als Fehler wirken, sonst zählt der Fehlschlag als Erfolg.
+            if isinstance(ergebnis, str) and "fehlgeschlagen:" in ergebnis[:160]:
+                raise RuntimeError(ergebnis_str[:300])
+            return ergebnis_str
         raise RuntimeError("Aufgabe kann nicht ausgeführt werden (fehlende Komponente).")
 
     def tick(self, now: datetime | None = None) -> list[dict]:

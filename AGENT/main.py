@@ -44,6 +44,7 @@ def build_application() -> tuple[Agent, ToolCreator]:
     agent.backup = BackupService()
     register_backup(registry, agent.backup)
     _ensure_nightly_backup(agent.scheduler)
+    _ensure_auftragswaechter(agent.scheduler)
     register_notion(registry, NotionDatabaseService())
     agent.documents = DocumentService()
     register_documents(registry, agent.documents)
@@ -57,6 +58,16 @@ def _ensure_nightly_backup(scheduler) -> None:
             scheduler.create("Nächtliche Sicherung", "tool", at="03:00", tool="run_backup", speak=False)
     except Exception as exc:
         logging.getLogger(__name__).warning("Sicherungsaufgabe nicht angelegt: %s", exc)
+
+
+def _ensure_auftragswaechter(scheduler) -> None:
+    """Stündlich überfällige Aufträge nachfassen – nichts versickert mehr."""
+    try:
+        if not any(t.get("tool") == "auftragswaechter" for t in scheduler.list()):
+            scheduler.create("Auftragswächter", "tool", every_minutes=60,
+                             tool="auftragswaechter", speak=False)
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Auftragswächter nicht angelegt: %s", exc)
 
 
 def _seed_profile(agent: Agent) -> None:

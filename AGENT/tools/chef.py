@@ -132,6 +132,77 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
             zugestellt.append(bekannt[schluessel])
         return {"datei": name, "zugestellt": zugestellt, "unbekannt": unbekannt}
 
+    def auftrag_erteilen(agent: str, titel: str, beschreibung: str = "",
+                         faellig_am: str = "", sofort_starten: bool = True) -> dict:
+        """Auftrag ins Auftragsbuch UND (standardmäßig) sofort losarbeiten lassen."""
+        from services.auftraege import Auftragsbuch
+        from services.team import SubAgentService
+        dienst = SubAgentService(registry, router)
+        bekannt = {a["name"].casefold() for a in dienst.list()}
+        if str(agent).strip().casefold() not in bekannt:
+            raise ValueError(f"Kein Mitarbeiter namens {agent!r}. Bekannt: {', '.join(sorted(bekannt))}.")
+        buch = Auftragsbuch()
+        a = buch.erteilen(agent, titel, beschreibung, str(faellig_am).strip() or None)
+        if sofort_starten:
+            buch.status_setzen(a["id"], "in_arbeit")
+            lauf = dienst.run(agent, f"AUFTRAG [{a['id']}]: {titel}\n{beschreibung}\n"
+                              f"Lege das Ergebnis mit submit_for_review vor und gib "
+                              f"auftrag_id='{a['id']}' an.")
+            return {"auftrag": a, "lauf_status": lauf.get("status"),
+                    "antwort": (lauf.get("answer") or "")[:400]}
+        return {"auftrag": a, "hinweis": "Notiert. Der Wächter oder ein späterer Start fasst nach."}
+
+    def auftraege_liste(status: str = "offen") -> list[dict]:
+        from services.auftraege import Auftragsbuch
+        return Auftragsbuch().liste(status=status, limit=100)
+
+    def auftrag_abbrechen(auftrag_id: str) -> dict:
+        from services.auftraege import Auftragsbuch
+        return Auftragsbuch().abbrechen(auftrag_id)
+
+    def auftragswaechter() -> dict:
+        """Für den Scheduler: überfällige Aufträge nachfassen und Tino melden."""
+        from services.auftraege import Auftragsbuch
+        from services.team import SubAgentService
+        buch = Auftragsbuch()
+        faellige = buch.ueberfaellig()
+        ergebnisse = []
+        dienst = SubAgentService(registry, router)
+        for a in faellige[:3]:  # pro Lauf höchstens drei nachfassen
+            try:
+                buch.status_setzen(a["id"], "in_arbeit")
+                lauf = dienst.run(a["agent"],
+                                  f"ÜBERFÄLLIGER AUFTRAG [{a['id']}]: {a['titel']}\n{a['beschreibung']}\n"
+                                  f"Erledige ihn JETZT und lege das Ergebnis mit submit_for_review "
+                                  f"vor (auftrag_id='{a['id']}').")
+                ergebnisse.append({"id": a["id"], "lauf": lauf.get("status")})
+            except Exception as exc:
+                ergebnisse.append({"id": a["id"], "fehler": str(exc)[:200]})
+        if faellige:
+            try:
+                from services.notifications import NotificationService
+                NotificationService().create(
+                    "auftraege", f"{len(faellige)} Aufträge überfällig",
+                    ", ".join(a["titel"] for a in faellige[:5]))
+            except Exception:
+                pass
+        return {"ueberfaellig": len(faellige), "nachgefasst": ergebnisse}
+
+    def rolle_aktualisieren(agent: str, neuer_text: str) -> dict:
+        """Rollen-Prompt eines Mitarbeiters ersetzen – nur nach Tinos Bestätigung."""
+        from services.team import SubAgentService
+        dienst = SubAgentService(registry, router)
+        spec = dienst.get(agent)
+        if spec is None:
+            raise KeyError(f"Kein Mitarbeiter namens {agent!r}.")
+        neuer_text = str(neuer_text).strip()
+        if len(neuer_text) < 20:
+            raise ValueError("Der neue Rollen-Text ist zu kurz.")
+        daten = dienst._load()
+        daten[dienst._key(agent)]["role"] = neuer_text
+        dienst._save(daten)
+        return {"agent": spec["name"], "rolle_aktualisiert": True}
+
     registry.register(Tool("dokument_zustellen",
                            "Ein Dokument aus austausch/an-team den betreffenden Mitarbeitern zustellen "
                            "(landet als Notiz in deren nächstem Lauf).",
@@ -139,6 +210,34 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                            _schema({"datei": {"type": "string"},
                                     "empfaenger": {"type": "array", "items": {"type": "string"}},
                                     "hinweis": {"type": "string"}}, ["datei", "empfaenger"])))
+
+    registry.register(Tool("auftrag_erteilen",
+                           "Einem Mitarbeiter einen verfolgbaren Auftrag erteilen (Auftragsbuch) und "
+                           "ihn standardmäßig sofort daran arbeiten lassen.",
+                           auftrag_erteilen,
+                           _schema({"agent": {"type": "string"}, "titel": {"type": "string"},
+                                    "beschreibung": {"type": "string"},
+                                    "faellig_am": {"type": "string", "description": "ISO-Datum/Zeit, optional"},
+                                    "sofort_starten": {"type": "boolean"}},
+                                   ["agent", "titel"])))
+    registry.register(Tool("auftraege_liste",
+                           "Aufträge im Auftragsbuch auflisten (Status: offen, in_arbeit, vorgelegt, "
+                           "abgenommen, abgebrochen oder alle).",
+                           auftraege_liste, _schema({"status": {"type": "string"}})))
+    registry.register(Tool("auftrag_abbrechen",
+                           "Einen Auftrag abbrechen – nur wenn Tino es sagt.",
+                           auftrag_abbrechen,
+                           _schema({"auftrag_id": {"type": "string"}}, ["auftrag_id"])))
+    registry.register(Tool("auftragswaechter",
+                           "Überfällige Aufträge nachfassen (nutzt der Scheduler stündlich; manuell aufrufbar).",
+                           auftragswaechter, _schema({})))
+    registry.register(Tool("rolle_aktualisieren",
+                           "Rollen-Prompt eines Mitarbeiters ersetzen (nach Prompt-Diagnose) – "
+                           "erfordert Tinos ausdrückliche Bestätigung.",
+                           rolle_aktualisieren,
+                           _schema({"agent": {"type": "string"}, "neuer_text": {"type": "string"}},
+                                   ["agent", "neuer_text"]),
+                           confirm_action="update_agent"))
 
     registry.register(Tool("chefpruefung_nachholen",
                            "Hängende Chefprüfungen sofort durchführen, damit fertige Vorlagen bei Tino ankommen.",
