@@ -52,12 +52,15 @@ class ReviewQueue:
                 status TEXT NOT NULL DEFAULT 'offen',
                 anmerkung TEXT NOT NULL DEFAULT '',
                 verlauf TEXT NOT NULL DEFAULT '',
+                score INTEGER,
                 entschieden_am TEXT, runde INTEGER NOT NULL DEFAULT 1)""")
             # Bestandsmigration: verlauf-Spalte nachrüsten (haelt die
             # Beanstandungs-Historie; erledigt() loeschte sie frueher).
             spalten = [z[1] for z in db.execute("PRAGMA table_info(reviews)")]
             if "verlauf" not in spalten:
                 db.execute("ALTER TABLE reviews ADD COLUMN verlauf TEXT NOT NULL DEFAULT ''")
+            if "score" not in spalten:
+                db.execute("ALTER TABLE reviews ADD COLUMN score INTEGER")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_agent ON reviews(agent)")
 
@@ -90,7 +93,7 @@ class ReviewQueue:
         limit = max(1, min(int(limit), 200))
         with connection() as db:
             return [dict(row) for row in db.execute(
-                "SELECT id,created_at,agent,person,art,titel,quelle,status,anmerkung,runde,"
+                "SELECT id,created_at,agent,person,art,titel,quelle,status,anmerkung,runde,score,"
                 "substr(inhalt,1,700) AS auszug, length(inhalt) AS laenge "
                 "FROM reviews WHERE status='pruefung' "
                 "ORDER BY created_at ASC LIMIT ?",
@@ -116,7 +119,7 @@ class ReviewQueue:
             # Liste sonst ein halbes Megabyte. Den Rest holt die Oberflaeche
             # ueber ``zeigen`` nach, wenn Tino ihn aufklappt.
             return [dict(row) for row in db.execute(
-                "SELECT id,created_at,agent,person,art,titel,quelle,status,anmerkung,runde,"
+                "SELECT id,created_at,agent,person,art,titel,quelle,status,anmerkung,runde,score,"
                 "substr(inhalt,1,700) AS auszug, length(inhalt) AS laenge "
                 "FROM reviews WHERE (?='alle' OR status=?) AND (? IS NULL OR art=?) "
                 "ORDER BY created_at DESC LIMIT ?",
@@ -187,6 +190,11 @@ class ReviewQueue:
                        (status, str(anmerkung)[:2000], datetime.now(timezone.utc).isoformat(),
                         review_id))
         return self.zeigen(review_id)
+
+    def score_setzen(self, review_id: str, score: int) -> None:
+        with connection() as db:
+            db.execute("UPDATE reviews SET score=? WHERE id=?",
+                       (max(0, min(int(score), 100)), str(review_id).strip()))
 
     def zusammenfassung(self) -> dict:
         with connection() as db:

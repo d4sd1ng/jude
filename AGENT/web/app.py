@@ -234,6 +234,29 @@ async def austausch_upload(file: UploadFile = File(...)):
     return {"name": name, "pfad": str(ziel)}
 
 
+@app.get("/api/austausch/datei")
+def austausch_datei(pfad: str):
+    """Datei aus dem Austausch für die Vorschau ausliefern – NUR von dort.
+
+    Die Abnahme-Vorschau rendert Bilder und Landingpages direkt; ohne den
+    harten Pfad-Zaun wäre das ein Lese-Zugang auf die ganze Platte."""
+    from pathlib import Path
+    from tools.austausch import AUSTAUSCH_DIR
+    basis = AUSTAUSCH_DIR.resolve()
+    roh = pfad.strip()
+    ziel = (Path(roh) if roh.startswith("/") else basis.parent / roh).resolve()
+    if not (basis in ziel.parents) or not ziel.is_file():
+        raise HTTPException(403, "Nur Dateien im Austausch-Ordner.")
+    return FileResponse(ziel)
+
+
+@app.get("/api/auftraege")
+def auftraege_api(status: str = "alle"):
+    """Auftragsbuch für den Schreibtisch-Tab."""
+    from services.auftraege import Auftragsbuch
+    return Auftragsbuch().liste(status=status, limit=100)
+
+
 @app.post("/api/chat")
 async def chat(payload: dict):
     text = str(payload.get("text", "")).strip()

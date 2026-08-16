@@ -2,7 +2,8 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const pages=$$('section').map(s=>s.dataset.page); const nav=$('#nav');
 pages.forEach((p,i)=>{let b=document.createElement('button');b.textContent=p;b.onclick=()=>show(p);if(!i)b.className='active';nav.append(b)});
 function show(p){$$('section').forEach(s=>s.classList.toggle('active',s.dataset.page===p));[...nav.children].forEach(b=>b.classList.toggle('active',b.textContent===p));if(p==='Märkte')loadICT();if(p==='Werkzeuge')loadImages();
- if(p==='System'){loadSystem();loadConfirmations();loadNotifications();loadReviews();loadMemory();loadRouting();loadAgents();loadDocs()}};show(pages[0]);
+ if(p==='Schreibtisch'){loadReviews();loadConfirmations();loadNotifications();loadAuftraege()}
+ if(p==='System'){loadSystem();loadMemory();loadRouting();loadAgents();loadDocs()}};show(pages[0]);
 function fmt(v){const d=new Date(typeof v==='number'?v*1000:v);return isNaN(d)?String(v??''):d.toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function toast(x){let t=$('#toast');t.textContent=x;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500)}
 async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let d=await r.json().catch(()=>({error:r.statusText}));if(!r.ok||d.error)throw Error(d.error||r.statusText);return d}
@@ -100,10 +101,54 @@ $('#loadNotifications')?.addEventListener('click',loadNotifications);async funct
 window.markNotificationRead=async id=>{try{await api(`/api/notifications/${id}/read`,{method:'POST'});loadNotifications()}catch(e){toast(e.message)}};
 let reviewArt='';
 $$('.toggle.rev').forEach(b=>b.onclick=()=>{reviewArt=reviewArt===b.dataset.art?'':b.dataset.art;show('System');$('#reviews')?.scrollIntoView({behavior:'smooth'})});
-$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews'+(reviewArt?'?art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.map(v=>`<article class="card agentcard"><span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''}</span><h3>${esc(v.titel)}</h3>${v.quelle?`<p class=small><a href="${esc(v.quelle)}" target=_blank rel="noopener noreferrer">Quelle öffnen</a></p>`:''}<pre id="rv_${v.id}">${esc(v.auszug)||'<ohne Text>'}</pre>${v.laenge>700?`<button class=ghost onclick="reviewFull('${v.id}')">Volltext (${v.laenge} Zeichen)</button>`:''}<div class=agentrun><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`).join('')||`<p>${reviewArt?'Nichts zur Abnahme in dieser Art.':'Nichts zur Abnahme.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art)}catch(e){toast(e.message)}}
+$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews'+(reviewArt?'?art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.map(v=>`<article class="card agentcard"><span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`).join('')||`<p>${reviewArt?'Nichts zur Abnahme in dieser Art.':'Nichts zur Abnahme.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art)}catch(e){toast(e.message)}}
 /* Ampeln zeigen nur den aktuellen Zustand: grün wenn etwas anliegt, sonst rot. */
 function ampeln(nachArt){if(!nachArt)return;$$('.toggle.rev').forEach(b=>{let n=nachArt[b.dataset.art]||0;b.classList.toggle('hat',n>0);b.classList.toggle('on',b.dataset.art===reviewArt);b.title=n?`${n} ${b.dataset.art} zur Freigabe`:`Nichts ${b.dataset.art} zur Freigabe`})}
-window.reviewFull=async id=>{try{let v=await api('/api/reviews/'+id);$('#rv_'+id).textContent=v.inhalt||'<ohne Text>'}catch(e){toast(e.message)}};
+/* ---- Vorschau-Overlay: Texte formatiert, Bilder inline, Seiten gerendert ---- */
+function mdRender(t){const z=esc(t||'');const zeilen=z.split('\n');let html='',inList=false,inTable=false;
+ const flush=()=>{if(inList){html+='</ul>';inList=false}if(inTable){html+='</table>';inTable=false}};
+ for(const l of zeilen){
+  if(/^\|/.test(l)){if(!inTable){html+='<table class="mdtable">';inTable=true}
+   if(/^\|[\s:-]+\|/.test(l.replace(/\|/g,'|')) && /^[\s|:-]+$/.test(l))continue;
+   html+='<tr>'+l.split('|').slice(1,-1).map(c=>`<td>${c.trim()}</td>`).join('')+'</tr>';continue}
+  if(inTable){html+='</table>';inTable=false}
+  if(/^######?\s/.test(l)){flush();html+=`<h4>${l.replace(/^#+\s*/,'')}</h4>`}
+  else if(/^###\s/.test(l)){flush();html+=`<h4>${l.slice(4)}</h4>`}
+  else if(/^##\s/.test(l)){flush();html+=`<h3>${l.slice(3)}</h3>`}
+  else if(/^#\s/.test(l)){flush();html+=`<h2>${l.slice(2)}</h2>`}
+  else if(/^\s*[-*]\s/.test(l)){if(!inList){html+='<ul>';inList=true}html+=`<li>${l.replace(/^\s*[-*]\s/,'')}</li>`}
+  else if(/^---+$/.test(l.trim())){flush();html+='<hr>'}
+  else if(l.trim()===''){flush();html+='<br>'}
+  else{flush();html+=`<p>${l}</p>`}}
+ flush();return html.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')}
+function overlayShow(){$('#overlay').hidden=false;document.body.style.overflow='hidden'}
+function overlayHide(){$('#overlay').hidden=true;document.body.style.overflow='';$('#overlayBody').innerHTML='';$('#overlayTabs').innerHTML='';$('#overlayActions').innerHTML=''}
+$('#overlayClose').onclick=overlayHide;$('#overlay').onclick=e=>{if(e.target.id==='overlay')overlayHide()};
+function dateiUrl(p){return '/api/austausch/datei?pfad='+encodeURIComponent(p.trim())}
+function quelleTab(p){const q=p.trim(),n=q.split('/').pop();
+ if(/\.(png|jpe?g|webp|gif)$/i.test(q))return{name:n,html:`<img class="ovimg" src="${esc(dateiUrl(q))}" alt="${esc(n)}">`};
+ if(/\.html?$/i.test(q))return{name:n,html:`<iframe class="oviframe" sandbox="" src="${esc(dateiUrl(q))}"></iframe><p class=small><a href="${esc(dateiUrl(q))}" target=_blank rel=noopener>In neuem Tab öffnen</a></p>`};
+ return{name:n,html:null,pfad:q}}
+window.openReview=async id=>{try{const v=await api('/api/reviews/'+id);
+ $('#overlayTitle').textContent=v.titel||'';
+ const tabs=[{name:'Inhalt',html:`<div class="ovmd">${mdRender(v.inhalt||'<ohne Text>')}</div>`}];
+ (v.quelle||'').split(',').map(s=>s.trim()).filter(s=>s.startsWith('/')||s.startsWith('austausch/')).forEach(p=>{
+  const t=quelleTab(p);
+  if(t.html)tabs.push(t);
+  else tabs.push({name:t.name,lazy:async()=>{const r=await fetch(dateiUrl(t.pfad));const txt=await r.text();return `<div class="ovmd">${mdRender(txt)}</div>`}});
+ });
+ $('#overlayTabs').innerHTML=tabs.map((t,i)=>`<button class="${i?'ghost':''}" data-tab="${i}">${esc(t.name)}</button>`).join('');
+ const zeig=async i=>{[...$('#overlayTabs').children].forEach((b,j)=>b.className=j==i?'':'ghost');
+  const t=tabs[i];$('#overlayBody').innerHTML=t.html??await t.lazy().catch(e=>`<p>${esc(String(e))}</p>`)};
+ [...$('#overlayTabs').children].forEach((b,i)=>b.onclick=()=>zeig(i));
+ $('#overlayActions').innerHTML=`<input id="ovAn" placeholder="Anmerkung – nötig für eine Revision"><button onclick="overlayDecide('${esc(v.id)}','abnehmen')">Abnehmen</button><button class=ghost onclick="overlayDecide('${esc(v.id)}','revision')">Zurück damit</button>`;
+ zeig(0);overlayShow()}catch(e){toast(e.message)}};
+window.overlayDecide=async(id,was)=>{const a=($('#ovAn')?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung.');
+ try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');overlayHide();loadReviews()}catch(e){toast(e.message)}};
+/* ---- Aufträge ---- */
+$('#loadAuftraege').onclick=()=>loadAuftraege();
+async function loadAuftraege(){try{const d=await api('/api/auftraege');const offen=d.filter(a=>!['abgenommen','abgebrochen'].includes(a.status));
+ $('#auftraege').innerHTML=offen.map(a=>`<article class=card><span class=eyebrow>${esc(a.agent)} · ${esc(a.status)}${a.faellig_am?' · fällig '+esc(a.faellig_am.slice(0,10)):''}</span><h3>${esc(a.titel)}</h3><details><summary class=small>Details</summary><p class=small>${esc(a.beschreibung||'')}</p></details></article>`).join('')||'<p>Keine offenen Aufträge.</p>'}catch(e){toast(e.message)}}
 window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');loadReviews()}catch(e){toast(e.message)}};
 function tickReview(z){z=z||{};let n=z.offen||0,r=z.revision||0,p=z.pruefung||0,e=$('#tickReview');
  if(e)e.textContent=[n?`${n} offen`:'',p?`${p} bei Jude`:'',r?`${r} in Revision`:''].filter(Boolean).join(' · ')||'nichts offen'}
@@ -210,7 +255,7 @@ $('#visionForm')&&($('#visionForm').onsubmit=async e=>{e.preventDefault();toast(
 let _skills=[];
 async function loadAgents(){try{const d=await api('/api/agents');_skills=d.skills||[];
   $('#agentSkills').innerHTML=_skills.map(s=>`<label><input type=checkbox value="${esc(s)}"> ${esc(s)}</label>`).join('');
-  $('#agentList').innerHTML=(d.agents||[]).map(a=>`<article class="card agentcard"><h3>${esc(a.name)}</h3><p class=role>${esc(a.role)}</p><p class=skills>${(a.skills||[]).map(esc).join(' · ')||'keine Skills'}</p><div class=agentrun><input placeholder="Aufgabe für ${esc(a.name)}" data-agent="${esc(a.name)}"><button onclick="runAgent('${esc(a.name)}',this)">Beauftragen</button><button onclick="delAgent('${esc(a.name)}')" style="background:#64748b">Entfernen</button></div><div class=agentout></div></article>`).join('')||'<p>Noch keine Mitarbeiter. Lege oben einen an.</p>'}catch(e){toast(e.message)}}
+  $('#agentList').innerHTML=(d.agents||[]).map(a=>`<article class="card agentcard"><details><summary><b>${esc(a.person||a.name)}</b> · ${esc(a.name)}${a.model?` · <span class=small>${esc(a.model)}</span>`:''}</summary><p class=role>${esc(a.role)}</p><p class=skills>${(a.skills||[]).map(esc).join(' · ')||'keine Skills'}</p><div class=agentrun><input placeholder="Aufgabe für ${esc(a.name)}" data-agent="${esc(a.name)}"><button onclick="runAgent('${esc(a.name)}',this)">Beauftragen</button><button onclick="delAgent('${esc(a.name)}')" style="background:#64748b">Entfernen</button></div><div class=agentout></div></details></article>`).join('')||'<p>Noch keine Mitarbeiter. Lege oben einen an.</p>'}catch(e){toast(e.message)}}
 $('#agentForm')&&($('#agentForm').onsubmit=async e=>{e.preventDefault();const skills=[...document.querySelectorAll('#agentSkills input:checked')].map(c=>c.value);if(!skills.length)return toast('Mindestens einen Skill wählen');try{await api('/api/agents',{method:'POST',body:JSON.stringify({name:$('#agentName').value,role:$('#agentRole').value,skills})});$('#agentName').value='';$('#agentRole').value='';toast('Mitarbeiter angelegt');loadAgents()}catch(x){toast(x.message)}});
 window.runAgent=async(name,btn)=>{const inp=btn.previousElementSibling;const task=inp.value.trim();if(!task)return toast('Aufgabe eingeben');btn.disabled=true;const out=btn.closest('.agentcard').querySelector('.agentout');out.innerHTML='<p class=muted>arbeitet…</p>';try{const d=await api(`/api/agents/${encodeURIComponent(name)}/run`,{method:'POST',body:JSON.stringify({task})});out.innerHTML=`<div class=message>${esc(d.answer)}<small> · ${esc(d.model||'')}</small></div>`}catch(x){out.innerHTML='';toast(x.message)}finally{btn.disabled=false}};
 window.delAgent=async name=>{try{await api('/api/agents/'+encodeURIComponent(name),{method:'DELETE'});loadAgents()}catch(e){toast(e.message)}};

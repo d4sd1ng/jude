@@ -301,7 +301,7 @@ class SubAgentService:
         wer = spec.get("person") or spec["name"]
 
         def beauftragen(auftrag: str, laenge: str = "mittel", ton: str = "sachlich",
-                        lead: str = "", branche: str = "", taetigkeit: str = "") -> str:
+                        lead: str = "", branche: str = "", taetigkeit: str = "", kanal: str = "") -> str | dict:
             grenzen = {"kurz": "hoechstens 200 Zeichen", "mittel": "150 bis 250 Woerter",
                        "lang": "500 bis 900 Woerter"}
             # Der Empfaengerbezug trennt einen brauchbaren von einem beliebigen
@@ -328,6 +328,7 @@ class SubAgentService:
             ergebnis = self.run(self.REDAKTEUR, (
                 f"Auftrag von {wer}.\n"
                 f"Ton: {ton}. Laenge: {grenzen.get(laenge, grenzen['mittel'])}.\n"
+                + (f"Kanal: {kanal}. Halte die Kanal-Karte aus dem Qualitaets-Playbook ein (Umfang, Ton, Emojis, Hashtags, Link-Regel: LinkedIn/Xing-Link gehoert in den ersten Kommentar, nicht in den Text).\n" if kanal else "")
                 + (zum_empfaenger + "\n" if zum_empfaenger else "") +
                 "Gib ausschliesslich den fertigen Text zurueck – keine Vorrede, keine "
                 "Erklaerung, keine Rueckfrage.\n\n"
@@ -337,9 +338,10 @@ class SubAgentService:
                 return ("Heinz hat keinen Text geliefert (Status: "
                         f"{ergebnis.get('status')}). Versuche es mit einem genaueren Auftrag.")
             if fehlt:
-                return (text + "\n\n[Hinweis an dich: Dein Auftrag enthielt "
-                        + ", ".join(fehlt) + " nicht. Der Text ist dadurch allgemeiner "
-                        "als noetig – gib die Angaben beim naechsten Mal mit.]")
+                hinweis = ("Dein Auftrag enthielt "
+                           + ", ".join(fehlt) + " nicht. Der Text ist dadurch allgemeiner "
+                           "als noetig – gib die Angaben beim naechsten Mal mit.")
+                return {"text": text, "hinweis_an_dich": hinweis}
             return text
 
         return Tool(
@@ -349,7 +351,8 @@ class SubAgentService:
                          "IMMER, wenn Text entstehen soll, statt selbst zu formulieren – Heinz "
                          "schreibt sprachlich deutlich besser als du. Gib den Empfaenger so "
                          "genau an, wie du ihn kennst. Seinen Text legst du danach mit deinen "
-                         "eigenen Werkzeugen ab und legst ihn zur Abnahme vor."),
+                         "eigenen Werkzeugen ab und legst ihn zur Abnahme vor. Liefert bei fehlenden "
+                         "Angaben zusaetzlich 'hinweis_an_dich' – lies ihn, aber lege ihn NIEMALS mit ab."),
             func=beauftragen,
             param_schema={"type": "object", "properties": {
                 "auftrag": {"type": "string", "description":
@@ -364,6 +367,7 @@ class SubAgentService:
                                "Was die Firma konkret macht – daraus zieht Heinz den Nutzen."},
                 "laenge": {"type": "string", "enum": ["kurz", "mittel", "lang"]},
                 "ton": {"type": "string", "description": "z. B. sachlich, direkt, warm"},
+                "kanal": {"type": "string", "enum": ["linkedin", "xing", "instagram", "tiktok", "facebook", "youtube", "email", "blog", ""], "description": "Zielkanal – bringt Heinz die Kanal-Regeln aus dem Playbook mit."},
             }, "required": ["auftrag"]},
         )
 
@@ -626,7 +630,7 @@ class SubAgentService:
     CHEF_MASSSTAB = (
         "0. Auftritt: hochwertig und ruhig, dunkelgruen und Gold auf mattem Schwarz. "
         "Marktgeschrei, Ausrufezeichen-Ketten, Emoji-Teppiche und Rabattsprache sind "
-        "Ausschluss – wir wirken wie eine teure Manufaktur, nicht wie eine Werbeagentur.\n"
+        "Ausschluss (1-2 dezente Emojis sind erlaubt, auf Xing keine; 3-6 Hashtags aus dem Strategie-Pool sind erlaubt) – wir wirken wie eine teure Manufaktur, nicht wie eine Werbeagentur.\n"
         "1. Marke: Nurovelle, 'Building Intelligent Systems'. 'Autonova' und 'Politara' "
         "duerfen nirgends vorkommen. Von KI zu sprechen ist richtig, aber nie als "
         "Schlagwort ohne einen Ablauf, den der Leser kennt.\n"
@@ -634,7 +638,7 @@ class SubAgentService:
         "wie {{name}}, kein abgeschnittener Satz.\n"
         "3. Kein Werbedeutsch: 'Loesung', 'benutzerfreundlich', 'innovativ', "
         "'optimieren', 'auf Ihre Beduerfnisse zugeschnitten' sind Ausschluss.\n"
-        "4. Keine erfundenen Zahlen, Kundenstimmen oder Referenzen. Platzhalter jeder Art "
+        "4. Keine erfundenen Zahlen, Kundenstimmen oder Referenzen. AUSNAHME – belegt und erlaubt sind die drei Fallstudien-Werte: API-Latenz -42 %, MTTR -32 %, Kosten -28 %. Platzhalter jeder Art "
         "sind Ausschluss – auch ein Hinweis wie 'vor Veroeffentlichung ersetzen'. Wer eine "
         "Zahl nicht belegen kann, liefert eine Fassung, die ohne sie auskommt.\n"
         "5. Konkreter Nutzen statt Schlagwort – der Empfaenger muss erkennen, "
@@ -695,17 +699,18 @@ class SubAgentService:
                     f"Massstab:\n{self.CHEF_MASSSTAB}\n\n"
                     "FAKTEN (keine Platzhalter, nicht beanstanden): Die kostenlose "
                     "KI-Potenzialanalyse auf nurovelle.de/analyse.html ist das echte "
-                    "Kernangebot und der gewollte Handlungsaufruf. Marke: Nurovelle, "
-                    "Claim 'Klarheit. Prozesse. Zukunft.'\n"
+                    "Kernangebot und der gewollte Handlungsaufruf. Marke: Nurovelle – Wortmarke 'Building Intelligent Systems', Kurz-Claim 'Klarheit. Prozesse. Zukunft.' (beide legitim). Massgeblich ist zusaetzlich das Qualitaets-Playbook (austausch/an-team/qualitaets-playbook.md).\n"
                     f"{auftrag_kontext}"
                     + (f"\nBISHERIGE BEANSTANDUNGEN (behobene Punkte NICHT erneut aufmachen):\n{verlauf[:800]}\n" if verlauf else "")
                     + f"\nVon: {voll.get('person') or voll['agent']}\n"
                     f"Art: {voll['art']}\nTitel: {voll['titel']}\n"
                     f"Inhalt:\n{(voll.get('inhalt') or '')[:4000]}\n\n"
-                    "Antworte in genau einer Zeile, beginnend mit FREIGABE oder REVISION, "
-                    "danach ein Doppelpunkt und eine kurze Begruendung. Beanstande NUR "
-                    "Verstoesse gegen Massstab oder Auftrag, die du woertlich zitieren "
-                    "kannst. Sei streng, aber fair."
+                    "Antworte in GENAU ZWEI Zeilen. Zeile 1: SCORE A=<0-100> C=<0-100> "
+                    "(A=Aufmerksamkeit: konkreter Alltags-Aufhaenger, Zielgruppe Mittelstand, "
+                    "Kanal-Eignung; C=Conversion: genau EIN klarer naechster Schritt, Nutzen "
+                    "im Alltag erkennbar, Vertrauen). Zeile 2: FREIGABE oder REVISION, danach "
+                    "Doppelpunkt und kurze Begruendung. Beanstande NUR Verstoesse gegen "
+                    "Massstab oder Auftrag, die du woertlich zitieren kannst."
                 )
                 # Groq ist erste Wahl; ist das Kontingent knapp, direkt zu Haiku
                 # statt in die allgemeine Kette – die beginnt lokal, und qwen
@@ -719,23 +724,48 @@ class SubAgentService:
                     pass
                 antwort = self.router.call_with_fallback(
                     [{"role": "user", "content": frage}], force_model=pruefmodell)
-                urteil = str(antwort.get("content", "")).strip()
-                begruendung = urteil.split(":", 1)[-1].strip()[:400] or "ohne Begruendung"
-                if urteil.upper().startswith("REVISION"):
-                    queue.revision(vorlage["id"], f"Jude: {begruendung}")
-                    # Damit derselbe Fehler nicht beim naechsten Lauf wiederkommt.
-                    self.lehre_merken(agent_name, begruendung, quelle="Jude")
-                    entschieden.append({"id": vorlage["id"], "urteil": "revision"})
+                roh = str(antwort.get("content", "")).strip()
+                import re as _re
+                m = _re.search(r"SCORE\s+A\s*=\s*(\d{1,3})\s+C\s*=\s*(\d{1,3})", roh)
+                gesamt = None
+                if m:
+                    gesamt = (min(int(m.group(1)), 100) + min(int(m.group(2)), 100)) // 2
+                    try:
+                        queue.score_setzen(vorlage["id"], gesamt)
+                    except Exception:
+                        pass
+                urteilszeile = next((z for z in roh.splitlines()
+                                     if z.strip().upper().startswith(("FREIGABE", "REVISION"))), "")
+                begruendung = urteilszeile.split(":", 1)[-1].strip()[:400] or "ohne Begruendung"
+                content_arten = {"post", "email", "newsletter", "sequenz"}
+                if not urteilszeile:
+                    # Fail-open geschlossen: Formatverletzung wird sichtbar gemacht,
+                    # nicht stillschweigend als Freigabe gewertet.
+                    queue.freigeben(vorlage["id"],
+                                    "Jude: Pruefformat verletzt – ungeprueft durchgereicht. "
+                                    "Bitte selbst pruefen.")
+                    entschieden.append({"id": vorlage["id"], "urteil": "formatfehler"})
+                    continue
+                zu_niedrig = (voll["art"] in content_arten and gesamt is not None and gesamt < 70)
+                if urteilszeile.strip().upper().startswith("REVISION") or zu_niedrig:
+                    grund = begruendung if not zu_niedrig else (
+                        f"Score {gesamt}/100 unter der 70er-Schwelle. {begruendung}")
+                    queue.revision(vorlage["id"], f"Jude: {grund}")
+                    self.lehre_merken(agent_name, grund)
+                    entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                        "score": gesamt})
                     try:
                         from services.notifications import NotificationService
                         NotificationService().create("revision",
                                                      f"Revision an {voll.get('person') or voll['agent']}: {voll['titel'][:80]}",
-                                                     f"Jude hat Überarbeitungen angefordert: {begruendung[:200]}")
+                                                     f"Jude hat Überarbeitungen angefordert: {grund[:200]}")
                     except Exception:
                         pass
                 else:
-                    queue.freigeben(vorlage["id"], f"Jude: {begruendung}")
-                    entschieden.append({"id": vorlage["id"], "urteil": "freigabe"})
+                    queue.freigeben(vorlage["id"], f"Jude: {begruendung}"
+                                    + (f" (Score {gesamt}/100)" if gesamt is not None else ""))
+                    entschieden.append({"id": vorlage["id"], "urteil": "freigabe",
+                                        "score": gesamt})
                     try:
                         from services.notifications import NotificationService
                         NotificationService().create("abnahme",

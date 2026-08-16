@@ -72,6 +72,15 @@
     <div class="tick"><span class="eyebrow">ABNAHME</span><div id="tickReview">–</div></div>
   </div>
 </section>
+<section data-page="Schreibtisch">
+  <div class="sectionhead"><div><span class="eyebrow">FERTIGE ARBEIT</span><h2>Abnahme</h2></div><button id="loadReviews">Aktualisieren</button></div>
+  <p class="muted small">Was ein Mitarbeiter fertig gemeldet hat. „Ansehen" zeigt alles im Ganzen — Texte formatiert, Bilder und Seiten gerendert.</p>
+  <div id="reviews" class="cards"></div>
+  <div class="sectionhead"><div><span class="eyebrow">SAFETY GATE</span><h2>Bestätigungen</h2></div><button id="loadConfirmations">Aktualisieren</button></div><div id="confirmations" class="cards"></div>
+  <div class="sectionhead"><div><span class="eyebrow">AUFTRAGSBUCH</span><h2>Aufträge</h2></div><button id="loadAuftraege">Aktualisieren</button></div><div id="auftraege" class="cards"></div>
+  <div class="sectionhead"><div><span class="eyebrow">EREIGNISSE</span><h2>Meldungen</h2></div><button id="loadNotifications">Aktualisieren</button></div><div id="notifications" class="cards"></div>
+  <div class="panel"><h3>Dokument an Jude übergeben</h3><p class="muted">Jude stellt es den Mitarbeitern zu, die es betrifft.</p><form id="austauschForm"><input name="file" type="file" required><input name="hinweis" type="text" placeholder="Worum geht es / für wen? (optional)"><button>Übergeben</button></form><p id="austauschStatus" class="muted"></p></div>
+</section>
 <section data-page="Märkte">
   <div class="sectionhead"><div><span class="eyebrow">OHLCV</span><h2>Märkte</h2></div><div class="controls"><select id="market"><option>BTC/EUR</option><option>BTC/USD</option><option>XAU/EUR</option><option>XAU/USD</option></select><select id="interval"><option>1m</option><option>15m</option><option selected>1h</option><option>4h</option><option>1d</option></select><button id="loadMarket">Laden</button><a id="marketCsv" class="button" href="#">CSV</a></div></div>
   <div class="panel"><canvas id="chart" height="360" role="img" aria-label="Candlestick-Chart des ausgewählten Markts"></canvas><p id="marketLast"></p><p id="marketMeta" class="muted"></p><details><summary>Kerzendaten als Tabelle</summary><div class="tablewrap"><table><thead><tr><th>Zeit</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volumen</th></tr></thead><tbody id="marketRows"></tbody></table></div></details></div>
@@ -106,8 +115,17 @@
   <div id="imageGallery" class="cards"></div>
 </section>
 <section data-page="System">
+  <div class="sectionhead"><div><span class="eyebrow">DOKUMENTWISSEN (RAG)</span><h2>Wissen</h2></div><button id="loadDocs">Aktualisieren</button></div>
+  <div class="toolgrid">
+    <article class="panel"><h3>Dokument einlesen</h3><form id="docIngestForm"><input id="docPath" placeholder="Pfad unter AI-Data (Text/PDF)" required><button>Einlesen</button></form><div id="docList"></div></article>
+    <article class="panel"><h3>Durchsuchen</h3><form id="docSearchForm"><input id="docQuery" placeholder="Frage an deine Dokumente" required><button>Suchen</button></form><div id="docResults"></div></article>
+  </div>
+
+  <div class="sectionhead"><div><span class="eyebrow">LOCAL MEMORY</span><h2>Gedächtnis</h2></div><button id="loadMemory">Aktualisieren</button></div>
+  <div class="panel"><p id="memoryStats" class="muted"></p><form id="memoryForm"><input id="memoryContent" placeholder="Erinnerung ausdrücklich hinzufügen" required><button>Speichern</button></form></div>
+  <div id="memoryItems" class="cards"></div>
+
   <div class="sectionhead"><div><span class="eyebrow">SUB-AGENTEN</span><h2>Team</h2></div><button id="loadAgents">Aktualisieren</button></div>
-  <div class="panel"><h3>Dokument an Jude übergeben</h3><p class="muted">Jude stellt es den Mitarbeitern zu, die es betrifft.</p><form id="austauschForm"><input name="file" type="file" required><input name="hinweis" type="text" placeholder="Worum geht es / für wen? (optional)"><button>Übergeben</button></form><p id="austauschStatus" class="muted"></p></div>
   <div class="panel">
     <h3>Neuen Mitarbeiter anlegen</h3>
     <form id="agentForm">
@@ -137,24 +155,17 @@
     <article class="panel"><h3>Sicherungen</h3><button id="backupRun">Jetzt sichern</button><div id="backupList"></div></article>
   </div>
 
-  <div class="sectionhead"><div><span class="eyebrow">DOKUMENTWISSEN (RAG)</span><h2>Wissen</h2></div><button id="loadDocs">Aktualisieren</button></div>
-  <div class="toolgrid">
-    <article class="panel"><h3>Dokument einlesen</h3><form id="docIngestForm"><input id="docPath" placeholder="Pfad unter AI-Data (Text/PDF)" required><button>Einlesen</button></form><div id="docList"></div></article>
-    <article class="panel"><h3>Durchsuchen</h3><form id="docSearchForm"><input id="docQuery" placeholder="Frage an deine Dokumente" required><button>Suchen</button></form><div id="docResults"></div></article>
-  </div>
-
-  <div class="sectionhead"><div><span class="eyebrow">LOCAL MEMORY</span><h2>Gedächtnis</h2></div><button id="loadMemory">Aktualisieren</button></div>
-  <div class="panel"><p id="memoryStats" class="muted"></p><form id="memoryForm"><input id="memoryContent" placeholder="Erinnerung ausdrücklich hinzufügen" required><button>Speichern</button></form></div>
-  <div id="memoryItems" class="cards"></div>
-
   <div class="sectionhead"><div><span class="eyebrow">LOCAL FIRST</span><h2>Modell-Routing &amp; Verbrauch</h2></div><button id="loadRouting">Aktualisieren</button></div>
   <div id="routingStats" class="stats"></div>
   <div class="grid2"><article class="panel"><h3>Verbrauch je Modell</h3><div id="routingUsage"></div></article><article class="panel"><h3>Letzte Entscheidungen</h3><div id="routingHistory"></div></article></div>
-  <div class="sectionhead"><div><span class="eyebrow">FERTIGE ARBEIT</span><h2>Abnahme</h2></div><button id="loadReviews">Aktualisieren</button></div>
-  <p class="muted small">Was ein Mitarbeiter fertig gemeldet hat. Er arbeitet weiter — nur eine Revision kommt bei ihm wieder an.</p>
-  <div id="reviews" class="cards"></div>
-
-<div class="sectionhead"><div><span class="eyebrow">SAFETY GATE</span><h2>Bestätigungen</h2></div><button id="loadConfirmations">Aktualisieren</button></div><div id="confirmations" class="cards"></div>
-
-<div class="sectionhead"><div><span class="eyebrow">EREIGNISSE</span><h2>Meldungen</h2></div><button id="loadNotifications">Aktualisieren</button></div><div id="notifications" class="cards"></div></section>
-</main><div id="toast" role="status"></div><script src="/static/vendor/leaflet.js"></script><script src="/static/app.js"></script></body></html>
+</section>
+</main>
+<div id="overlay" hidden>
+  <div id="overlayInner">
+    <div id="overlayHead"><h3 id="overlayTitle"></h3><button id="overlayClose" class="ghost">Schließen ✕</button></div>
+    <div id="overlayTabs"></div>
+    <div id="overlayBody"></div>
+    <div id="overlayActions"></div>
+  </div>
+</div>
+<div id="toast" role="status"></div><script src="/static/vendor/leaflet.js"></script><script src="/static/app.js"></script></body></html>
