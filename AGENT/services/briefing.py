@@ -239,16 +239,22 @@ class BriefingService:
         try:
             from services.review import ReviewQueue
             from services.auftraege import Auftragsbuch
+            from services.confirmations import ConfirmationQueue
             zus = ReviewQueue().zusammenfassung()
             offen = int(zus.get("offen") or 0)
             ueber = len(Auftragsbuch().ueberfaellig())
-            if offen or ueber:
+            # Wartende Bestätigungen gehören ebenfalls auf den Schreibtisch –
+            # die Schleuse hielt sonst stumm Schreibvorgänge fest (16.08.).
+            best = len(ConfirmationQueue().list("pending"))
+            if offen or ueber or best:
                 teile = []
                 if offen:
                     teile.append(f"{offen} Vorlage{'n' if offen != 1 else ''} zur Abnahme")
                 if ueber:
                     teile.append(f"{ueber} überfällige Aufträge" if ueber != 1
                                  else "1 überfälliger Auftrag")
+                if best:
+                    teile.append(f"{best} Freigabe{'n' if best != 1 else ''} in der Schleuse")
                 segments.insert(0, {"topic": "Schreibtisch",
                                     "text": "Auf deinem Schreibtisch: " + " und ".join(teile) + "."})
         except Exception:

@@ -40,6 +40,23 @@ Stand: 16.08.2026. Erledigtes wird gestrichen und wandert ins decision_log.
 - [ ] **tmp/ Rest aufräumen** (Wakeword-Trainingsdaten ~600 MB) und
   Entscheidung zur untracked 32-MB-Datei `pathlib` im Projektstamm.
 
+- [ ] **Bestätigungs-Schleuse leeren**: 9 Alt-Einträge vom 03.08. (Test-
+  Artefakte) verwerfen; Joanas 7 `code_write`-Freigaben (Landingpages)
+  entscheiden. Seit 16.08. melden neue Einträge sich per Notification +
+  Briefing — vorher stauten sie stumm.
+- [ ] **Mitarbeiter-Lehre**: Liefergegenstände nach `austausch/vom-team/`
+  gehören über `austausch_ablegen` (ohne Schleuse) statt `coding_write`
+  (mit Schleuse) — Rollen-/Auftragsformulierungen entsprechend anpassen.
+- [ ] **Groq-TPM-Grenze beachten**: gpt-oss-120b hat im Free-Tier 8.000
+  Tokens/Minute — große Chefprüfungen (>8k Tokens) laufen automatisch auf
+  Haiku. Beobachten; ggf. Prüf-Inhalt kürzen oder Dev-Tier erwägen.
+
+- [ ] **Sprach-Experiment (messen, nicht raten)**: Prüfen, ob deutsche
+  Steuer-Prompts die Werkzeugtreue der Modelle senken. A/B mit je 5 Läufen:
+  Steuerung/Werkzeug-Anweisungen englisch vs. deutsch, Output bleibt in
+  beiden Fällen deutsch (Markenpflicht). Messgrößen: Werkzeug-Fehlerquote,
+  Runden pro Auftrag, Tokens (deutsch kostet ~15–20 % mehr Tokens).
+
 ## Bekannte Ärgernisse
 
 - NewsAPI-Schlüssel abgelaufen (401), yfinance-Golddaten unzuverlässig,

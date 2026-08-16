@@ -29,6 +29,15 @@ class ConfirmationQueue:
                 (action_id, action_type, summary, json.dumps(payload, ensure_ascii=False), created),
             )
         audit("confirmation_requested", action_id, {"action_type": action_type, "summary": summary}, True)
+        # Ohne Meldung wartete die Schleuse stumm: Joanas Landingpage-Schreib-
+        # vorgänge lagen hier, ohne dass Tino je davon erfuhr (16.08.).
+        try:
+            from services.notifications import NotificationService
+            NotificationService().create("bestaetigung",
+                                         f"Freigabe nötig: {action_type}",
+                                         summary[:200])
+        except Exception:
+            pass
         return {"id": action_id, "action_type": action_type, "summary": summary, "status": "pending", "created_at": created}
 
     def list(self, status: str = "pending") -> list[dict]:
