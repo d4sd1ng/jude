@@ -627,6 +627,14 @@ class SubAgentService:
         return "teilweise", fehlschlaege
 
     #: Woran Jude ein Erzeugnis misst, bevor er es Tino vorlegt.
+    #: Deterministisch prüfbare Verbotswörter (Werbedeutsch + Englisch-Ausreißer).
+    #: Wortgrenzen, damit "Prozesse" im Claim nicht faelschlich anschlaegt.
+    WORTFILTER = re.compile(
+        r"\b(l(ö|oe)sung(en)?|effizient(er|este[rns]?)?|optimier\w*|transformier\w*|"
+        r"innovativ\w*|benutzerfreundlich\w*|tools?|features?|workflows?|insights?|"
+        r"reports?|scores?|templates?|setups?|game.?changer|boost\w*)\b",
+        re.IGNORECASE)
+
     CHEF_MASSSTAB = (
         "0. Auftritt: hochwertig und ruhig, dunkelgruen und Gold auf mattem Schwarz. "
         "Marktgeschrei, Ausrufezeichen-Ketten, Emoji-Teppiche und Rabattsprache sind "
@@ -666,6 +674,35 @@ class SubAgentService:
         for vorlage in offene:
             try:
                 voll = queue.zeigen(vorlage["id"])
+                # Deterministischer Wortfilter VOR dem Sprachmodell: Der Richter
+                # vergab 92 Punkte an Seiten mit "effizienter", "Loesung" und
+                # "Tools" (16.08.). Woerter zaehlt man, man erraet sie nicht.
+                lesbar = voll.get("inhalt") or ""
+                if "<style" in lesbar.lower() or "<html" in lesbar.lower():
+                    # Nur was der Besucher liest zaehlt – 'grid-template-columns'
+                    # im CSS ist kein Werbedeutsch.
+                    lesbar = re.sub(r"<(style|script)\b.*?</\1\s*>", " ", lesbar,
+                                    flags=re.S | re.I)
+                    lesbar = re.sub(r"<[^>]+>", " ", lesbar)
+                funde = {t[0].lower() if isinstance(t, tuple) else t.lower()
+                         for t in self.WORTFILTER.findall(lesbar)}
+                funde = {f for f in funde if f}
+                if funde and int(voll.get("runde") or 1) < 3:
+                    grund = ("Wortfilter: verbotene/englische Woerter im Text: "
+                             + ", ".join(sorted(funde)[:10])
+                             + ". Ersetze sie durch deutsche, konkrete Formulierungen.")
+                    queue.revision(vorlage["id"], f"Jude: {grund}")
+                    self.lehre_merken(agent_name, grund)
+                    try:
+                        from services.notifications import NotificationService
+                        NotificationService().create("revision",
+                                                     f"Revision (Wortfilter): {voll['titel'][:70]}",
+                                                     grund[:200])
+                    except Exception:
+                        pass
+                    entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                        "grund": "wortfilter"})
+                    continue
                 # Revisionsbremse: Nach 2 Runden entscheidet Tino, nicht die
                 # Schleife. Der Prüfer erfand sonst in jeder Runde neue Einwände.
                 if int(voll.get("runde") or 1) >= 3:

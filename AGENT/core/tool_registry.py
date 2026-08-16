@@ -75,7 +75,12 @@ class ToolRegistry:
             return ("Diese Aktion ist sicherheitsrelevant und wartet auf deine Bestätigung "
                     f"(ID {pending['id']}). Bitte im Bestätigungen-Tab freigeben.")
         try:
-            result = str(tool.func(**arguments))
+            roh = tool.func(**arguments)
+            # Bild-Anlagen (z. B. vorlage_ansehen) unverändert durchreichen:
+            # nur so erreichen sie den Anthropic-Adapter als echte Bildblöcke.
+            if isinstance(roh, dict) and "_bildbloecke" in roh:
+                return roh
+            result = str(roh)
         except Exception as exc:
             return f"Tool '{tool_name}' fehlgeschlagen: {exc}"
         if tool.untrusted:

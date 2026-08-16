@@ -125,9 +125,20 @@ function overlayShow(){$('#overlay').hidden=false;document.body.style.overflow='
 function overlayHide(){$('#overlay').hidden=true;document.body.style.overflow='';$('#overlayBody').innerHTML='';$('#overlayTabs').innerHTML='';$('#overlayActions').innerHTML=''}
 $('#overlayClose').onclick=overlayHide;$('#overlay').onclick=e=>{if(e.target.id==='overlay')overlayHide()};
 function dateiUrl(p){return '/api/austausch/datei?pfad='+encodeURIComponent(p.trim())}
+/* Inhalte werden per fetch geholt und in den Rahmen gereicht (srcdoc / Blob):
+   Ein sandboxed iframe bekommt vom Browser keine Basic-Auth mit – direktes
+   src= lieferte 401 und die Browser-Seite "Erneut versuchen". */
 function quelleTab(p){const q=p.trim(),n=q.split('/').pop();
- if(/\.(png|jpe?g|webp|gif)$/i.test(q))return{name:n,html:`<img class="ovimg" src="${esc(dateiUrl(q))}" alt="${esc(n)}">`};
- if(/\.html?$/i.test(q))return{name:n,html:`<iframe class="oviframe" sandbox="" src="${esc(dateiUrl(q))}"></iframe><p class=small><a href="${esc(dateiUrl(q))}" target=_blank rel=noopener>In neuem Tab öffnen</a></p>`};
+ if(/\.(png|jpe?g|webp|gif|svg)$/i.test(q))return{name:n,lazy:async()=>{
+   const r=await fetch(dateiUrl(q));if(!r.ok)throw Error('Bild nicht ladbar ('+r.status+')');
+   const url=URL.createObjectURL(await r.blob());
+   return `<img class="ovimg" src="${url}" alt="${esc(n)}">`}};
+ if(/\.html?$/i.test(q))return{name:n,lazy:async()=>{
+   const r=await fetch(dateiUrl(q));if(!r.ok)throw Error('Seite nicht ladbar ('+r.status+')');
+   const roh=await r.text();
+   return `<iframe class="oviframe" sandbox="" srcdoc="${esc(roh)}"></iframe>`
+        + `<details><summary class=small>Quelltext anzeigen</summary>`
+        + `<pre class="auszug" style="max-height:60vh">${esc(roh)}</pre></details>`}};
  return{name:n,html:null,pfad:q}}
 window.openReview=async id=>{try{const v=await api('/api/reviews/'+id);
  $('#overlayTitle').textContent=v.titel||'';

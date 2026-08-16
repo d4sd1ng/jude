@@ -14,6 +14,12 @@ Stand: 16.08.2026. Erledigtes wird gestrichen und wandert ins decision_log.
 - [ ] **Newsletter-Konzept + Landingpage-Vorlagen abnehmen** (erste Aufträge
   durch das neue Auftragsbuch, Stefan/Joana).
 
+- [ ] **System-Tab weiter aufräumen** (Tino, 16.08.): Erste Stufe ist umgesetzt
+  (eigener Schreibtisch-Tab mit Abnahme/Bestätigungen/Aufträgen/Meldungen +
+  Vorschau-Overlay; System-Tab beginnt mit Wissen und Gedächtnis; Mitarbeiter-
+  Karten als Aufklapper). Nächste Stufe nach Tinos Sichtung: seine konkreten
+  Punkte einsammeln (was fehlt, was stört, was gehört wohin).
+
 ## Nach dem Montag-Test
 
 - [ ] **Kalender-Autopilot aktivieren** (nur auf Tinos Ansage „Autopilot an"):

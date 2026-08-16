@@ -83,6 +83,49 @@ def freigeben(name: str) -> dict:
     return {"freigegeben": str(ziel)}
 
 
+def vorlage_ansehen(datei: str) -> dict:
+    """Referenzbild aus dem Austausch als echtes Bild ansehen.
+
+    Liefert das Bild als Anthropic-Bildblock: Mitarbeiter auf Haiku SEHEN
+    damit Tinos Vorlagen wirklich, statt eine Textbeschreibung zu raten.
+    Verkleinert auf max. 768 px Kante (JPEG), damit der Verlauf schlank bleibt.
+    """
+    import base64
+    import io
+
+    name = str(datei).strip().split("/")[-1]
+    treffer = [p for p in AUSTAUSCH_DIR.rglob(name) if p.is_file()]
+    if not treffer:
+        kandidaten = sorted(p.name for p in (AUSTAUSCH_DIR / "an-team" / "vorlagen").glob("*")
+                            if p.is_file())[:40]
+        raise ValueError("Keine solche Datei im Austausch: " + name
+                         + ". Vorhandene Vorlagen: " + ", ".join(kandidaten))
+    pfad = treffer[0].resolve()
+    if AUSTAUSCH_DIR not in pfad.parents:
+        raise ValueError("Pfad liegt außerhalb des Austauschs.")
+    if pfad.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+        raise ValueError("Nur Bilddateien (png/jpg/webp/gif) lassen sich ansehen; "
+                         "Texte liest du mit read_project_file.")
+    from PIL import Image
+    with Image.open(pfad) as bild:
+        bild = bild.convert("RGB")
+        bild.thumbnail((768, 768))
+        puffer = io.BytesIO()
+        bild.save(puffer, format="JPEG", quality=80)
+    daten = base64.standard_b64encode(puffer.getvalue()).decode("ascii")
+    return {
+        "_bildbloecke": [
+            {"type": "image",
+             "source": {"type": "base64", "media_type": "image/jpeg", "data": daten}},
+            {"type": "text",
+             "text": f"Vorlage {pfad.name} (verkleinert auf max. 768 px). "
+                     "Übernimm Bildaufbau, Typografie und Stimmung – nicht den Wortlaut."},
+        ],
+        "text": f"[Bild-Anlage {pfad.name} – dieses Modell kann sie nicht sehen; "
+                "beschreibe dem Designer stattdessen, was du brauchst.]",
+    }
+
+
 def register(registry: ToolRegistry) -> None:
     def _schema(properties: dict, required: list[str] | None = None) -> dict:
         result = {"type": "object", "properties": properties}
@@ -98,6 +141,13 @@ def register(registry: ToolRegistry) -> None:
                            ablegen,
                            _schema({"name": {"type": "string"}, "content": {"type": "string"}},
                                    ["name", "content"])))
+    registry.register(Tool("vorlage_ansehen",
+                           "Referenzbild aus austausch/ (z. B. an-team/vorlagen/) als echtes Bild "
+                           "ansehen – Pflicht vor jeder Gestaltungsarbeit.",
+                           vorlage_ansehen,
+                           _schema({"datei": {"type": "string",
+                                              "description": "Dateiname der Vorlage, z. B. 1.png"}},
+                                   ["datei"])))
     registry.register(Tool("austausch_freigeben",
                            "Datei aus vom-team nach freigegeben verschieben – nur wenn Tino es sagt.",
                            freigeben,

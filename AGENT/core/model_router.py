@@ -85,6 +85,18 @@ class ProviderAdapter(ABC):
         """Rufe den Provider auf und liefere eine normalisierte Assistentenantwort."""
 
 
+def _werkzeug_text(content: Any) -> str:
+    """Textform eines Werkzeug-Ergebnisses.
+
+    Bild-Anlagen (vorlage_ansehen) sind Blocklisten, die nur der Anthropic-
+    Adapter als Bilder senden kann; alle anderen Anbieter bekommen den
+    Textersatz, sonst landet Base64-Müll im Prompt."""
+    if isinstance(content, dict) and "_bildbloecke" in content:
+        return str(content.get("text")
+                   or "[Bild-Anlage – dieses Modell kann sie nicht sehen]")
+    return str(content or "")
+
+
 class OllamaAdapter(ProviderAdapter):
     def __init__(self, base_url: str, timeout_seconds: int = 60, num_retries: int = 2):
         self.base_url = base_url.rstrip("/")
@@ -97,6 +109,8 @@ class OllamaAdapter(ProviderAdapter):
         return {item["name"] for item in response.json().get("models", [])}
 
     def call(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None) -> dict:
+        messages = [{**m, "content": _werkzeug_text(m.get("content"))}
+                    if isinstance(m.get("content"), dict) else m for m in messages]
         payload: dict[str, Any] = {
             "model": spec.model_name,
             "messages": messages,
@@ -141,10 +155,10 @@ class OpenAIAdapter(ProviderAdapter):
             role = message.get("role")
             if role == "tool":
                 input_items.append({"type": "function_call_output", "call_id": message.get("tool_call_id", ""),
-                                    "output": str(message.get("content", ""))})
+                                    "output": _werkzeug_text(message.get("content", ""))})
                 continue
             if message.get("content"):
-                input_items.append({"role": role, "content": str(message["content"])})
+                input_items.append({"role": role, "content": _werkzeug_text(message["content"])})
             if role == "assistant":
                 for call in message.get("tool_calls", []):
                     function = call["function"]
@@ -206,6 +220,8 @@ class OpenAICompatAdapter(ProviderAdapter):
         # veraenderten Verlauf mit HTTP 400 ab.
         outgoing: list[dict] = []
         for message in messages:
+            if isinstance(message.get("content"), dict):
+                message = {**message, "content": _werkzeug_text(message["content"])}
             item = copy.deepcopy(dict(message))
             for call in item.get("tool_calls", []) or []:
                 arguments = call.get("function", {}).get("arguments")
@@ -288,8 +304,13 @@ class AnthropicAdapter(ProviderAdapter):
                                    "input": function["arguments"]})
                 chat.append({"role": "assistant", "content": blocks or ""})
             elif message["role"] == "tool":
+                inhalt = message["content"]
+                # Bild-Anlagen als echte Bildblöcke – Haiku & Co. SEHEN damit
+                # die Vorlagen, statt eine Textbeschreibung zu raten.
+                if isinstance(inhalt, dict) and "_bildbloecke" in inhalt:
+                    inhalt = inhalt["_bildbloecke"]
                 chat.append({"role": "user", "content": [{
-                    "type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"],
+                    "type": "tool_result", "tool_use_id": message["tool_call_id"], "content": inhalt,
                 }]})
         payload: dict[str, Any] = {"model": spec.model_name, "messages": chat, "max_tokens": spec.max_tokens,
                                    # Auto-Caching: Cache-Punkt auf dem letzten cachebaren Block. Ohne das
@@ -343,7 +364,7 @@ class GoogleAdapter(ProviderAdapter):
                 continue
             if role == "tool":
                 parts = [{"functionResponse": {"name": message.get("name", "tool"),
-                                                "response": {"result": message.get("content", "")}}}]
+                                                "response": {"result": _werkzeug_text(message.get("content", ""))}}}]
                 contents.append({"role": "user", "parts": parts})
                 continue
             parts = []
@@ -545,7 +566,7 @@ class ModelRouter:
             return True
         try:
             from services import kontingent
-            geschaetzt = (sum(len(str(m.get("content", ""))) for m in messages) // 4
+            geschaetzt = (sum(len(_werkzeug_text(m.get("content", ""))) for m in messages) // 4
                           + min(spec.max_tokens, 2048))
             frei = kontingent.verfuegbar(geschaetzt)
             if not frei:

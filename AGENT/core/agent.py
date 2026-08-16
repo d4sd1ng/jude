@@ -166,6 +166,10 @@ class Agent:
         """
         def cost(message: dict) -> int:
             content = message.get("content")
+            if isinstance(content, dict) and "_bildbloecke" in content:
+                # Ein Bild kostet ~1,5k Tokens; die Base64-Länge wäre eine
+                # 10-fache Überschätzung und würde den Verlauf leerfegen.
+                return 1800
             text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False) if content else ""
             return int(len(text) / 3.6) + 8  # Overhead je Nachricht (Rolle, Rahmen)
 
