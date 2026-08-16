@@ -191,7 +191,9 @@ providers:
     timeout_seconds: 60
   anthropic:
     base_url: https://api.anthropic.com/v1
-    timeout_seconds: 60
+    # 60 s riss bei langen Content-Läufen (Newsletter-Konzept, 4k+ Tokens
+    # Ausgabe) mitten in der Generierung ab – gemessen 16.08.
+    timeout_seconds: 180
   google:
     base_url: https://generativelanguage.googleapis.com/v1beta
     timeout_seconds: 60
