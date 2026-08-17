@@ -9,7 +9,10 @@ laufen weiterhin über dieselbe Bestätigungs-Warteschlange.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
+import threading
 import time
 import uuid
 from contextlib import suppress
@@ -65,6 +68,7 @@ class SubAgentService:
         self.registry = registry
         self.router = router
         self.path = DATA_DIR / "sub_agents.json"
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------ Speicher
 
@@ -76,7 +80,14 @@ class SubAgentService:
 
     def _save(self, data: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        fd, tmp = tempfile.mkstemp(prefix=".sub_agents.", dir=self.path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(data, ensure_ascii=False, indent=2))
+            os.replace(tmp, self.path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
 
     @staticmethod
     def _key(name: str) -> str:
@@ -105,24 +116,26 @@ class SubAgentService:
         unknown = [s for s in skills if s not in self.registry.tools]
         if unknown:
             raise ValueError("Unbekannte Skills: " + ", ".join(unknown))
-        data = self._load()
-        # Name und Alter geben dem Mitarbeiter eine Identitaet: der Agent stellt
-        # sich damit vor und Tino kann ihn ansprechen wie einen Kollegen.
-        vorhanden = data.get(self._key(name), {})
-        spec = {"name": name, "role": role, "skills": skills, "model": model,
-                "person": (person or vorhanden.get("person") or "").strip() or None,
-                "alter": int(alter) if alter is not None else vorhanden.get("alter"),
-                "created_at": vorhanden.get("created_at") or datetime.now(timezone.utc).isoformat()}
-        data[self._key(name)] = spec
-        self._save(data)
+        with self._lock:
+            data = self._load()
+            # Name und Alter geben dem Mitarbeiter eine Identitaet: der Agent stellt
+            # sich damit vor und Tino kann ihn ansprechen wie einen Kollegen.
+            vorhanden = data.get(self._key(name), {})
+            spec = {"name": name, "role": role, "skills": skills, "model": model,
+                    "person": (person or vorhanden.get("person") or "").strip() or None,
+                    "alter": int(alter) if alter is not None else vorhanden.get("alter"),
+                    "created_at": vorhanden.get("created_at") or datetime.now(timezone.utc).isoformat()}
+            data[self._key(name)] = spec
+            self._save(data)
         return spec
 
     def delete(self, name: str) -> dict:
-        data = self._load()
-        if self._key(name) not in data:
-            raise KeyError(f"Kein Sub-Agent namens {name}.")
-        removed = data.pop(self._key(name))
-        self._save(data)
+        with self._lock:
+            data = self._load()
+            if self._key(name) not in data:
+                raise KeyError(f"Kein Sub-Agent namens {name}.")
+            removed = data.pop(self._key(name))
+            self._save(data)
         return {"name": removed["name"], "status": "entfernt"}
 
     # ------------------------------------------------------- Eigenes Gedächtnis
@@ -160,7 +173,14 @@ class SubAgentService:
         items = items[-self.MAX_NOTES:]
         path = self._memory_path(name)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        fd, tmp = tempfile.mkstemp(prefix=".memory.", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(items, ensure_ascii=False, indent=2))
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
         return {"agent": name, "gespeichert": note[:120], "notizen_gesamt": len(items)}
 
     def forget_notes(self, name: str) -> dict:
@@ -230,7 +250,14 @@ class SubAgentService:
         eintraege = eintraege[:self.MAX_LEHREN]
         pfad = self._lehren_pfad(name)
         pfad.parent.mkdir(parents=True, exist_ok=True)
-        pfad.write_text(json.dumps(eintraege, ensure_ascii=False, indent=2), encoding="utf-8")
+        fd, tmp = tempfile.mkstemp(prefix=".lehren.", dir=pfad.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(eintraege, ensure_ascii=False, indent=2))
+            os.replace(tmp, pfad)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
         return {"gemerkt": True, "lehren_gesamt": len(eintraege)}
 
     def forget_lehren(self, name: str) -> dict:

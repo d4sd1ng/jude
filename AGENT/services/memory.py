@@ -33,7 +33,6 @@ class MemoryService:
     )
 
     def __init__(self):
-        import os
         self.auto_approve_threshold = self._env_float("JUDE_MEMORY_AUTOAPPROVE", 0.8)
 
     @staticmethod
