@@ -25,7 +25,6 @@ Nichts hiervon veröffentlicht oder versendet etwas — das bleibt Tinos Sache.
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timezone
 

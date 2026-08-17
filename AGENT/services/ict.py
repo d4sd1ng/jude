@@ -9,7 +9,6 @@ import subprocess
 import time
 import uuid
 from datetime import datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from services.database import connection
@@ -102,7 +101,7 @@ class ICTService:
         raw = os.getenv("ICT_KILL_ZONES", "").strip()
         zones = json.loads(raw) if raw else ICTService.DEFAULT_KILL_ZONES
         for zone in zones:
-            if set(zone) < {"name", "start", "end"}:
+            if not {"name", "start", "end"} <= set(zone):
                 raise ValueError("Jede Kill Zone braucht name, start und end.")
             datetime.strptime(zone["start"], "%H:%M")
             datetime.strptime(zone["end"], "%H:%M")
