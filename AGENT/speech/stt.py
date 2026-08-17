@@ -31,8 +31,13 @@ def _model():
         default_dir = MODELS_DIR / "whisper-small"
     default = str(default_dir)
     configured = os.getenv("WHISPER_MODEL", default)
-    if configured == default and not os.path.isfile(os.path.join(default, "model.bin")):
-        raise RuntimeError("Lokales Whisper-Modell fehlt oder ist unvollständig: " + default)
+    # Validate any local path (absolute or existing directory) before WhisperModel passes it
+    # to HuggingFace hub, which raises a cryptic "repo id must be in the Form …" error for
+    # absolute filesystem paths that are not valid HuggingFace repo IDs.
+    cfg_path = Path(configured)
+    if cfg_path.is_absolute() or cfg_path.is_dir():
+        if not (cfg_path / "model.bin").is_file():
+            raise RuntimeError("Lokales Whisper-Modell fehlt oder ist unvollständig: " + configured)
     return WhisperModel(configured, device=os.getenv("WHISPER_DEVICE", "cpu"), compute_type="int8")
 
 

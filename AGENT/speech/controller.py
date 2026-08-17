@@ -241,8 +241,14 @@ class VoiceController:
     def _respond(self, text: str) -> None:
         self._set_state("denkt")
         self._emit("heard", text)
-        with self.agent_lock:
-            answer = self.agent.process_input(text)
+        try:
+            with self.agent_lock:
+                answer = self.agent.process_input(text)
+        except Exception as exc:
+            logger.warning("Verarbeitung des Sprachbefehls fehlgeschlagen: %s", exc)
+            self._emit("error", f"Antwort konnte nicht erzeugt werden: {exc}")
+            self._set_state("aktiv")
+            return
         self._emit("answer", answer, model=self.agent.last_model)
         self._set_state("spricht")
         # Auch normale Antworten müssen abbrechbar sein (Ansage Tino) – vorher
