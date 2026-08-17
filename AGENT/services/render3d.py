@@ -1,0 +1,204 @@
+"""Lokales 3D-Rendern mit Blender (headless).
+
+Der Agent liefert ein Blender-Python-Skript (``bpy``), das eine Szene aufbaut.
+Dieser Dienst kapselt es in ein Gerüst, das Render-Auflösung, Engine und
+Ausgabepfad setzt, und ruft Blender im Hintergrund auf. Das Ergebnis landet als
+PNG mit Metadaten unter ``Jude/images``.
+
+Die Skriptausführung erfolgt lokal auf dem Rechner des Nutzers – wie beim
+Tool-Creator wird generierter Python-Code ausgeführt; ein Timeout und
+``--factory-startup`` (keine Nutzer-Add-ons) begrenzen den Rahmen.
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import uuid
+from datetime import datetime, timezone
+
+from core.paths import IMAGES_DIR
+
+_ALLOWED_IMPORTS = {"bpy", "math", "mathutils", "random"}
+_FORBIDDEN_NAMES = {"eval", "exec", "open", "compile", "__import__", "globals", "locals",
+                    "vars", "getattr", "setattr", "delattr", "os", "sys", "subprocess",
+                    "socket", "shutil", "pathlib", "importlib", "input", "breakpoint"}
+
+
+def _assert_safe_bpy(script: str) -> None:
+    """Erlaubt nur eine enge bpy-Teilmenge für vom Modell geschriebene Skripte."""
+    try:
+        tree = ast.parse(script)
+    except SyntaxError as exc:
+        raise ValueError(f"Ungültiges Blender-Skript: {exc}") from exc
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] not in _ALLOWED_IMPORTS:
+                    raise ValueError(f"Import nicht erlaubt: {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            if (node.module or "").split(".")[0] not in _ALLOWED_IMPORTS:
+                raise ValueError(f"Import nicht erlaubt: {node.module}")
+        elif isinstance(node, ast.Name) and node.id in _FORBIDDEN_NAMES:
+            raise ValueError(f"Nicht erlaubter Bezeichner im Skript: {node.id}")
+        elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+            raise ValueError("Dunder-Zugriff im Skript ist nicht erlaubt.")
+
+_WRAPPER = '''
+import bpy, sys
+_out = sys.argv[-1]
+
+# Leere Standardszene und setze reproduzierbare Render-Vorgaben.
+bpy.ops.wm.read_factory_settings(use_empty=True)
+scene = bpy.context.scene
+scene.render.engine = "{engine}"
+scene.render.resolution_x = {width}
+scene.render.resolution_y = {height}
+scene.render.film_transparent = {transparent}
+scene.render.image_settings.file_format = "PNG"
+
+def _build():
+{indented_script}
+
+_build()
+
+# Fallback-Kamera und -Licht, falls das Skript keine gesetzt hat.
+if scene.camera is None:
+    cam_data = bpy.data.cameras.new("JudeCam")
+    cam = bpy.data.objects.new("JudeCam", cam_data)
+    scene.collection.objects.link(cam)
+    cam.location = (7.0, -7.0, 5.0)
+    cam.rotation_euler = (1.109, 0.0, 0.785)
+    scene.camera = cam
+if not any(o.type == "LIGHT" for o in scene.objects):
+    light_data = bpy.data.lights.new("JudeSun", type="SUN")
+    light = bpy.data.objects.new("JudeSun", light_data)
+    scene.collection.objects.link(light)
+    light.location = (5.0, -5.0, 8.0)
+
+scene.render.filepath = _out
+bpy.ops.render.render(write_still=True)
+'''
+
+
+class BlenderService:
+    def __init__(self, blender: str | None = None, timeout: int = 180):
+        self.blender = blender or os.getenv("BLENDER_BIN") or shutil.which("blender") or "blender"
+        self.timeout = timeout
+
+    def available(self) -> bool:
+        return bool(shutil.which(self.blender) or os.path.isfile(self.blender))
+
+    def render(self, blender_python: str, title: str = "szene",
+               width: int = 1024, height: int = 1024,
+               engine: str = "BLENDER_EEVEE_NEXT", transparent: bool = False,
+               trusted: bool = False) -> dict:
+        if not blender_python.strip():
+            raise ValueError("Es wurde kein Blender-Skript übergeben.")
+        if not self.available():
+            raise RuntimeError("Blender wurde nicht gefunden (BLENDER_BIN setzen oder installieren).")
+        if not trusted:
+            # Roh-Skripte vom Modell sind standardmäßig deaktiviert und werden geprüft.
+            if os.getenv("JUDE_BLENDER_RAW", "").strip().lower() not in {"1", "true", "an", "on", "ja"}:
+                raise RuntimeError("Roh-Blender-Skripte sind deaktiviert. Nutze render_3d_objects "
+                                   "oder setze JUDE_BLENDER_RAW=true.")
+            _assert_safe_bpy(blender_python)
+        engine = engine if engine in {"BLENDER_EEVEE_NEXT", "CYCLES", "BLENDER_WORKBENCH"} else "BLENDER_EEVEE_NEXT"
+
+        indented = "\n".join("    " + line for line in blender_python.splitlines()) or "    pass"
+        script = _WRAPPER.format(engine=engine, width=int(width), height=int(height),
+                                 transparent=bool(transparent), indented_script=indented)
+
+        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        safe_title = "".join(c for c in title if c.isalnum() or c in "-_") or "szene"
+        name = f"{stamp}_blender_{safe_title}_{uuid.uuid4().hex[:6]}.png"
+        out_path = IMAGES_DIR / name
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as handle:
+            handle.write(script)
+            script_path = handle.name
+        try:
+            result = subprocess.run(
+                [self.blender, "--background", "--factory-startup", "--python", script_path, "--", str(out_path)],
+                capture_output=True, text=True, timeout=self.timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"Blender-Render-Timeout nach {self.timeout}s.") from exc
+        finally:
+            os.unlink(script_path)
+
+        if not out_path.is_file():
+            tail = (result.stderr or result.stdout or "").strip().splitlines()[-8:]
+            raise RuntimeError("Blender hat kein Bild erzeugt:\n" + "\n".join(tail))
+
+        meta = {"file": name, "kind": "blender", "title": title, "engine": engine,
+                "size": f"{width}x{height}", "source": "Blender lokal",
+                "created_at": datetime.now(timezone.utc).isoformat()}
+        out_path.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"path": str(out_path), **meta}
+
+    # ------------------------------------------------------- strukturierte Szene
+
+    _SHAPE_OPS = {
+        "cube": "bpy.ops.mesh.primitive_cube_add",
+        "sphere": "bpy.ops.mesh.primitive_uv_sphere_add",
+        "cylinder": "bpy.ops.mesh.primitive_cylinder_add",
+        "cone": "bpy.ops.mesh.primitive_cone_add",
+        "torus": "bpy.ops.mesh.primitive_torus_add",
+        "plane": "bpy.ops.mesh.primitive_plane_add",
+        "monkey": "bpy.ops.mesh.primitive_monkey_add",
+    }
+
+    @staticmethod
+    def _rgb(value, default=(0.8, 0.8, 0.8)):
+        if not isinstance(value, (list, tuple)) or len(value) < 3:
+            return default
+        return tuple(max(0.0, min(1.0, float(c))) for c in value[:3])
+
+    @classmethod
+    def _spec_to_bpy(cls, spec: dict) -> str:
+        lines = ["import bpy"]
+        background = cls._rgb(spec.get("background"), (0.05, 0.05, 0.05))
+        lines += [
+            "world = bpy.data.worlds.new('JudeWorld'); bpy.context.scene.world = world",
+            "world.use_nodes = True",
+            f"world.node_tree.nodes['Background'].inputs[0].default_value = ({background[0]},{background[1]},{background[2]},1)",
+        ]
+        objects = spec.get("objects") or []
+        if not objects:
+            raise ValueError("Die Szene enthält keine Objekte.")
+        for index, obj in enumerate(objects):
+            shape = str(obj.get("shape", "cube")).lower()
+            op = cls._SHAPE_OPS.get(shape)
+            if not op:
+                raise ValueError(f"Unbekannte Form: {shape}. Erlaubt: {', '.join(cls._SHAPE_OPS)}.")
+            loc = obj.get("location", [0, 0, 0])
+            loc = [float(loc[i]) if isinstance(loc, (list, tuple)) and i < len(loc) else 0.0 for i in range(3)]
+            scale = obj.get("scale", 1.0)
+            scale = [float(s) for s in scale] if isinstance(scale, (list, tuple)) else [float(scale)] * 3
+            color = cls._rgb(obj.get("color"))
+            metallic = max(0.0, min(1.0, float(obj.get("metallic", 0.0))))
+            rough = max(0.0, min(1.0, float(obj.get("roughness", 0.5))))
+            lines += [
+                f"{op}(location=({loc[0]},{loc[1]},{loc[2]}))",
+                "o = bpy.context.object",
+                f"o.scale = ({scale[0]},{scale[1]},{scale[2]})",
+                f"m = bpy.data.materials.new('mat{index}'); m.use_nodes = True",
+                "b = m.node_tree.nodes['Principled BSDF']",
+                f"b.inputs['Base Color'].default_value = ({color[0]},{color[1]},{color[2]},1)",
+                f"b.inputs['Metallic'].default_value = {metallic}",
+                f"b.inputs['Roughness'].default_value = {rough}",
+                "o.data.materials.append(m)",
+            ]
+        return "\n".join(lines)
+
+    def render_spec(self, spec: dict, title: str = "szene", width: int = 1024,
+                    height: int = 1024, engine: str = "BLENDER_EEVEE_NEXT") -> dict:
+        # Serverseitig aus geprüften Primitiven gebaut -> vertrauenswürdig.
+        return self.render(self._spec_to_bpy(spec), title=title, width=width, height=height,
+                           engine=engine, trusted=True)

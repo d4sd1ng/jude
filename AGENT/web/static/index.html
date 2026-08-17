@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Jude</title><link rel="stylesheet" href="/static/vendor/leaflet.css"><link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header><div id="hudWeather" class="hudweather headweather">–</div><div id="clock" class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div><div id="hudTokens" class="hudtokens headtokens">–</div><div class="controls headercontrols"><button id="voiceToggle" title="Sprachsteuerung starten oder stoppen">🎙️ Sprachsteuerung</button><button id="voiceSkip" title="Aktuelles Thema überspringen">⏭️ Thema</button><span id="voiceState" class="badge">Sprachsteuerung aus</span><span id="health" class="badge">verbinden…</span></div></header>
+<nav id="nav" aria-label="Bereiche"></nav><main>
+<section data-page="Cockpit">
+  <div class="cockpit">
+    <div class="cockL">
+      <div class="panel hudpanel"><h3><span id="radarPlace">35039 Marburg</span> · Regenradar</h3>
+        <div id="radarMap" class="hudmap"></div>
+        <div class="radarbar"><input id="radarFrame" type="range" min="0" max="0" value="0" step="1" aria-label="Radarzeit"></div>
+        <p id="radarMeta" class="muted small"></p></div>
+      <div class="panel hudpanel"><h3>Growcontroller</h3><div id="hudGrow" class="hudgrow"><span class="muted small">–</span></div></div>
+      <div class="panel hudpanel factpanel"><h3>Fake-Checker</h3>
+        <form id="factForm"><input id="factUrl" type="url" placeholder="URL zu Bericht, Post oder Video" required><button>Prüfen</button></form>
+        <p class="muted small">Bestätigt erst mit zwei unabhängigen seriösen Quellen.</p>
+        <div id="factResult"></div></div>
+    </div>
+    <div class="cockC">
+      <div class="panel hudpanel bandpanel"><h3>System</h3><div class="hudband">
+        <div class="gauge" id="gCpu"><div class="ring"></div><b>–</b><small>CPU %</small></div>
+        <div class="gauge" id="gRam"><div class="ring"></div><b>–</b><small>RAM %</small></div>
+        <div class="gauge" id="gDisk"><div class="ring"></div><b>–</b><small>Disk %</small></div>
+        <div class="gauge" id="gNet"><div class="ring"></div><b>–</b><small>Netz</small></div>
+        <div class="gauge" id="gCpuTemp"><div class="ring"></div><b>–</b><small>CPU °C</small></div>
+        <div class="gauge" id="gGpuTemp"><div class="ring"></div><b>–</b><small>GPU °C</small></div>
+        <div class="gauge" id="gNvme"><div class="ring"></div><b>–</b><small>NVMe °C</small></div>
+      </div>
+      <div class="hudrow hudband">
+        <div class="toggles">
+          <button class="toggle" id="tglVoice" title="Sprachsteuerung"><span>🎙️</span><small>Stimme</small></button>
+          <button class="toggle" id="tglMarket" title="Marktdaten automatisch aktualisieren"><span>📈</span><small>Markt</small></button>
+          <button class="toggle" id="tglNews" title="News automatisch aktualisieren"><span>📰</span><small>News</small></button>
+          <button class="toggle" id="tglRadar" title="Radar automatisch aktualisieren"><span>🌧️</span><small>Radar</small></button>
+        </div>
+        <div class="freigabe"><span class="eyebrow">ZUR FREIGABE</span>
+          <div class="freigabebtns">
+            <button class="toggle rev" data-art="grafik" title="Grafiken zur Freigabe"><span class="lamp"></span><small>Grafik</small></button>
+            <button class="toggle rev" data-art="post" title="Posts zur Freigabe"><span class="lamp"></span><small>Post</small></button>
+            <button class="toggle rev" data-art="email" title="E-Mails zur Freigabe"><span class="lamp"></span><small>E-Mail</small></button>
+            <button class="toggle rev" data-art="newsletter" title="Newsletter zur Freigabe"><span class="lamp"></span><small>Newsletter</small></button>
+          </div>
+        </div>
+      </div></div>
+      <div class="panel hudpanel wakepanel"><h3>Aktivierungswort</h3>
+        <form id="wakeForm" class="controls">
+          <input id="wakeWord" placeholder="Jude angetreten" aria-label="Aktivierungswort">
+          <input id="sleepWord" placeholder="Jude Zapfenstreich" aria-label="Schlafwort">
+          <input id="wakeGreeting" placeholder="Antwort beim Aufwachen" aria-label="Begrüßung">
+          <input id="wakeFarewell" placeholder="Antwort beim Schlafen" aria-label="Verabschiedung">
+          <button>Übernehmen</button>
+        </form>
+        <p id="wakeState" class="muted small"></p></div>
+    </div>
+    <div class="cockR">
+      <div class="panel hudpanel output"><h3>Ausgabe</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jude tun?" required><button>Senden</button></form></div>
+    </div>
+    <div class="cockD">
+      <div class="panel hudpanel"><h3>Kalender</h3><form id="calendarForm"><input id="calendarTitle" placeholder="Termin" required><label>Beginn <input id="calendarStart" type="datetime-local" required></label><label>Ende <input id="calendarEnd" type="datetime-local" required></label><input id="calendarLocation" placeholder="Ort"><textarea id="calendarDescription" placeholder="Beschreibung"></textarea><button>Termin vormerken</button></form><div id="calendarEvents"></div></div>
+    </div>
+  </div>
+  <div class="ticker">
+    <div class="tick"><span class="eyebrow">NEWS</span><div id="tickNews">–</div></div>
+    <div class="tick"><span class="eyebrow">XAU/USD</span><div id="tickXau">–</div></div>
+    <div class="tick"><span class="eyebrow">BTC/USD</span><div id="tickBtc">–</div></div>
+    <div class="tick"><span class="eyebrow">MODELL</span><div id="tickModel">–</div></div>
+    <div class="tick"><span class="eyebrow">STIMME</span><div id="tickVoice">aus</div></div>
+    <div class="tick"><span class="eyebrow">ABNAHME</span><div id="tickReview">–</div></div>
+  </div>
+</section>
+<section data-page="Schreibtisch">
+  <div class="sectionhead"><div><span class="eyebrow">FERTIGE ARBEIT</span><h2>Abnahme</h2></div><button id="loadReviews">Aktualisieren</button></div>
+  <p class="muted small">Was ein Mitarbeiter fertig gemeldet hat. „Ansehen" zeigt alles im Ganzen — Texte formatiert, Bilder und Seiten gerendert.</p>
+  <div id="reviews" class="cards"></div>
+  <div class="sectionhead"><div><span class="eyebrow">SAFETY GATE</span><h2>Bestätigungen</h2></div><button id="loadConfirmations">Aktualisieren</button></div><div id="confirmations" class="cards"></div>
+  <div class="sectionhead"><div><span class="eyebrow">AUFTRAGSBUCH</span><h2>Aufträge</h2></div><button id="loadAuftraege">Aktualisieren</button></div><div id="auftraege" class="cards"></div>
+  <div class="sectionhead"><div><span class="eyebrow">EREIGNISSE</span><h2>Meldungen</h2></div><button id="loadNotifications">Aktualisieren</button></div><div id="notifications" class="cards"></div>
+  <div class="panel"><h3>Dokument an Jude übergeben</h3><p class="muted">Jude stellt es den Mitarbeitern zu, die es betrifft.</p><form id="austauschForm"><input name="file" type="file" required><input name="hinweis" type="text" placeholder="Worum geht es / für wen? (optional)"><button>Übergeben</button></form><p id="austauschStatus" class="muted"></p></div>
+</section>
+<section data-page="Märkte">
+  <div class="sectionhead"><div><span class="eyebrow">OHLCV</span><h2>Märkte</h2></div><div class="controls"><select id="market"><option>BTC/EUR</option><option>BTC/USD</option><option>XAU/EUR</option><option>XAU/USD</option></select><select id="interval"><option>1m</option><option>15m</option><option selected>1h</option><option>4h</option><option>1d</option></select><button id="loadMarket">Laden</button><a id="marketCsv" class="button" href="#">CSV</a></div></div>
+  <div class="panel"><canvas id="chart" height="360" role="img" aria-label="Candlestick-Chart des ausgewählten Markts"></canvas><p id="marketLast"></p><p id="marketMeta" class="muted"></p><details><summary>Kerzendaten als Tabelle</summary><div class="tablewrap"><table><thead><tr><th>Zeit</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volumen</th></tr></thead><tbody id="marketRows"></tbody></table></div></details></div>
+
+  <div class="sectionhead"><div><span class="eyebrow">DEMO ANALYSIS</span><h2>ICT / SMC</h2></div><div class="controls"><button class="ictRun" data-symbol="XAUUSD">XAUUSD prüfen</button> <button class="ictRun" data-symbol="BTCUSD">BTCUSD prüfen</button> <button class="ictTrain" data-symbol="XAUUSD" title="Walk-forward-Training (MT5 nötig)">XAUUSD trainieren</button> <button class="ictTrain" data-symbol="BTCUSD" title="Walk-forward-Training (MT5 nötig)">BTCUSD trainieren</button></div></div><div id="killzones" class="panel"></div><div id="ictTraining" class="panel"></div><div id="cards" class="cards"></div>
+</section>
+<section data-page="Werkzeuge">
+  <div class="sectionhead"><div><span class="eyebrow">CONNECTED SERVICES</span><h2>Dienste</h2></div></div><div class="toolgrid">
+    <article class="panel"><h3>News</h3><button id="newsRun">Journalistisches Briefing</button><div id="newsResult"></div></article>
+    <article class="panel"><h3>Postfächer</h3><div id="mailStatus"></div><select id="mailAccount"><option value="gmx">GMX</option><option value="yahoo">Yahoo</option><option value="gmail">Gmail</option><option value="proton_nurovelle">Proton Nurovelle</option><option value="proton_mongojude">Proton MongoJude</option></select><div class="controls"><input id="mailQuery" value="ALL" aria-label="Mailsuche"><button id="mailSearch">Suchen</button></div><div id="mailResults"></div><h4>Entwurf / Versand</h4><form id="mailCompose"><input id="mailTo" type="email" placeholder="Empfänger" required><input id="mailSubject" placeholder="Betreff" required><textarea id="mailBody" placeholder="Nachricht" required></textarea><div class="controls"><button name="mode" value="draft">Entwurf speichern</button><button name="mode" value="send">Versand vormerken</button></div></form></article>
+    <article class="panel"><h3>Coding / Tests</h3><button id="reposRun">Repositories laden</button><div id="repos"></div></article>
+  </div>
+
+  <div class="sectionhead"><div><span class="eyebrow">AGENTS</span><h2>Werkzeuge</h2></div></div><div class="toolgrid">
+    <article class="panel"><h3>OCR</h3><form id="ocrForm"><input name="file" type="file" required><select name="language"><option>deu+eng</option><option>deu</option><option>eng</option></select><button>Text erkennen</button></form><pre id="ocrText"></pre></article>
+    <article class="panel"><h3>Shopping</h3><div class="controls">
+      <select id="shopBrand"><option value="gstar">G-Star</option><option value="nike">Nike</option></select>
+      <select id="shopCategory"><option value="t-shirt">T-Shirts</option><option value="sweater">Sweater</option><option value="jeans">Jeans</option><option value="jogginghose">Jogginghose</option><option value="schuhe">Schuhe (Air Max)</option></select>
+      <select id="shopSize"><option>L</option><option>XL</option><option selected>XXL</option></select>
+      <button id="shopRun">Vergleichen</button></div><div id="shopResult"></div></article>
+    <article class="panel"><h3>Essensplan</h3><div id="hudMeals" class="hudmeals"><span class="muted small">–</span></div><div class="controls"><select id="mealDays"><option>7</option><option>8</option><option>9</option><option>10</option></select><select id="mealPeople"><option>1</option><option selected>2</option></select><button id="mealRun">PDF erstellen</button></div><div id="mealResult"></div></article>
+  </div>
+
+  <div class="sectionhead"><div><span class="eyebrow">LOCAL &amp; CLOUD</span><h2>Bilder</h2></div></div>
+  <div class="toolgrid">
+    <article class="panel"><h3>Erzeugen (OpenAI)</h3><form id="imgGenForm"><input id="imgPrompt" placeholder="Bildbeschreibung" required><select id="imgSize"><option value="1024x1024">1024×1024</option><option value="1536x1024">1536×1024 quer</option><option value="1024x1536">1024×1536 hoch</option></select><button>Erzeugen</button></form><div id="imgGenResult"></div></article>
+    <article class="panel"><h3>Bearbeiten (OpenAI)</h3><form id="imgEditForm"><input type="file" name="file" accept="image/*" required><input name="prompt" placeholder="Was soll geändert werden?" required><button>Bearbeiten</button></form><div id="imgEditResult"></div></article>
+    <article class="panel"><h3>Bild verstehen</h3><form id="visionForm"><input type="file" name="file" accept="image/*" required><input name="question" placeholder="Frage zum Bild (optional)"><button>Analysieren</button></form><div id="visionResult"></div></article>
+    <article class="panel"><h3>3D rendern (Blender, lokal)</h3><input id="renderTitle" placeholder="Titel"><textarea id="renderPrompt" placeholder="Szene beschreiben – Jude schreibt das Blender-Skript und rendert lokal"></textarea><button id="renderRun">Lokal rendern</button><div id="renderResult"></div></article>
+  </div>
+  <div class="sectionhead"><div><span class="eyebrow">GALERIE</span><h3>Zuletzt erzeugt</h3></div><button id="loadImages">Aktualisieren</button></div>
+  <div id="imageGallery" class="cards"></div>
+</section>
+<section data-page="System">
+  <div class="sectionhead"><div><span class="eyebrow">DOKUMENTWISSEN (RAG)</span><h2>Wissen</h2></div><button id="loadDocs">Aktualisieren</button></div>
+  <div class="toolgrid">
+    <article class="panel"><h3>Dokument einlesen</h3><form id="docIngestForm"><input id="docPath" placeholder="Pfad unter AI-Data (Text/PDF)" required><button>Einlesen</button></form><div id="docList"></div></article>
+    <article class="panel"><h3>Durchsuchen</h3><form id="docSearchForm"><input id="docQuery" placeholder="Frage an deine Dokumente" required><button>Suchen</button></form><div id="docResults"></div></article>
+  </div>
+
+  <div class="sectionhead"><div><span class="eyebrow">LOCAL MEMORY</span><h2>Gedächtnis</h2></div><button id="loadMemory">Aktualisieren</button></div>
+  <div class="panel"><p id="memoryStats" class="muted"></p><form id="memoryForm"><input id="memoryContent" placeholder="Erinnerung ausdrücklich hinzufügen" required><button>Speichern</button></form></div>
+  <div id="memoryItems" class="cards"></div>
+
+  <div class="sectionhead"><div><span class="eyebrow">SUB-AGENTEN</span><h2>Team</h2></div><button id="loadAgents">Aktualisieren</button></div>
+  <div class="panel">
+    <h3>Neuen Mitarbeiter anlegen</h3>
+    <form id="agentForm">
+      <input id="agentName" placeholder="Name (z.B. Coder, Rechercheur)" required>
+      <input id="agentRole" placeholder="Rolle / Aufgabe" required>
+      <button>Anlegen</button>
+    </form>
+    <p class="muted small">Skills auswählen:</p>
+    <div id="agentSkills" class="skillgrid"></div>
+  </div>
+  <div id="agentList" class="cards"></div>
+
+  <div class="sectionhead"><div><span class="eyebrow">STATUS &amp; AUTOMATION</span><h2>System</h2></div><button id="loadSystem">Aktualisieren</button></div>
+  <div id="healthPanel" class="panel">–</div>
+  <div class="toolgrid">
+    <article class="panel"><h3>Geplante Aufgaben</h3>
+      <form id="taskForm">
+        <input id="taskName" placeholder="Name" required>
+        <select id="taskAction"><option value="briefing">Briefing</option><option value="prompt">Anfrage</option></select>
+        <input id="taskPrompt" placeholder="Anfrage (bei 'Anfrage')">
+        <input id="taskAt" placeholder="täglich HH:MM" size="8">
+        <input id="taskEvery" placeholder="alle N min" size="7" type="number">
+        <button>Anlegen</button>
+      </form>
+      <div id="taskList"></div>
+    </article>
+    <article class="panel"><h3>Sicherungen</h3><button id="backupRun">Jetzt sichern</button><div id="backupList"></div></article>
+  </div>
+
+  <div class="sectionhead"><div><span class="eyebrow">LOCAL FIRST</span><h2>Modell-Routing &amp; Verbrauch</h2></div><button id="loadRouting">Aktualisieren</button></div>
+  <div id="routingStats" class="stats"></div>
+  <div class="grid2"><article class="panel"><h3>Verbrauch je Modell</h3><div id="routingUsage"></div></article><article class="panel"><h3>Letzte Entscheidungen</h3><div id="routingHistory"></div></article></div>
+</section>
+</main>
+<div id="overlay" hidden>
+  <div id="overlayInner">
+    <div id="overlayHead"><h3 id="overlayTitle"></h3><button id="overlayClose" class="ghost">Schließen ✕</button></div>
+    <div id="overlayTabs"></div>
+    <div id="overlayBody"></div>
+    <div id="overlayActions"></div>
+  </div>
+</div>
+<div id="toast" role="status"></div><script src="/static/vendor/leaflet.js"></script><script src="/static/app.js"></script></body></html>
