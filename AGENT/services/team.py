@@ -492,11 +492,14 @@ class SubAgentService:
         from services.review import ReviewQueue
         revisionen = ReviewQueue().offene_revisionen(spec["name"])
         if revisionen:
-            zeilen = "\n".join(
-                f"- [{r['id']}] {r['titel']} (Runde {r['runde']}): {r['anmerkung']}"
-                for r in revisionen)
+            zeilen = []
+            for r in revisionen:
+                zeile = f"- [{r['id']}] {r['titel']} (Runde {r['runde']}): {r['anmerkung']}"
+                if r.get("inhalt"):
+                    zeile += f"\n  BISHERIGER INHALT (gezielt verbessern, nicht neu erfinden):\n  {r['inhalt'][:1500]}"
+                zeilen.append(zeile)
             prompt += ("\n\nZUERST ERLEDIGEN – Tino hat Überarbeitungen angefordert:\n"
-                       + zeilen +
+                       + "\n".join(zeilen) +
                        "\nArbeite jede Anmerkung ein und lege das Ergebnis erneut mit "
                        "submit_for_review vor – dabei die ID aus der eckigen Klammer "
                        "als 'ueberarbeitet' mitgeben, sonst bleibt die alte Fassung "
