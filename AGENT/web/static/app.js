@@ -60,7 +60,7 @@ async function loadRadar(){try{const d=await api('/api/radar');_rframes=d.frames
  const nowAt=_rframes.findIndex(f=>f.kind==='now');
  _rnowIdx=nowAt>=0?nowAt:(d.past_count||_rframes.length)-1;
  if(!_rframes.length)throw Error('Keine Radardaten');
-  if(!_rmap){_rmap=L.map('radarMap',{zoomControl:true,attributionControl:false}).setView([d.latitude,d.longitude],_rzoom);_rbase=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:12,className:'radarbase'}).addTo(_rmap);_rmarker=L.marker([d.latitude,d.longitude],{icon:L.divIcon({className:'',html:'<div class=radarpin>●</div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(_rmap);_rmarker.bindPopup(`${esc(d.zip)} ${esc(d.city)}`)}
+  if(!_rmap){_rmap=L.map('radarMap',{zoomControl:false,attributionControl:false}).setView([d.latitude,d.longitude],_rzoom);_rbase=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:12,className:'radarbase'}).addTo(_rmap);_rmarker=L.marker([d.latitude,d.longitude],{icon:L.divIcon({className:'',html:'<div class=radarpin>●</div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(_rmap);_rmarker.bindPopup(`${esc(d.zip)} ${esc(d.city)}`)}
   $('#radarPlace').textContent=`${d.zip} ${d.city}`.toUpperCase();
   const sl=$('#radarFrame');sl.max=_rframes.length-1;sl.value=_rnowIdx;sl.oninput=()=>showRadarFrame(+sl.value);
   showRadarFrame(_rnowIdx);
@@ -139,7 +139,9 @@ function quelleTab(p){const q=p.trim(),n=q.split('/').pop();
  if(/\.html?$/i.test(q))return{name:n,lazy:async()=>{
    const r=await fetch(dateiUrl(q));if(!r.ok)throw Error('Seite nicht ladbar ('+r.status+')');
    const roh=await r.text();
-   return `<iframe class="oviframe" sandbox="" srcdoc="${esc(roh)}"></iframe>`
+   const burl=URL.createObjectURL(new Blob([roh],{type:'text/html'}));
+   return `<div style="margin-bottom:8px"><button onclick="window.open('${burl}','_blank','noopener')">Im Browser öffnen</button></div>`
+        + `<iframe class="oviframe" sandbox="" srcdoc="${esc(roh)}"></iframe>`
         + `<details><summary class=small>Quelltext anzeigen</summary>`
         + `<pre class="auszug" style="max-height:60vh">${esc(roh)}</pre></details>`}};
  return{name:n,html:null,pfad:q}}
@@ -151,6 +153,7 @@ window.openReview=async id=>{try{const v=await api('/api/reviews/'+id);
   if(t.html)tabs.push(t);
   else tabs.push({name:t.name,lazy:async()=>{const r=await fetch(dateiUrl(t.pfad));const txt=await r.text();return `<div class="ovmd">${mdRender(txt)}</div>`}});
  });
+ if((v.verlauf||'').trim())tabs.push({name:'Verlauf',html:`<div class="ovmd"><pre style="white-space:pre-wrap">${esc(v.verlauf)}</pre></div>`});
  $('#overlayTabs').innerHTML=tabs.map((t,i)=>`<button class="${i?'ghost':''}" data-tab="${i}">${esc(t.name)}</button>`).join('');
  const zeig=async i=>{[...$('#overlayTabs').children].forEach((b,j)=>b.className=j==i?'':'ghost');
   const t=tabs[i];$('#overlayBody').innerHTML=t.html??await t.lazy().catch(e=>`<p>${esc(String(e))}</p>`)};
