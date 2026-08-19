@@ -496,7 +496,8 @@ class SubAgentService:
             for r in revisionen:
                 zeile = f"- [{r['id']}] {r['titel']} (Runde {r['runde']}): {r['anmerkung']}"
                 if r.get("inhalt"):
-                    zeile += f"\n  BISHERIGER INHALT (gezielt verbessern, nicht neu erfinden):\n  {r['inhalt'][:1500]}"
+                    indented = r['inhalt'][:1500].replace('\n', '\n  ')
+                    zeile += f"\n  BISHERIGER INHALT (gezielt verbessern, nicht neu erfinden):\n  {indented}"
                 zeilen.append(zeile)
             prompt += ("\n\nZUERST ERLEDIGEN – Tino hat Überarbeitungen angefordert:\n"
                        + "\n".join(zeilen) +

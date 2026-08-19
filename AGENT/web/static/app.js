@@ -235,7 +235,7 @@ async function pollTicker(){if(toggles.market){try{const x=await api('/api/marke
  setTimeout(pollTicker,120000)}
 let newsItems=[],newsIdx=0;
 async function pollNews(){if(toggles.news){try{const d=await api('/api/briefing');newsItems=Object.entries(d.headlines||{}).flatMap(([topic,items])=>items.map(t=>`${topic}: ${t}`));if(d.markets&&d.markets.length){$('#tickXau').textContent=(d.markets.find(m=>m.label==='Gold')||{}).price?.toFixed(0)??$('#tickXau').textContent;const btc=d.markets.find(m=>m.label==='Bitcoin');if(btc)$('#tickBtc').innerHTML=`<span class="${btc.change_pct>=0?'up':'down'}">${btc.price.toLocaleString('de-DE',{maximumFractionDigits:0})}</span>`}}catch(e){}}setTimeout(pollNews,600000)}
-setInterval(()=>{if(newsItems.length){newsIdx=(newsIdx+1)%newsItems.length;const n=newsItems[newsIdx];$('#tickNews').textContent=n.title}},8000);
+setInterval(()=>{if(newsItems.length){newsIdx=(newsIdx+1)%newsItems.length;const n=newsItems[newsIdx];$('#tickNews').textContent=n}},8000);
 window.noteModel=m=>{if(m)$('#tickModel').textContent=m};
 // Schalter (Markt/News clientseitig, Stimme serverseitig)
 const toggles=JSON.parse(localStorage.getItem('judeToggles')||'{"market":true,"news":true}');
