@@ -118,6 +118,15 @@ def initialize_database(path: Path | None = None) -> None:
         for name, declaration in migrations.items():
             if name not in columns:
                 db.execute(f"ALTER TABLE model_usage ADD COLUMN {name} {declaration}")
+        confirmation_columns = {row[1] for row in db.execute("PRAGMA table_info(confirmations)")}
+        confirmation_migrations = {
+            "agent": "TEXT NOT NULL DEFAULT ''",
+            "anmerkung": "TEXT NOT NULL DEFAULT ''",
+            "runde": "INTEGER NOT NULL DEFAULT 1",
+        }
+        for name, declaration in confirmation_migrations.items():
+            if name not in confirmation_columns:
+                db.execute(f"ALTER TABLE confirmations ADD COLUMN {name} {declaration}")
 
 
 @contextmanager

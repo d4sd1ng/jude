@@ -1,0 +1,22 @@
+[
+  {
+    "note": "Firmen, die bearbeitet wurden und deren Ergebnisse",
+    "created_at": "2026-08-12T13:27:08.925500+00:00"
+  },
+  {
+    "note": "Fehler beim Zugriff auf die Notion-Datenbank 'kontakte'. Die Verbindung zu 'api.notion.com' kann nicht hergestellt werden.",
+    "created_at": "2026-08-13T10:04:36.945375+00:00"
+  },
+  {
+    "note": "Fehler beim Zugriff auf Google News. Die Verbindung zu 'news.google.com' kann nicht hergestellt werden.",
+    "created_at": "2026-08-13T10:04:48.228692+00:00"
+  },
+  {
+    "note": "Fehler beim Zugriff auf Google Maps. Die Verbindung zu 'google.com' kann nicht hergestellt werden.",
+    "created_at": "2026-08-13T10:04:58.987718+00:00"
+  },
+  {
+    "note": "Ich bin Bernd.",
+    "created_at": "2026-08-13T17:33:09.944954+00:00"
+  }
+]

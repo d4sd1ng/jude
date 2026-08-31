@@ -35,7 +35,6 @@
           <button class="toggle" id="tglVoice" title="Sprachsteuerung"><span>🎙️</span><small>Stimme</small></button>
           <button class="toggle" id="tglMarket" title="Marktdaten automatisch aktualisieren"><span>📈</span><small>Markt</small></button>
           <button class="toggle" id="tglNews" title="News automatisch aktualisieren"><span>📰</span><small>News</small></button>
-          <button class="toggle" id="tglRadar" title="Radar automatisch aktualisieren"><span>🌧️</span><small>Radar</small></button>
         </div>
         <div class="freigabe"><span class="eyebrow">ZUR FREIGABE</span>
           <div class="freigabebtns">
@@ -46,6 +45,12 @@
           </div>
         </div>
       </div></div>
+      <div class="panel hudpanel output"><h3>Ausgabe</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jude tun?" required><button>Senden</button></form></div>
+    </div>
+    <div class="cockR">
+    </div>
+    <div class="cockD">
+      <div class="panel hudpanel"><h3>Kalender</h3><form id="calendarForm"><input id="calendarTitle" placeholder="Termin" required><label>Beginn <input id="calendarStart" type="datetime-local" required></label><label>Ende <input id="calendarEnd" type="datetime-local" required></label><input id="calendarLocation" placeholder="Ort"><textarea id="calendarDescription" placeholder="Beschreibung"></textarea><button>Termin vormerken</button></form><div id="calendarEvents"></div></div>
       <div class="panel hudpanel wakepanel"><h3>Aktivierungswort</h3>
         <form id="wakeForm" class="controls">
           <input id="wakeWord" placeholder="Jude angetreten" aria-label="Aktivierungswort">
@@ -55,12 +60,6 @@
           <button>Übernehmen</button>
         </form>
         <p id="wakeState" class="muted small"></p></div>
-    </div>
-    <div class="cockR">
-      <div class="panel hudpanel output"><h3>Ausgabe</h3><div id="chat" class="feed"></div><form id="chatForm"><input id="chatInput" placeholder="Was soll Jude tun?" required><button>Senden</button></form></div>
-    </div>
-    <div class="cockD">
-      <div class="panel hudpanel"><h3>Kalender</h3><form id="calendarForm"><input id="calendarTitle" placeholder="Termin" required><label>Beginn <input id="calendarStart" type="datetime-local" required></label><label>Ende <input id="calendarEnd" type="datetime-local" required></label><input id="calendarLocation" placeholder="Ort"><textarea id="calendarDescription" placeholder="Beschreibung"></textarea><button>Termin vormerken</button></form><div id="calendarEvents"></div></div>
     </div>
   </div>
   <div class="ticker">

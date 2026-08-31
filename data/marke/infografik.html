@@ -1,0 +1,86 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<title>Nurovelle — Infografik 1080×1350</title>
+<!-- Exo 2 und Inter liegen systemweit unter /usr/local/share/fonts/nurovelle/
+     (variable TrueType, alle Schnitte). Kein Verweis auf Google Fonts mehr:
+     die Vorlage rendert damit auch ohne Netz identisch. -->
+<style>
+/* Farben UND Lichtführung wörtlich von nurovelle.de: warmer Schein oben links,
+   grüner Schimmer unten mittig, dunkler Diagonalverlauf darüber, Gold nur als
+   Kante mit Streuschein. Ohne dieses Licht bleiben es Kästen mit Text drauf. */
+:root{
+  --nv-deep-green:#0f241c; --nv-emerald:#112a20; --nv-forest:#10412e;
+  --nv-kicker:#55863f; --nv-gold-border:#a55d07; --nv-gold-highlight:#fae385;
+  --nv-gold:linear-gradient(160deg,#a54e07,#b47e11,#fef1a2,#bc881b,#a54e07);
+  --nv-light:#e4e0d6; --nv-muted:#b9c3bd; --rand:76px;
+}
+*{box-sizing:border-box;margin:0}
+body{background:#050505;display:flex;justify-content:center;
+  font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+
+.blatt{position:relative;width:1080px;height:1350px;padding:100px var(--rand) 0;
+  overflow:hidden;isolation:isolate;
+  background:
+    radial-gradient(circle at 30% 0%, rgba(250,227,133,.16), transparent 55%),
+    radial-gradient(circle at 52% 78%, #9bff6b2e 0%, #1f5f3b1a 30%, #00000000 62%),
+    linear-gradient(150deg,#101a15 0%,#020403 100%);}
+.blatt::before{content:"";position:absolute;inset:0;z-index:0;
+  background:radial-gradient(ellipse at 50% 118%, #10412e38, transparent 62%)}
+.blatt>*{position:relative;z-index:1}
+.kante{position:absolute;top:0;left:0;right:0;height:3px;z-index:2;
+  background:var(--nv-gold);box-shadow:0 0 22px #bc881b45}
+
+/* REGEL: genau EIN tragendes Wort je Überschrift im Goldverlauf – lang genug,
+   dass es Gewicht hat. REGEL: 'Nurovelle' ist immer gold. */
+.gold{background:var(--nv-gold);-webkit-background-clip:text;background-clip:text;
+  color:transparent;filter:drop-shadow(0 0 10px rgba(250,227,133,.3))}
+
+.kicker{color:var(--nv-kicker);font-size:19px;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase}
+h1{font-family:'Exo 2',sans-serif;font-weight:700;font-size:88px;line-height:1.02;
+  letter-spacing:-.015em;color:var(--nv-light);margin-top:28px}
+.vorspann{color:var(--nv-muted);font-size:25px;line-height:1.5;margin-top:34px;max-width:44ch}
+
+.punkte{margin-top:76px;display:grid;gap:30px}
+.punkt{position:relative;padding:30px 34px 30px 38px;border-radius:14px;
+  background:linear-gradient(180deg,#112a20e8,#080b09f2);
+  border:1px solid #ffffff10;
+  box-shadow:0 10px 20px rgba(0,0,0,.19),0 6px 6px rgba(0,0,0,.23),
+             inset 0 1px 0 #ffffff0d}
+.punkt::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:3px;
+  border-radius:3px;background:var(--nv-gold);box-shadow:0 0 12px #fae38566}
+.punkt b{display:block;font-family:'Exo 2',sans-serif;font-size:31px;font-weight:700;
+  line-height:1.15;color:var(--nv-light)}
+.punkt span{display:block;color:var(--nv-muted);font-size:21px;margin-top:10px;
+  line-height:1.4}
+
+.abschluss{position:absolute;left:var(--rand);right:var(--rand);bottom:150px;z-index:1;
+  color:var(--nv-light);font-size:23px;line-height:1.45}
+.abschluss em{font-style:normal;color:var(--nv-kicker);font-weight:600}
+.marke{position:absolute;left:var(--rand);bottom:50px;z-index:2}
+.marke b{display:block;font-family:'Exo 2',sans-serif;font-size:32px;font-weight:800;
+  letter-spacing:.04em;background:var(--nv-gold);-webkit-background-clip:text;
+  background-clip:text;color:transparent;filter:drop-shadow(0 0 12px rgba(250,227,133,.32))}
+.marke span{display:block;color:var(--nv-muted);font-size:12px;letter-spacing:.24em;
+  text-transform:uppercase;margin-top:4px}
+</style></head><body>
+
+<div class="blatt">
+  <div class="kante"></div>
+  <div class="kicker">Dokumentation</div>
+  <h1>Der Abend<br>gehört wieder<br>der <span class="gold">Familie</span></h1>
+  <p class="vorspann">Was sich ändert, wenn der Bericht nicht mehr am Küchentisch entsteht.</p>
+
+  <div class="punkte">
+    <div class="punkt"><b>Diktiert statt getippt</b>
+      <span>Der Bericht wird nach dem Besuch gesprochen und liegt fertig formuliert in der Doku.</span></div>
+    <div class="punkt"><b>Fertig vor der Heimfahrt</b>
+      <span>Keine Nacharbeit am Abend, keine offenen Berichte am Wochenende.</span></div>
+    <div class="punkt"><b>Nichts Neues zu lernen</b>
+      <span>Gesprochen wird ins Telefon, das ohnehin schon dabei ist.</span></div>
+  </div>
+
+  <p class="abschluss">Kostenlose Potenzialanalyse auf <em>nurovelle.de</em></p>
+  <div class="marke"><b>Nurovelle</b><span>Building intelligent System</span></div>
+</div>
+
+</body></html>

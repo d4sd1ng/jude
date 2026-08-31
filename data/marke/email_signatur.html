@@ -1,0 +1,55 @@
+<!-- Nurovelle E-Mail-Signatur
+     Stand: 2026-08-14 · Status: fertig
+
+     Bewusst als Tabelle mit Inline-Styles gebaut: Outlook rendert über Word und
+     ignoriert externe Stylesheets, Flexbox und Grid. Ebenso bewusst KEIN
+     Goldverlauf – background-clip:text wird von Outlook und Gmail nicht
+     unterstützt, der Text bliebe dort unsichtbar. Gold steht deshalb voll als
+     #A8842F (styleguide.md, Abschnitt 3).
+
+     Schriften: Exo 2 und Inter sind beim Empfänger nicht installiert. Die
+     Fallback-Kette endet bei Arial, damit die Signatur überall gleich hoch
+     bleibt und nicht umbricht.
+
+     Einsetzen: Datei im Mailprogramm als HTML-Signatur einfügen
+     (Thunderbird: Konto-Einstellungen › Signatur aus Datei;
+      Outlook: Signatur-Ordner; Apple Mail: Signatur anlegen, dann Datei ersetzen).
+-->
+<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Inter,'Segoe UI',Arial,sans-serif;color:#1a1a1a;">
+  <tr>
+    <!-- Goldbalken links: der einzige Akzent, wie im Styleguide vorgesehen. -->
+    <td style="width:3px;background-color:#A8842F;font-size:0;line-height:0;">&nbsp;</td>
+    <td style="padding:2px 0 2px 16px;">
+
+      <div style="font-family:'Exo 2','Segoe UI',Arial,sans-serif;font-size:19px;font-weight:700;letter-spacing:0.02em;color:#A8842F;line-height:1.2;">
+        Nurovelle
+      </div>
+      <div style="font-family:Inter,'Segoe UI',Arial,sans-serif;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#6b7280;padding-top:3px;">
+        Building intelligent System
+      </div>
+
+      <div style="height:12px;line-height:12px;font-size:0;">&nbsp;</div>
+
+      <div style="font-size:13px;line-height:1.55;color:#1a1a1a;">
+        <strong style="font-weight:600;">Tino Schneider</strong><br>
+        Berliner Stra&szlig;e 12 &middot; 35039 Marburg
+      </div>
+
+      <div style="height:8px;line-height:8px;font-size:0;">&nbsp;</div>
+
+      <div style="font-size:13px;line-height:1.55;">
+        <a href="tel:+4964218965123" style="color:#1a1a1a;text-decoration:none;">06421/8965123</a><br>
+        <a href="mailto:mail@nurovelle.de" style="color:#1a1a1a;text-decoration:none;">mail@nurovelle.de</a><br>
+        <a href="https://nurovelle.de" style="color:#A8842F;text-decoration:none;font-weight:600;">nurovelle.de</a>
+      </div>
+
+      <div style="height:12px;line-height:12px;font-size:0;">&nbsp;</div>
+
+      <div style="font-size:11px;line-height:1.5;color:#9ca3af;">
+        Kostenlose KI-Potenzialanalyse:
+        <a href="https://nurovelle.de/homepage/analyse.html" style="color:#A8842F;text-decoration:none;">nurovelle.de/analyse</a>
+      </div>
+
+    </td>
+  </tr>
+</table>

@@ -31,7 +31,24 @@ HELL_GEDECKT = "#b9c3bd"
 SCHRIFT_TITEL = "'Exo 2', 'Trebuchet MS', sans-serif"
 SCHRIFT_TEXT = "Inter, 'DejaVu Sans', sans-serif"
 
-CLAIM = "Building Intelligent Systems"
+CLAIM = "Building intelligent System"
+
+BRAND_BRIEF = f"""NUROVELLE-BRAND-REGELN – VERBINDLICH FÜR JEDES ERZEUGNIS
+Marke: Nurovelle.
+Wortmarke: Nurovelle.
+Tagline: {CLAIM}.
+Kurz-Claim: Klarheit. Prozesse. Zukunft.
+Schriften: {SCHRIFT_TITEL} für Überschriften und {SCHRIFT_TEXT} für Fließtext.
+Farben: matter schwarzer/graphitfarbener Grund ({SCHWARZ}, {SCHWARZ_MATT}), tiefes Grün ({GRUEN_TIEF}, {GRUEN_SMARAGD}, {GRUEN_FOREST}), Emerald-Akzent ({GRUEN_AKZENT}) und Gold nur sparsam ({GOLD_KANTE}, {GOLD_MITTE}, {GOLD_GLANZ}).
+Verläufe: den vorhandenen Goldverlauf für Wortmarke, feine Linien und einzelne Hervorhebungen; den vorhandenen Grundverlauf von tiefem Grün zu mattem Schwarz für Flächen. Keine neuen Verläufe erfinden.
+Karten: matte dunkle Flächen, klare Kanten, ruhige hochwertige Abstände; Emerald für Zustände und Akzente, Gold sparsam für Titel oder eine tragende Hervorhebung.
+Bevorzugter Vorlagenordner: austausch/an-team/vorlagen/nurovelle/.
+Logo: austausch/an-team/vorlagen/nurovelle/nurovelle_logo_gold.png.
+Wortmarke: austausch/an-team/vorlagen/nurovelle/Nurovelle_schrift_gold.png.
+Freigegebene Referenzen: launchpost.png, Potentialanalyse_post.png, karussell_5_wege.zip und Karrussell_7_Prozesse,.zip in diesem Ordner. ZIP-Dateien vor Verwendung vollständig prüfen und nicht als einzelne ungeprüfte Bilder interpretieren.
+Weitere Logos, Icons und Karten: ausschließlich freigegebene Dateien aus diesem Vorlagenordner und data/marke/assets/ verwenden. Keine Ersatzlogos, generischen KI-Symbole oder erfundenen Icons.
+Dokumente und Grafiken: Wortmarke Nurovelle und die Tagline sichtbar nach freigegebener Vorlage einsetzen; Farben, Verläufe, Karten und Icons vor der Abgabe prüfen.
+Nie verwenden: Blau als Markenfarbe, alte Marken wie Autonova oder Politara, beliebige Stock-/Roboteroptik oder nicht belegte Logos."""
 
 #: Gemeinsame Grundlage: Verlauf, Goldkante, Schriftimport.
 _DEFS = f"""

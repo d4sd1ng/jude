@@ -1,13 +1,13 @@
-[Unit]
-Description=Jarvis local assistant and ICT scheduler
+﻿[Unit]
+Description=Jude local assistant and ICT scheduler
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/d4sd1ng/Dokumente/Jarvis/AGENT
-EnvironmentFile=/home/d4sd1ng/Dokumente/Jarvis/AGENT/.env
-ExecStart=/home/d4sd1ng/Dokumente/Jarvis/.venv/bin/python main.py --gui
+WorkingDirectory=/media/d4sd1ng/AI-Data/Projects/Jude/AGENT
+EnvironmentFile=/media/d4sd1ng/AI-Data/Projects/Jude/AGENT/.env
+ExecStart=/media/d4sd1ng/AI-Data/Projects/Jude/.venv/bin/python main.py --gui
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

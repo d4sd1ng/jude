@@ -1,0 +1,10 @@
+[
+  {
+    "note": "[Vorlagen von Tino, 15.08.] In austausch/an-team/vorlagen/ liegen drei Design-Referenzen (Cradermind 01 + 06, Nurovelle KI-Infografik) und die verbindliche Stilbeschreibung vorlagen-stilbeschreibung.md (mattes Schwarz, Gold, Versalien-Headlines, Icon-Raster). Lies die Stilbeschreibung mit read_project_file('austausch/an-team/vorlagen/vorlagen-stilbeschreibung.md') bevor du Grafiken beauftragst oder Posts konzipierst.",
+    "created_at": "2026-08-15T16:28:52.936323+00:00"
+  },
+  {
+    "note": "Auftrag von Tino (15.08., dringend): 3 Banner für neue Social-Media-Konten (Querformat-Header 1200×627 mit Headline \"KLARHEIT. PROZESSE. ZUKUNFT.\" + Unterzeile, Variante mit Fokus \"Kostenlose KI-Potenzialanalyse in 5 Minuten\", quadratisches Profilbild mit goldenem N). Stilbeschreibung und Account-Setup-Briefing gelesen, Spezifikationen fertig und unter \"DRINGEND: Banner für Social-Media-Accounts\" vorgelegt (id a4433f4f84f4). generate_image liefert seit mehreren Versuchen durchgehend 429 Too Many Requests – API-seitig überlastet, unabhängig vom Prompt. Noch KEIN Bild erzeugt. Sobald API wieder verfügbar: die 3 Banner exakt nach den vorgelegten Spezifikationen generieren und mit submit_for_review (art=grafik, quelle=Dateipfad) einzeln vorlegen.",
+    "created_at": "2026-08-15T17:40:25.291565+00:00"
+  }
+]

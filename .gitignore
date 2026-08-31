@@ -3,52 +3,26 @@
 venv/
 ENV/
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
 
-# --- Sensible Daten (WICHTIG) ---
+# --- Geheimnisse ---
 .env
-AGENT/.env
-*.env
-# Verhindert das versehentliche Committen von Backup-Dateien mit Secrets
-.env.bak*
-*.env.bak*
-*.key
-
-# --- IDE & Editor ---
-.vscode/
-.idea/
-*.swp
-*.swo
+.env.bak-*
 
 # --- Caches & Tests ---
 .pytest_cache/
 .ruff_cache/
 
-# --- Build & Dist (Falls Sie Pakete erstellen) ---
-build/
-dist/
-*.egg-info/
-
 # --- Daten & Temporäres ---
 tmp/
 
-# LibreOffice lock files
-.~lock.*#
-
-# --- Datei-Austausch Tino <-> Team (Inhalte gehören nicht ins Repo) ---
-austausch/
-
-# --- Judes Datenbestand (umgezogen aus AI-Data/Jude, gehört nicht ins Repo) ---
-/data/
+# --- Binärdaten & lokale Artefakte (nicht fürs öffentliche Repo) ---
 /models/
-/images/
 /backups/
-/test-data/
-/test-repos/
-/tmp/
-/generated_tools/
-/training/
-
-# Versehentliche Riesendatei im Stamm – wurde zweimal blind mitcommittet
-/pathlib
+data/jude.db
+data/jude.db-shm
+data/jude.db-wal
+austausch/data/jude.db
+austausch/data/jude.db-shm
+austausch/data/jude.db-wal
+.claude/worktrees/

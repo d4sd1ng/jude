@@ -107,7 +107,7 @@ class ReviewQueue:
         """Was dieser Mitarbeiter überarbeiten soll — kommt in seinen Prompt."""
         with connection() as db:
             return [dict(row) for row in db.execute(
-                "SELECT id,art,titel,anmerkung,runde FROM reviews "
+                "SELECT id,art,titel,anmerkung,runde,substr(inhalt,1,3000) AS inhalt FROM reviews "
                 "WHERE agent=? AND status='revision' ORDER BY created_at", (agent,))]
 
     # ---------------------------------------------------------------- Tino

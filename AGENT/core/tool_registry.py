@@ -35,6 +35,7 @@ class ToolRegistry:
     def __init__(self):
         self.tools: dict[str, Tool] = {}
         self.confirmations = None  # optional ConfirmationQueue
+        self.agent_name = ""  # Name des Sub-Agenten, dem diese Registry gehört (leer = Jude selbst)
 
     def set_confirmations(self, confirmations) -> None:
         self.confirmations = confirmations
@@ -69,7 +70,7 @@ class ToolRegistry:
         # Prompt-Injection über Web-/Datei-/Bildinhalte).
         if tool.confirm_action and self.confirmations is not None:
             try:
-                pending = self.confirmations.request(tool.confirm_action, self._summary(tool_name, arguments), arguments)
+                pending = self.confirmations.request(tool.confirm_action, self._summary(tool_name, arguments), arguments, agent=self.agent_name)
             except Exception as exc:
                 return f"Aktion konnte nicht vorgemerkt werden: {exc}"
             return ("Diese Aktion ist sicherheitsrelevant und wartet auf deine Bestätigung "

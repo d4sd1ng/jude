@@ -44,7 +44,7 @@ function drawCandles(rows){let c=$('#chart'),dpr=devicePixelRatio||1,w=c.clientW
 async function loadICT(){try{let s=await api('/api/ict/status'),c=await api('/api/ict/cards');$('#killzones').innerHTML=`<b>Zeitzone ${esc(s.scheduler.timezone)}</b><p>${s.scheduler.zones.map(z=>`${esc(z.name)} ${z.start}–${z.end}`).join(' · ')}</p><small>${esc(s.scheduler.source_note)}</small>`;$('#cards').innerHTML=c.map(cardHTML).join('')||'<p>Noch keine Trading Cards.</p>'}catch(e){toast(e.message)}}
 function cardHTML(c){return `<article class="card ${c.status==='SETUP_FOUND'?'setup':c.status==='TRADE_BLOCKED'?'blocked':''}"><span class=eyebrow>${esc(c.status)}</span><h3>${esc(c.symbol)} · ${esc(c.direction||'WAIT')}</h3><p><b>H4:</b> ${esc(str(c.h4_bias))}<br><b>H1:</b> ${esc(str(c.h1_context))}<br><b>M1:</b> ${esc(str(c.m1_entry))}</p><p>${esc(str(c.confluence))}</p><small>${esc(c.kill_zone||'')} · ${new Date(c.created_at).toLocaleString()}</small></article>`}
 $$('.ictRun').forEach(b=>b.onclick=async()=>{b.disabled=true;toast(`${b.dataset.symbol} wird analysiert…`);try{let c=await api('/api/ict/analyse/'+b.dataset.symbol,{method:'POST'});$('#cards').insertAdjacentHTML('afterbegin',cardHTML(c))}catch(e){toast(e.message)}finally{b.disabled=false}});
-let _rmap,_rbase,_rlayer,_rframes=[],_rhost='',_rzoom=9,_rmarker,_rsizer,_rmode='rainviewer',_rbounds=null,_rsource='RainViewer';
+let _rmap,_rbase,_rlayer,_rframes=[],_rhost='',_rzoom=7,_rmarker,_rsizer,_rmode='rainviewer',_rbounds=null,_rsource='RainViewer';
 function radarFrameLabel(f){const d=new Date(f.time*1000),t=d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
  if(f.kind==='forecast'){const plus=Math.round((f.time*1000-Date.now())/60000);return `<span class=fc>${t} (+${Math.max(plus,0)} min)</span>`}
  return (f.kind==='now'||f===_rframes[_rnowIdx])?`<span class=now>Jetzt ${t}</span>`:t}
@@ -53,9 +53,9 @@ function showRadarFrame(i){if(!_rframes.length)return;i=Math.max(0,Math.min(_rfr
  // DWD liefert fertig georeferenzierte PNG-Frames, RainViewer klassische Kacheln.
  _rlayer=_rmode==='dwd'
   ?L.imageOverlay(`/api/radar/frame/${f.key}.png`,_rbounds,{opacity:0.8,zIndex:5})
-  :L.tileLayer(`${_rhost}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,{opacity:0.72,zIndex:5,maxNativeZoom:10,maxZoom:12});
+  :L.tileLayer(`${_rhost}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,{opacity:0.72,zIndex:5,maxNativeZoom:7,maxZoom:12});
  _rlayer.addTo(_rmap);$('#radarMeta').innerHTML=`${radarFrameLabel(f)} · ${_rsource} · 35039 Marburg`}
-async function loadRadar(){try{const d=await api('/api/radar');_rframes=d.frames||[];_rmode=d.mode||'rainviewer';_rhost=d.host;_rzoom=d.zoom||9;_rsource=d.source||'RainViewer';
+async function loadRadar(){try{const d=await api('/api/radar');_rframes=d.frames||[];_rmode=d.mode||'rainviewer';_rhost=d.host;_rzoom=d.zoom||7;_rsource=d.source||'RainViewer';
  _rbounds=d.bounds?[[d.bounds.lat_min,d.bounds.lon_min],[d.bounds.lat_max,d.bounds.lon_max]]:null;
  const nowAt=_rframes.findIndex(f=>f.kind==='now');
  _rnowIdx=nowAt>=0?nowAt:(d.past_count||_rframes.length)-1;
@@ -96,7 +96,10 @@ $('#mailCompose').onsubmit=async e=>{e.preventDefault();let mode=e.submitter.val
 async function loadCalendar(){try{let d=await api('/api/calendar');$('#calendarEvents').innerHTML=d.map(x=>`<div class=source><b>${esc(x.title)}</b><br><small>${fmt(x.starts_at)} · ${esc(x.location)}</small></div>`).join('')||'Keine Termine'}catch(e){toast(e.message)}}
 $('#calendarForm').onsubmit=async e=>{e.preventDefault();let p={title:$('#calendarTitle').value,starts_at:$('#calendarStart').value,ends_at:$('#calendarEnd').value,location:$('#calendarLocation').value,description:$('#calendarDescription').value};try{await requestConfirmation('calendar_create',`Termin erstellen: ${p.title} am ${p.starts_at}`,p);toast('Termin wartet auf Bestätigung')}catch(x){toast(x.message)}};loadCalendar();
 $('#reposRun').onclick=async()=>{try{let d=await api('/api/coding/repositories');$('#repos').innerHTML=d.map((r,i)=>`<div class=source><b>${esc(r.path)}</b><br><small>${esc(r.branch)} · ${r.dirty?'geändert':'sauber'}</small><br><button onclick="repoTest(${i})">Tests</button></div>`).join('');window.repoData=d}catch(e){toast(e.message)}};window.repoTest=async i=>{toast('Tests laufen…');try{let d=await api('/api/coding/test',{method:'POST',body:JSON.stringify({repo:repoData[i].path})});toast(`Tests: ${d.status}`)}catch(e){toast(e.message)}};
-$('#loadConfirmations').onclick=loadConfirmations;async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class=card><span class=eyebrow>${esc(c.action_type)}</span><h3>${esc(c.summary)}</h3><pre>${esc(JSON.stringify(c.payload,null,2))}</pre><button onclick="decide('${c.id}','approve')">Bestätigen</button> <button onclick="decide('${c.id}','reject')" style="background:#64748b">Ablehnen</button></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>'}catch(e){toast(e.message)}}window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};
+$('#loadConfirmations').onclick=loadConfirmations;
+function confirmHtmlBtn(payload){const vals=Object.values(payload||{});const html=vals.find(v=>typeof v==='string'&&(v.trimStart().toLowerCase().startsWith('<!doctype')||v.trimStart().startsWith('<html')||v.includes('<body')));if(!html)return '';const id='htmlprev_'+Math.random().toString(36).slice(2);window._htmlPreviews=window._htmlPreviews||{};window._htmlPreviews[id]=html;return ` <button onclick="openHtmlPreview('${id}')">Im Browser öffnen</button>`}
+window.openHtmlPreview=function(id){const html=window._htmlPreviews&&window._htmlPreviews[id];if(!html)return;const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener')};
+async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class=card><span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3><pre>${esc(JSON.stringify(c.payload,null,2))}</pre><div class=agentrun><button onclick="decide('${c.id}','approve')">Bestätigen</button> <button onclick="decide('${c.id}','reject')" style="background:#64748b">Ablehnen</button>${c.agent?`<input id="an_conf_${c.id}" placeholder="Anmerkung – nötig für eine Revision"><button class=ghost onclick="confirmRevision('${c.id}')">Zurück damit</button>`:''}${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>'}catch(e){toast(e.message)}}window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};window.confirmRevision=async id=>{const a=($('#an_conf_'+id)?.value||'').trim();if(!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter.');loadConfirmations()}catch(e){toast(e.message)}};
 $('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.map(n=>`<article class=card><span class=eyebrow>${esc(n.kind||'')}</span><h3>${esc(n.title||'')}</h3><p>${esc(n.message||'')}</p><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></article>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
 window.markNotificationRead=async id=>{try{await api(`/api/notifications/${id}/read`,{method:'POST'});loadNotifications()}catch(e){toast(e.message)}};
 let reviewArt='';
@@ -136,7 +139,9 @@ function quelleTab(p){const q=p.trim(),n=q.split('/').pop();
  if(/\.html?$/i.test(q))return{name:n,lazy:async()=>{
    const r=await fetch(dateiUrl(q));if(!r.ok)throw Error('Seite nicht ladbar ('+r.status+')');
    const roh=await r.text();
-   return `<iframe class="oviframe" sandbox="" srcdoc="${esc(roh)}"></iframe>`
+   const burl=URL.createObjectURL(new Blob([roh],{type:'text/html'}));
+   return `<div style="margin-bottom:8px"><button onclick="window.open('${burl}','_blank','noopener')">Im Browser öffnen</button></div>`
+        + `<iframe class="oviframe" sandbox="" srcdoc="${esc(roh)}"></iframe>`
         + `<details><summary class=small>Quelltext anzeigen</summary>`
         + `<pre class="auszug" style="max-height:60vh">${esc(roh)}</pre></details>`}};
  return{name:n,html:null,pfad:q}}
@@ -145,9 +150,10 @@ window.openReview=async id=>{try{const v=await api('/api/reviews/'+id);
  const tabs=[{name:'Inhalt',html:`<div class="ovmd">${mdRender(v.inhalt||'<ohne Text>')}</div>`}];
  (v.quelle||'').split(',').map(s=>s.trim()).filter(s=>s.startsWith('/')||s.startsWith('austausch/')).forEach(p=>{
   const t=quelleTab(p);
-  if(t.html)tabs.push(t);
+  if(t.lazy)tabs.push(t);
   else tabs.push({name:t.name,lazy:async()=>{const r=await fetch(dateiUrl(t.pfad));const txt=await r.text();return `<div class="ovmd">${mdRender(txt)}</div>`}});
  });
+ if((v.verlauf||'').trim())tabs.push({name:'Verlauf',html:`<div class="ovmd"><pre style="white-space:pre-wrap">${esc(v.verlauf)}</pre></div>`});
  $('#overlayTabs').innerHTML=tabs.map((t,i)=>`<button class="${i?'ghost':''}" data-tab="${i}">${esc(t.name)}</button>`).join('');
  const zeig=async i=>{[...$('#overlayTabs').children].forEach((b,j)=>b.className=j==i?'':'ghost');
   const t=tabs[i];$('#overlayBody').innerHTML=t.html??await t.lazy().catch(e=>`<p>${esc(String(e))}</p>`)};
@@ -229,12 +235,12 @@ async function pollTicker(){if(toggles.market){try{const x=await api('/api/marke
  setTimeout(pollTicker,120000)}
 let newsItems=[],newsIdx=0;
 async function pollNews(){if(toggles.news){try{const d=await api('/api/briefing');newsItems=Object.entries(d.headlines||{}).flatMap(([topic,items])=>items.map(t=>`${topic}: ${t}`));if(d.markets&&d.markets.length){$('#tickXau').textContent=(d.markets.find(m=>m.label==='Gold')||{}).price?.toFixed(0)??$('#tickXau').textContent;const btc=d.markets.find(m=>m.label==='Bitcoin');if(btc)$('#tickBtc').innerHTML=`<span class="${btc.change_pct>=0?'up':'down'}">${btc.price.toLocaleString('de-DE',{maximumFractionDigits:0})}</span>`}}catch(e){}}setTimeout(pollNews,600000)}
-setInterval(()=>{if(newsItems.length){newsIdx=(newsIdx+1)%newsItems.length;const n=newsItems[newsIdx];$('#tickNews').textContent=n.title}},8000);
+setInterval(()=>{if(newsItems.length){newsIdx=(newsIdx+1)%newsItems.length;const n=newsItems[newsIdx];$('#tickNews').textContent=n}},8000);
 window.noteModel=m=>{if(m)$('#tickModel').textContent=m};
-// Schalter (Markt/News/Radar clientseitig, Stimme serverseitig)
-const toggles=JSON.parse(localStorage.getItem('judeToggles')||'{"market":true,"news":true,"radar":true}');
-function renderToggles(){$('#tglMarket').classList.toggle('on',toggles.market);$('#tglNews').classList.toggle('on',toggles.news);$('#tglRadar').classList.toggle('on',toggles.radar);$('#tglVoice').classList.toggle('on',voiceRunning)}
-for(const[id,key]of[['#tglMarket','market'],['#tglNews','news'],['#tglRadar','radar']])$(id).onclick=()=>{toggles[key]=!toggles[key];localStorage.setItem('judeToggles',JSON.stringify(toggles));renderToggles()};
+// Schalter (Markt/News clientseitig, Stimme serverseitig)
+const toggles=JSON.parse(localStorage.getItem('judeToggles')||'{"market":true,"news":true}');
+function renderToggles(){$('#tglMarket').classList.toggle('on',toggles.market);$('#tglNews').classList.toggle('on',toggles.news);$('#tglVoice').classList.toggle('on',voiceRunning)}
+for(const[id,key]of[['#tglMarket','market'],['#tglNews','news']])$(id).onclick=()=>{toggles[key]=!toggles[key];localStorage.setItem('judeToggles',JSON.stringify(toggles));renderToggles()};
 $('#tglVoice').onclick=()=>$('#voiceToggle').click();
 const _vb=voiceBadge;voiceBadge=s=>{_vb(s);$('#tickVoice').textContent=s.running?(s.state||'an'):'aus';renderToggles()};
 $('#wakeForm')&&($('#wakeForm').onsubmit=async e=>{e.preventDefault();

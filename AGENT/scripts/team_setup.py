@@ -213,7 +213,7 @@ MITARBEITER = [
             "QUELLE: der Auftrag, den du erhaeltst. Mehr hast du nicht – frag nicht nach, "
             "sondern schreibe mit dem, was dasteht.\n"
             "ARBEIT: Ausschliesslich Deutsch – kein einziges englisches Wort, auch nicht "
-            "'four' statt 'vier'. Ausnahme ist die Wortmarke 'Building Intelligent Systems'. "
+            "'four' statt 'vier'. Ausnahme ist die Wortmarke 'Building intelligent System'. "
             "Kurze Saetze. Der erste Satz nennt eine Situation aus dem Alltag DIESES "
             "Empfaengers, nicht unser Angebot: bekommst du die Taetigkeit mitgeliefert, muss "
             "sie in den ersten beiden Saetzen vorkommen. Danach EINE konkrete Entlastung, "

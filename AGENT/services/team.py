@@ -19,6 +19,7 @@ from pathlib import Path
 import logging
 
 from core.paths import DATA_DIR
+from services.marke import BRAND_BRIEF
 
 logger = logging.getLogger(__name__)
 
@@ -327,6 +328,7 @@ class SubAgentService:
                     quelle="Auftragspruefung")
             ergebnis = self.run(self.REDAKTEUR, (
                 f"Auftrag von {wer}.\n"
+                f"{BRAND_BRIEF}\n"
                 f"Ton: {ton}. Laenge: {grenzen.get(laenge, grenzen['mittel'])}.\n"
                 + (f"Kanal: {kanal}. Halte die Kanal-Karte aus dem Qualitaets-Playbook ein (Umfang, Ton, Emojis, Hashtags, Link-Regel: LinkedIn/Xing-Link gehoert in den ersten Kommentar, nicht in den Text).\n" if kanal else "")
                 + (zum_empfaenger + "\n" if zum_empfaenger else "") +
@@ -431,6 +433,7 @@ class SubAgentService:
         from core.tool_registry import ToolRegistry
         sub = ToolRegistry()
         sub.set_confirmations(self.registry.confirmations)
+        sub.agent_name = spec["name"]
         modell = spec.get("model") or self.STANDARD_MODELL
         # Ein Mitarbeiter, dessen Modell keine Werkzeuge bedienen kann, bekommt
         # auch keine. Sonst entsteht genau der Schaden, der Mike lahmgelegt hat:
@@ -471,6 +474,7 @@ class SubAgentService:
                   f"legst du am Ende deines Laufs mit submit_for_review vor – auch wenn es "
                   f"schon in Notion steht; nenne dann die Notion-URL als quelle. Interne "
                   f"Zuarbeit (Notizen, Hinweise an Kollegen) braucht keine Vorlage.")
+        prompt += f"\n\n{BRAND_BRIEF}"
         # Offene Aufträge: ohne diesen Block wusste niemand, dass etwas
         # bestellt war – 21 Läufe, 1 Vorlage, die Donnerstag-Bestellung
         # versickerte. Jetzt steht jede Schuld im Prompt.
@@ -492,15 +496,33 @@ class SubAgentService:
         from services.review import ReviewQueue
         revisionen = ReviewQueue().offene_revisionen(spec["name"])
         if revisionen:
-            zeilen = "\n".join(
-                f"- [{r['id']}] {r['titel']} (Runde {r['runde']}): {r['anmerkung']}"
-                for r in revisionen)
+            zeilen = []
+            for r in revisionen:
+                zeile = f"- [{r['id']}] {r['titel']} (Runde {r['runde']}): {r['anmerkung']}"
+                if r.get("inhalt"):
+                    indented = r['inhalt'][:1500].replace('\n', '\n  ')
+                    zeile += f"\n  BISHERIGER INHALT (gezielt verbessern, nicht neu erfinden):\n  {indented}"
+                zeilen.append(zeile)
             prompt += ("\n\nZUERST ERLEDIGEN – Tino hat Überarbeitungen angefordert:\n"
-                       + zeilen +
+                       + "\n".join(zeilen) +
                        "\nArbeite jede Anmerkung ein und lege das Ergebnis erneut mit "
                        "submit_for_review vor – dabei die ID aus der eckigen Klammer "
                        "als 'ueberarbeitet' mitgeben, sonst bleibt die alte Fassung "
-                       "offen und du bekommst sie beim naechsten Lauf wieder vorgelegt.")
+                       "offen und du bekommst sie beim naechsten Lauf wieder vorgelegt. "
+                       "Bei Dokumenten oder Grafiken ist die Revision erst erledigt, "
+                       "wenn Wortmarke, Tagline, Farben, Verläufe, Karten und Icons "
+                       "geprüft und korrekt umgesetzt sind.")
+            prompt += f"\n\n{BRAND_BRIEF}"
+        # Zurückgewiesene Bestätigungen (z.B. code_write) haben ebenfalls Vorrang:
+        # ohne diesen Block sah der Mitarbeiter nie, dass Tino eine Anmerkung dazu
+        # hatte, und rief das Werkzeug bestenfalls blind noch einmal auf.
+        from services.confirmations import ConfirmationQueue
+        offene_bestaetigungen = ConfirmationQueue().offene_revisionen(spec["name"])
+        if offene_bestaetigungen:
+            zeilen = [f"- [{b['action_type']}] {b['summary'][:150]} (Runde {b['runde']}): {b['anmerkung']}"
+                      for b in offene_bestaetigungen]
+            prompt += ("\n\nZURÜCKGEWIESENE BESTÄTIGUNGEN – ruf das gleiche Werkzeug erneut mit "
+                       "korrigierten Angaben auf, um die Anmerkung einzuarbeiten:\n" + "\n".join(zeilen))
         gelernt = self.lehren(spec["name"])[:self.PROMPT_LEHREN]
         if gelernt:
             zeilen = "\n".join(
@@ -639,7 +661,7 @@ class SubAgentService:
         "0. Auftritt: hochwertig und ruhig, dunkelgruen und Gold auf mattem Schwarz. "
         "Marktgeschrei, Ausrufezeichen-Ketten, Emoji-Teppiche und Rabattsprache sind "
         "Ausschluss (1-2 dezente Emojis sind erlaubt, auf Xing keine; 3-6 Hashtags aus dem Strategie-Pool sind erlaubt) – wir wirken wie eine teure Manufaktur, nicht wie eine Werbeagentur.\n"
-        "1. Marke: Nurovelle, 'Building Intelligent Systems'. 'Autonova' und 'Politara' "
+        "1. Marke: Nurovelle, 'Building intelligent System'. 'Autonova' und 'Politara' "
         "duerfen nirgends vorkommen. Von KI zu sprechen ist richtig, aber nie als "
         "Schlagwort ohne einen Ablauf, den der Leser kennt.\n"
         "2. Sprache: durchgehend Deutsch, kein englisches Wort, keine Platzhalter "
@@ -733,10 +755,10 @@ class SubAgentService:
                 frage = (
                     "Du bist Jude, Geschaeftsfuehrer von Nurovelle. Ein Mitarbeiter legt dir "
                     "etwas Fertiges vor. Pruefe es, bevor es Tino erreicht.\n\n"
-                    f"Massstab:\n{self.CHEF_MASSSTAB}\n\n"
+                    f"Massstab:\n{self.CHEF_MASSSTAB}\n\n{BRAND_BRIEF}\n\n"
                     "FAKTEN (keine Platzhalter, nicht beanstanden): Die kostenlose "
                     "KI-Potenzialanalyse auf nurovelle.de/analyse.html ist das echte "
-                    "Kernangebot und der gewollte Handlungsaufruf. Marke: Nurovelle – Wortmarke 'Building Intelligent Systems', Kurz-Claim 'Klarheit. Prozesse. Zukunft.' (beide legitim). Massgeblich ist zusaetzlich das Qualitaets-Playbook (austausch/an-team/qualitaets-playbook.md).\n"
+                    "Kernangebot und der gewollte Handlungsaufruf. Massgeblich sind die Markenpräambel und das Qualitaets-Playbook (austausch/an-team/qualitaets-playbook.md).\n"
                     f"{auftrag_kontext}"
                     + (f"\nBISHERIGE BEANSTANDUNGEN (behobene Punkte NICHT erneut aufmachen):\n{verlauf[:800]}\n" if verlauf else "")
                     + f"\nVon: {voll.get('person') or voll['agent']}\n"

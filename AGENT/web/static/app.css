@@ -102,8 +102,8 @@ input,select,textarea{background:#0f130c;border-color:#31402a;color:var(--ink)}
 .cockR .feed{flex:1;max-height:none}
 .hudpanel{margin-bottom:0}
 
-.hudmap{height:190px;border-radius:10px;overflow:hidden;background:#0f130c}
-.radarbar{display:flex;align-items:center;gap:8px;margin-top:8px}
+.hudmap{width:100%;height:190px;border-radius:10px;overflow:hidden;background:#0f130c}
+.radarbar{display:flex;align-items:center;gap:8px;margin-top:8px;overflow:hidden}
 .radarbar input[type=range]{flex:1;min-width:0;padding:0}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--green);padding:4px 10px;min-width:0}
 .radarpin{color:var(--accent);font-size:15px;text-shadow:0 0 6px #000}
@@ -265,7 +265,7 @@ header{background:#0b0d0b;border-bottom:1px solid #39423a}
 .cockL>.hudpanel:nth-child(2){grid-column:1/5;grid-row:2}
 .factpanel{grid-column:1/5;grid-row:3}
 .cockD>.hudpanel{grid-column:5/8}
-.bandpanel{grid-column:8/16;grid-row:1}
+.bandpanel{grid-column:8/17;grid-row:1}
 .output{grid-column:16/21}
 
 /* Schalter: beschriftete Tasten statt Mini-Kreise. Aktiv = Gruen mit
@@ -327,8 +327,8 @@ input[type=range]{accent-color:#2e6b40}
 .output{grid-column:5/8}
 .cockD>.hudpanel{grid-column:16/21}
 /* Ausgabe breit (25 %), Essensplan schmal (15 %) - Positionen bleiben getauscht */
-.output{grid-column:5/10}
-.bandpanel{grid-column:10/18}
+.output{grid-column:6/18;grid-row:2}
+.bandpanel{grid-column:6/18}
 .factpanel{grid-column:1/5}
 .cockD>.hudpanel{grid-column:18/21}
 
@@ -353,9 +353,9 @@ a:hover{color:#b8d9c0}
 .cockpit{grid-template-rows:auto 1fr auto}
 .cockL>.hudpanel:nth-child(2){min-height:0;align-self:stretch;grid-row:2}
 .cockD>.hudpanel{grid-column:18/21;grid-row:1;align-self:start}
-.wakepanel{grid-column:18/21;grid-row:2;align-self:start}
-.output{grid-row:1/4;align-self:stretch}
-.bandpanel{align-self:start}
+.cockD>.wakepanel{grid-column:18/21;grid-row:2/4;align-self:start}
+.output{grid-row:2/4;align-self:stretch}
+.bandpanel{align-self:stretch}
 .factpanel{grid-row:3;align-self:start}
 
 /* 4) + 5) Kein Grün auf Grün, kein Weiß auf hellem Grün.
@@ -415,18 +415,21 @@ nav button.active{background:#2e6b40;color:#f2efe6;border:0}
    oben direkt unter dem Radar beginnen (align-self:start reichte nicht, die
    Kachel wurde in der Zeile zentriert), nach unten bis an den Fake-Checker. */
 .cockL>.hudpanel:nth-child(2){align-self:stretch;justify-self:stretch;margin:0;height:auto}
-.cockL>.hudpanel:first-child{align-self:start}
+.cockL>.hudpanel:first-child{align-self:stretch}
 /* Linke Spalte als eigener Stapel statt drei Rasterzeilen: Radar und
    Fake-Checker so hoch wie ihr Inhalt, der Growcontroller nimmt exakt den
    Rest – damit gibt es weder über noch unter ihm eine Lücke. */
-.cockL{display:flex;flex-direction:column;gap:8px;grid-column:1/5;grid-row:1/4;min-height:0}
+.cockL{display:flex;flex-direction:column;gap:8px;grid-column:1/6;grid-row:1/4;min-height:0}
+.cockC{display:flex;flex-direction:column;gap:8px;grid-column:6/18;grid-row:1/4;min-height:0}
+.cockC>.bandpanel{flex:0 0 auto}
+.cockC>.output{flex:1 1 auto;min-height:120px}
 .cockL>.hudpanel{grid-column:auto;grid-row:auto;align-self:auto}
 .cockL>.hudpanel:first-child,.cockL>.factpanel{flex:0 0 auto}
-.cockL>.hudpanel:nth-child(2){flex:1 1 auto;min-height:120px}
+.cockL>.hudpanel:nth-child(2){flex:0 0 288px;min-height:120px}
 .cockL>.factpanel{flex:0 0 auto;grid-column:auto;grid-row:auto}
 /* Ohne definierte Gesamthöhe bedeutet "1fr" nichts – der Growcontroller hatte
    nichts zu füllen. Das Raster reicht jetzt bis zum unteren Fensterrand. */
-.cockpit{min-height:calc(100vh - 250px)}
+.cockpit{min-height:0}
 
 /* Abnahme: fertige Arbeit, die auf Tinos Entscheidung wartet. Der Auszug
    bleibt niedrig, damit zehn Vorlagen nebeneinander noch überschaubar sind –
@@ -440,7 +443,7 @@ nav button.active{background:#2e6b40;color:#f2efe6;border:0}
    vorher als 2×2-Block im Gauge-Band; der frei gewordene Platz geht an die
    Gauges, die dadurch von 68 auf bis zu 96 px wachsen. */
 .hudband{overflow-x:visible}
-.hudband .gauge{flex:1 1 0;width:auto;min-width:62px;max-width:96px}
+.hudband .gauge{flex:1 1 0;width:auto;min-width:62px;max-width:none}
 .hudrow{display:flex;align-items:flex-end;gap:10px;margin-top:12px;flex-wrap:wrap}
 /* Beide Vierergruppen teilen sich die Zeile: gleiche Flex-Basis, damit acht
    gleich breite Knöpfe nebeneinander stehen statt umzubrechen. */
@@ -463,6 +466,13 @@ nav button.active{background:#2e6b40;color:#f2efe6;border:0}
 .hudrow{display:flex;align-items:flex-end;flex-wrap:wrap;overflow:visible}
 .hudrow .toggle{height:36px}
 .hudrow .toggles{display:flex}
+.hudmap{width:100%;height:260px;aspect-ratio:auto;min-height:0}
+.hudrow{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+.hudrow .toggles{grid-column:span 4;min-width:0}
+.hudrow .toggle{padding:4px 5px;white-space:nowrap;overflow:visible}
+.hudrow .toggle small{font-size:clamp(8px,.65vw,10px);white-space:nowrap}
+.freigabe{grid-column:span 4;min-width:0}
+.freigabebtns{min-width:0}
 
 /* ---- Schreibtisch: Vorschau-Overlay (Texte formatiert, Bilder, Seiten) ---- */
 #overlay[hidden]{display:none !important}

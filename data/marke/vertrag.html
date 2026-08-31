@@ -1,0 +1,215 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<title>Nurovelle — Projektvertrag</title>
+<style>
+/* Nurovelle Briefkopf, DIN 5008 Form B
+   Stand: 2026-08-14 · Status: fertig
+   Logo: Bild- und Wortmarke aus assets/hero/, auf den Goldverlauf des Styleguides umgefaerbt
+
+   Bewusst hell: ein Geschäftsbrief wird gedruckt. Der dunkle Markenauftritt
+   gehört auf den Bildschirm; auf Papier frisst mattes Schwarz eine Tonerpatrone
+   und liest sich schlechter. Die Marke trägt hier über die Wortmarke in Gold,
+   den Goldbalken und die Typografie — nicht über die Fläche.
+
+   DIN 5008 Form B eingehalten, damit der Brief in ein Fensterkuvert passt:
+   Anschriftfeld 45 mm vom oberen Rand, 85 mm breit, 40 mm hoch;
+   Falzmarken bei 87 mm und 192 mm, Lochmarke bei 148,5 mm;
+   Seitenränder 25 mm links, 20 mm rechts.
+
+   Drucken: Browser › Drucken › A4, Ränder „keine", Hintergrundgrafiken an.
+*/
+@page { size: A4; margin: 0; }
+:root{
+  --gold:#C9A659; --gold-deep:#A8842F; --gold-light:#B8933F;
+  --ink:#141a17; --muted:#4a534f; --line:#d9dbd6;
+}
+*{box-sizing:border-box;margin:0}
+body{background:#7b7b7b;font-family:Inter,Arial,sans-serif;color:var(--ink)}
+
+.blatt{position:relative;width:210mm;height:297mm;margin:0 auto;background:#fff;
+  padding:0;overflow:hidden}
+@media print{ body{background:#fff} .blatt{margin:0;box-shadow:none} }
+
+/* Goldbalken als einziger Flächenakzent */
+.kante{position:absolute;top:0;left:0;right:0;height:3mm;
+  background:linear-gradient(110deg,#B8933F 0%,#C9A659 50%,#A8842F 100%)}
+
+/* Kopf: Wortmarke rechts, damit das Anschriftfeld links frei bleibt */
+.kopf{position:absolute;top:12mm;right:20mm;display:flex;align-items:center;gap:5mm}
+.bildmarke{height:24mm;width:auto;display:block}
+.wortblock{text-align:right}
+.wortmarke{height:11mm;width:auto;display:block}
+.claim{font-size:8pt;letter-spacing:.18em;text-transform:uppercase;
+  color:#3d4644;margin-top:2.5mm;font-weight:500}
+
+/* Rücksendeangabe und Anschriftfeld nach DIN 5008 Form B */
+.ruecksende{position:absolute;left:25mm;top:45mm;width:85mm;font-size:7.5pt;
+  color:#4a534f;border-bottom:.3pt solid var(--line);padding-bottom:1mm}
+.anschrift{position:absolute;left:25mm;top:50mm;width:85mm;height:35mm;
+  font-size:11pt;line-height:1.45}
+
+/* Infoblock rechts neben dem Anschriftfeld */
+.info{position:absolute;right:20mm;top:45mm;width:60mm;font-size:8.5pt;
+  line-height:1.6;color:var(--ink)}
+.info dt{color:#55605c;font-size:8pt;letter-spacing:.06em;
+  text-transform:uppercase;margin-top:2.5mm}
+.info dd{margin:0}
+.info a{color:var(--gold-deep);text-decoration:none}
+
+/* Betreff und Textbereich */
+.betreff{position:absolute;left:25mm;right:20mm;top:98.4mm;font-size:11pt;
+  font-weight:700}
+.text{position:absolute;left:25mm;right:20mm;top:107mm;bottom:38mm;
+  font-size:11pt;line-height:1.5}
+
+/* Falz- und Lochmarken */
+.marke{position:absolute;left:5mm;width:5mm;height:0;border-top:.4pt solid #9aa0a6}
+.falz1{top:87mm} .falz2{top:192mm}
+.loch{position:absolute;left:3.5mm;top:148.5mm;width:8mm;height:0;
+  border-top:.5pt solid #9aa0a6}
+
+/* Fuß: Pflichtangaben */
+.fuss{position:absolute;left:25mm;right:20mm;bottom:14mm;padding-top:3mm;
+  border-top:.5pt solid var(--line);
+  display:flex;justify-content:space-between;gap:8mm;
+  font-size:8.5pt;line-height:1.55;color:#3d4644}
+.fuss b{display:block;color:var(--ink);font-weight:600;margin-bottom:.8mm}
+
+/* Dokumentspezifisch: Fliesstext statt Briefaufbau. */
+.inhalt{position:absolute;left:25mm;right:20mm;top:52mm;bottom:38mm;font-size:10pt;
+  line-height:1.55;overflow:visible}
+.inhalt h1{font-family:'Exo 2',Arial,sans-serif;font-size:19pt;font-weight:700;
+  margin-bottom:2mm;color:var(--ink)}
+.inhalt h2{font-family:'Exo 2',Arial,sans-serif;font-size:11.5pt;font-weight:700;
+  margin:6mm 0 1.5mm;color:#A8842F}
+.inhalt p{margin-bottom:2mm}
+.inhalt ul{margin:1mm 0 2mm 5mm}
+.inhalt li{margin-bottom:1mm}
+.vor{color:#3d4644;font-size:9.5pt;margin-bottom:5mm}
+table.pos{width:100%;border-collapse:collapse;margin:3mm 0;font-size:9.5pt}
+table.pos th{text-align:left;border-bottom:1pt solid #A8842F;padding:1.5mm 2mm;
+  font-size:8pt;letter-spacing:.06em;text-transform:uppercase;color:#3d4644}
+table.pos td{border-bottom:.4pt solid var(--line);padding:2mm;vertical-align:top}
+table.pos td.r,table.pos th.r{text-align:right;white-space:nowrap}
+table.pos tr.summe td{border-top:1pt solid #A8842F;border-bottom:none;
+  font-weight:700;padding-top:2.5mm}
+.hinweis{border-left:2.5pt solid #A8842F;background:#faf7ef;padding:2.5mm 3.5mm;
+  margin:4mm 0;font-size:9pt;line-height:1.5}
+.unterschrift{display:flex;gap:14mm;margin-top:10mm;font-size:9pt}
+.unterschrift div{flex:1;border-top:.5pt solid #6b7370;padding-top:1.5mm;color:#3d4644}
+.pruef{background:#fff4f2;border-left:2.5pt solid #b3423a;padding:2.5mm 3.5mm;
+  margin:4mm 0;font-size:8.5pt;line-height:1.5;color:#5a2a26}
+
+
+/* Fliesslayout statt absoluter Positionierung – siehe Kommentarkopf. */
+.blatt{height:auto;min-height:297mm;padding:0 20mm 0 25mm;display:flex;
+  flex-direction:column}
+.kopf{position:static;align-self:flex-end;margin-top:12mm;margin-right:0}
+.inhalt{position:static;left:auto;right:auto;top:auto;bottom:auto;
+  margin-top:10mm;flex:1 0 auto}
+.fuss{position:static;left:auto;right:auto;bottom:auto;
+  margin-top:12mm;margin-bottom:14mm;page-break-inside:avoid}
+.marke,.loch{display:none}
+@media print{ .blatt{min-height:0} }
+</style></head><body>
+<div class="blatt">
+  <div class="kante"></div>
+  <div class="kopf">
+    <svg class="bildmarke" viewBox="0 0 794 1123" role="img" aria-label="Nurovelle Bildmarke">
+      <defs><linearGradient id="gA" x1="0" y1="0" x2="1" y2="0.36">
+        <stop offset="0%" stop-color="#B8933F"/><stop offset="50%" stop-color="#C9A659"/>
+        <stop offset="100%" stop-color="#A8842F"/>
+      </linearGradient></defs>
+      <path d="m 385.61042,257.66989 -80.24023,47.73633 4.70898,3.00391 c 10.98855,7.01049 23.88039,13.87497 26.02149,13.85547 1.22556,-0.0112 12.105,-5.9174 24.17578,-13.125 12.07078,-7.2076 22.65564,-13.10547 23.52344,-13.10547 1.95044,0 18.74386,9.64567 76.52929,43.96094 24.75,14.69752 49.05,29.09904 54,32.00195 11.22327,6.58186 10.46625,5.07713 10.48438,20.85351 l 0.0156,13.31446 0.98828,1.8457 c 0.78459,1.46602 22.1753,14.9305 31.45117,19.79688 1.06678,0.55962 2.52928,0.79219 3.25,0.51562 l 1.31055,-0.5039 V 392.08396 362.582 Z m -99.04297,58.92188 -72.73828,43.27539 v 105.20703 108.68945 l 3.75,2.57032 c 2.0625,1.4142 8.7,5.51308 14.75,9.10742 11.24171,6.67877 14.82004,7.80672 15.89258,5.01172 0.33385,-0.86998 0.6151,-48.68248 0.62305,-106.25 0.008,-57.56751 0.37844,-105.24017 0.82226,-105.93946 0.44383,-0.69929 7.29912,-5.11049 15.23438,-9.80273 l 14.42773,-8.53125 2.51367,0.34375 c 1.38215,0.18966 29.73215,16.48877 63,36.21875 33.26784,19.72998 66.33633,39.31978 73.48633,43.5332 l 13,7.66016 0.58203,34.92578 c 0.32026,19.20849 0.6578,35.01956 0.75,35.13672 0.43344,0.55055 27.18775,16.25787 31.03907,18.22266 l 4.36718,2.22656 0.91211,-0.91406 0.91406,-0.91211 0.62696,-52.96289 c 0.34519,-29.12926 0.32621,-54.16592 -0.043,-55.63672 l -0.67188,-2.67383 -39.23828,-23.39258 c -63.75696,-38.00993 -135.96271,-80.67947 -144,-85.11328 z m -86.42383,51.41797 -22.90039,13.62305 -0.24804,151.77539 -0.23047,141.52343 23.98242,14.2793 -0.0117,-153.12891 c -0.007,-89.81247 -0.27322,-162.27569 -0.5918,-168.07226 z m 375.8086,2.98047 -0.38086,67.37304 c -0.43067,76.04826 -0.18779,201.2085 0.33984,254.64844 l 23.89453,-14.21484 -0.22265,-151.05274 -0.21094,-142.81054 z m -413.12305,19.21875 -16.51562,9.82422 -0.25977,126.0332 c -0.14061,68.33737 -0.0226,121.74823 0.23828,130.72461 l 16.00196,9.52539 c 0.29529,-10.6327 0.53515,-66.28466 0.53515,-139.00195 z m 449.96875,2.71679 -0.24414,33.79297 c -0.32664,44.96349 -0.32707,122.30472 0,171.86914 l 0.47852,72.33985 16.16015,-9.61328 c 0.30346,-16.73835 0.48748,-71.37743 0.375,-145.95704 l -0.16992,-112.54882 z m -478.23047,14.09571 -10.21484,6.07812 -0.13281,143.37695 c -0.0311,33.77626 0.0334,60.80287 0.0957,87.23047 l 10.25195,6.10352 v -93.6543 z m 506.93555,2.99414 -0.10352,114.23242 c -0.0525,56.89109 0.0741,99.50377 0.26368,129.64648 l 10.08398,-5.99804 V 523.92771 416.11325 Z m -116.63086,41.49219 -1.04297,0.64453 v 87.75 87.75 l -1.25,1.56836 c -0.6875,0.8618 -12.95,8.52503 -27.25,17.02929 -14.3,8.50426 -43.65127,26.12661 -65.22461,39.16211 l -39.22461,23.70117 -3.17578,-1.64257 c -1.74653,-0.90316 -19.42026,-12.00632 -39.27539,-24.67383 -19.85513,-12.6675 -57.39192,-35.82297 -83.41601,-51.45703 l -47.31641,-28.42579 -1.68359,0.32422 -1.6836,0.32618 v 53.82421 39.90821 L 391.45808,802.74997 562.18855,701.17575 c 0.3382,-11.1453 0.61794,-53.1837 0.625,-109.95703 l 0.0156,-117.31445 -0.99805,-1.86524 c -1.26018,-2.35466 -35.54903,-21.40264 -36.95898,-20.53124 z m -221.88281,28.0332 -0.83008,0.83008 -0.83008,0.83007 -0.27539,71.71875 -0.27539,71.71875 2.27539,2.07227 c 1.25142,1.13939 7.85855,5.96666 14.68164,10.72852 6.8231,4.76187 12.8981,8.49499 13.5,8.29492 l 1.09375,-0.36328 0.61133,-49.41797 c 0.71125,-57.52336 0.50994,-52.91797 2.3125,-52.91797 0.78297,0 30.59547,17.50827 66.25,38.9082 l 64.82617,38.91016 1.26953,-1.04883 1.26953,-1.04687 -0.26953,-20.55079 -0.26953,-20.55078 -44,-26.35156 C 371.34418,519.57322 315.25948,486.30335 308.15925,482.3906 Z m -47.96289,176.33984 c 0.5332,-0.3465 15.62037,8.78972 33.52539,20.30274 17.90503,11.51301 47.10428,30.30181 64.88867,41.75195 17.78438,11.45013 33.23093,20.99946 34.32422,21.22266 l 1.98633,0.40625 36.05468,-22.92579 c 19.8295,-12.60912 49.19783,-31.35831 65.26368,-41.66601 16.06585,-10.30771 29.65368,-18.45353 30.19531,-18.10156 l 0.98437,0.64062 -0.0137,13.18945 c -0.0162,14.68383 0.077,14.36647 -5.2168,17.67383 -2.09228,1.30719 -21.13598,13.85306 -42.32031,27.87891 -21.18433,14.02585 -48.74601,32.16988 -61.24804,40.32031 -12.50203,8.15043 -23.64167,14.81836 -24.75391,14.81836 -1.11222,0 -25.54834,-15.11113 -54.30274,-33.58008 -73.49013,-47.20269 -78.37073,-50.42658 -79.41015,-52.46875 l -0.92578,-1.82031 v -13.50586 -13.50586 z" fill="url(#gA)"/>
+    </svg>
+    <div class="wortblock">
+      <svg class="wortmarke" viewBox="0 0 1098 250" role="img" aria-label="Nurovelle">
+        <defs><linearGradient id="gB" x1="0" y1="0" x2="1" y2="0.36">
+          <stop offset="0%" stop-color="#B8933F"/><stop offset="50%" stop-color="#C9A659"/>
+        <stop offset="100%" stop-color="#A8842F"/>
+        </linearGradient></defs>
+        <path d="m 26.682447,206.69632 v -47 -29 c 0,-7.35102 -4.03613,-34.645835 4.45976,-37.833485 9.24189,-3.46756 26.56976,21.863515 31.87106,27.833485 20.02857,22.55486 38.628603,46.19669 58.382803,68.9874 10.12708,11.68374 23.90363,22.55764 40.25972,15.05124 11.85118,-5.43894 13.01566,-17.58448 13.02608,-29.03864 l 5.8e-4,-73 c 0,-8.798335 2.60744,-22.842075 -1.8887,-30.723805 -4.0067,-7.02375 -13.17504,-6.26529 -20.1113,-6.27619 v 46.999995 30 c 0,6.88732 3.87953,34.72746 -3.67392,37.83349 -8.2498,3.39236 -25.6281,-23.38221 -30.39284,-28.83349 C 97.988187,128.09667 77.609577,104.26741 56.943397,80.703405 47.199067,69.592725 33.604287,60.972865 18.690497,68.318655 5.9454867,74.596215 4.6879567,87.083005 4.6826667,99.696325 l -2.2e-4,70.999995 c 0,8.61755 -2.91612,23.99377 1.79891,31.54025 3.8674403,6.18988 14.0065003,4.45946 20.2010903,4.45975 M 874.93528,67.403145 c -5.4996,4.68041 -2.2528,23.62833 -2.2528,30.29318 0,28.885405 -5.8264,64.917615 0.9183,92.999755 2.3991,9.98852 18.3537,23.21814 28.7382,14.29351 7.8854,-6.77691 -9.4435,-20.83119 -9.6283,-29.29351 -0.6691,-30.63646 -0.013,-61.35538 -0.028,-91.999755 0,-8.34811 -5.1826,-26.98599 -17.7469,-16.29318 m 55.0898,0 c -5.5822,4.78372 -2.3426,23.53412 -2.3426,30.29318 0,28.973665 -5.7074,64.832225 1.1743,92.999355 2.4052,9.84463 18.227,23.12701 28.5714,14.29394 7.9705,-6.80596 -8.8606,-20.07641 -8.8111,-28.29397 0.1887,-31.3132 0.3939,-62.66408 0.045,-93.976405 -0.096,-8.6159 -7.0126,-25.27817 -18.6376,-15.3161 M 209.57112,108.04041 c -3.83797,2.37407 -2.88177,8.84795 -2.88778,12.65658 l -8.9e-4,35.99933 c 0,13.69031 -1.69554,28.96288 8.36917,39.84305 16.14108,17.44887 53.08298,10.16577 74.63083,10.15674 9.70401,-0.004 18.71616,-0.39038 26.8212,-6.45369 19.17917,-14.34776 12.17938,-50.63654 12.1788,-71.5461 -2.7e-4,-10.17991 -0.25693,-26.16336 -15.60089,-21.31234 -7.44367,2.35333 -4.39911,19.30259 -4.39911,25.31234 0,24.87558 7.45078,55.93841 -26,55.99862 -13.46542,0.0242 -41.31789,5.25527 -51.38422,-5.43546 -11.99791,-12.74212 -3.70305,-49.0423 -4.70251,-65.55277 -0.48763,-8.05523 -9.17699,-14.52063 -17.0246,-9.6663 m 218.11133,-0.34409 c -16.05447,-2.48913 -46.26498,-5.65298 -59.63702,5.19263 -16.44754,13.34006 -10.36298,45.08273 -10.36298,63.80737 0,7.33257 -1.08755,15.70126 0.53253,22.88823 1.47681,6.55141 12.98627,10.4659 17.76071,4.85892 3.48712,-4.09517 1.70676,-13.74886 1.70676,-18.74715 0,-14.10571 -5.94232,-46.40023 3.87161,-57.47386 13.4603,-15.18802 49.82056,8.1976 46.12839,-20.52614 m 48,-0.34228 c -28.19373,5.03045 -27.00388,32.95604 -26.99994,55.34228 0.002,11.80937 -0.0499,24.53056 8.45404,33.79538 14.95429,16.29239 45.60465,10.20462 65.5459,10.20462 8.15192,0 16.9798,0.91742 25,-0.75842 30.93005,-6.46288 34.78888,-68.63007 16.29962,-88.9373 -15.75159,-17.300395 -66.83963,-13.47556 -88.29962,-9.64656 m 111,0.34228 c 5.05682,18.0714 19.12781,35.24932 27.7251,52 6.66205,12.98012 11.54529,30.57019 21.25329,41.53201 6.69104,7.55521 22.29407,7.60341 29.5846,0.88774 17.36102,-15.99205 28.04461,-50.41357 38.70361,-71.41975 2.211,-4.35734 13.5221,-20.57776 5.30322,-23.31904 -22.91626,-7.643385 -36.85638,41.22375 -44.94073,56.31904 -2.02875,3.78818 -9.28369,23.0632 -15.05664,20.22262 -5.51599,-2.71414 -8.6781,-14.06855 -11.40985,-19.22262 -11.44794,-21.5989 -21.57862,-62.18032 -51.1626,-57 m 174,-0.49864 c -30.02448,3.53293 -32,27.85584 -32,52.49864 0,10.49237 -0.98639,21.63183 4.69916,30.99292 14.68152,24.1727 54.38107,16.00708 78.30087,16.00708 7.1709,0 21.7929,2.78293 27.9637,-1.25282 7.5388,-4.93044 -0.6173,-15.18514 -6.988,-15.63541 -18.2222,-1.28789 -36.7041,-1.10445 -54.97573,-1.11198 -8.43591,-0.003 -18.24072,0.73299 -24.33215,-6.29247 -6.25153,-7.21008 -4.66944,-18.86847 -4.66779,-27.70732 10e-4,-7.75894 -0.71429,-16.35963 4.7843,-22.61734 9.99195,-11.37141 41.36617,-7.54051 55.21537,-6.17103 5.338,0.52784 10.556,2.89229 13.0873,7.89343 4.1336,8.16695 -3.3816,14.32861 -11.0879,14.29678 -13.7468,-0.0568 -28.34386,-1.41368 -41.99828,0.33519 -5.70849,0.73116 -12.75787,3.16689 -12.35022,10.22036 0.67408,11.66409 21.72504,8.04261 29.3494,8.04261 14.3612,0 35.5685,3.75496 47.9038,-5.16047 19.4154,-14.03258 9.2617,-45.16014 -10.904,-52.22809 -8.3759,-2.93567 -17.2591,-2.61121 -25.9998,-2.61144 -11.88443,-3e-4 -24.18246,-0.88919 -36.00003,0.50136 m 253.00005,0.0313 c -29.78802,3.90193 -30.50452,27.3198 -31.03932,51.46736 -0.2506,11.31407 -1.5268,22.85603 4.8153,32.97336 14.50962,23.14631 55.06622,15.02664 78.22402,15.02664 7.171,0 20.8368,2.61096 27.1112,-1.25282 7.6314,-4.69944 0.3848,-14.87746 -6.1354,-15.56032 -17.9122,-1.87598 -36.952,-1.18369 -54.9758,-1.18694 -8.6012,-0.002 -18.9576,0.88799 -25.1348,-6.38868 -5.9862,-7.05158 -4.8662,-18.00843 -4.8652,-26.61124 10e-4,-8.32492 -0.6179,-17.15513 5.4845,-23.71342 10.5103,-11.29547 40.2942,-7.15035 54.5153,-6.15178 5.6915,0.39964 11.223,2.57336 13.904,7.96988 4.8633,9.78932 -5.1747,13.5661 -12.904,14.21869 -13.8964,1.17325 -28.0668,-0.29483 -41.995,0.82394 -5.5346,0.44457 -11.4783,3.32877 -11.1126,9.79968 0.6565,11.61563 21.5233,8.05301 29.1078,8.05301 14.1781,0 35.4802,3.79663 47.8685,-4.50435 20.5524,-13.77143 9.599,-46.07774 -10.8685,-52.96311 -8.3984,-2.82529 -17.2642,-2.53231 -26,-2.53254 -11.8495,-3e-4 -24.2335,-1.00866 -36,0.53264 m -532.97319,18.16616 c 14.59344,-3.57033 32.97732,-0.70196 47.97314,-0.69872 6.18414,10e-4 13.53094,-0.89644 18.43225,3.68027 11.24249,10.49795 10.1543,55.48605 -6.44079,60.22403 -14.63428,4.17815 -34.7331,0.12885 -49.99146,0.094 -6.09134,-0.0139 -12.73895,0.22745 -17.27161,-4.57863 -9.91638,-10.51454 -9.10699,-54.70731 7.29847,-58.72095 m -310.31553,130.56498 1.1852,2.46675 -1.1852,-2.46675 m 21.28867,35.73622 h 5 v -38 c -9.19643,3.56836 -5,29.54399 -5,38 m 44,-38 v 15 c -29.02676,-14.86211 -25.17154,36.84564 0,19 v 4 h 5 c 0,-8.97198 4.42047,-33.7009 -5,-38 m 27,7 c 2.96573,-9.02199 -8.06819,-3.69562 0,0 m 263,-7 v 38 h 5 v -38 h -5 m 23,0 v 38 h 5 v -38 h -5 m 23,6 c 7.18213,-1.53625 2.07587,-7.10335 0,0 m 200,22 c 4.16418,10.90604 25.62873,16.58078 27.72673,0.97516 1.5977,-11.88516 -13.5555,-9.55104 -18.58659,-15.84427 -5.27283,-6.59558 6.70829,-7.78711 10.54489,-6.16913 2.4722,1.04254 4.7529,2.20751 7.315,3.03824 -3.2645,-10.58342 -22.84842,-14.36263 -25.13278,-0.94566 -2.20453,12.94798 15.35048,9.45713 19.42008,17.37651 3.6704,7.14247 -8.19816,7.4339 -11.97459,5.7333 -3.24493,-1.46125 -5.80529,-3.29881 -9.31274,-4.16415 m -691.000003,-27 v 37 c 9.5962,0 43.974703,-3.05516 24.000003,-19 v -2 c 15.02416,-15.17117 -16.129333,-16 -24.000003,-16 m 310.000003,0 v 37 h 5 v -37 h -5 m -305.000003,16 v -12 c 19.811783,0.0166 19.811783,11.9834 0,12 m 372.000003,-12 v 7 l -5,4 h 5 c 1.2e-4,10.85274 -1.60977,21.48518 12,22 v -4 c -8.51215,-2.29901 -6.99878,-10.72369 -7,-18 h 7 v -4 h -7 v -7 h -5 m 263,0 1,7 h -5 v 4 c 10.82068,5.19098 -2.0788,21.68689 16,22 v -4 c -8.51208,-2.29901 -6.99884,-10.72371 -7,-18 h 7 v -4 h -7 v -7 h -5 m 173.00003,0 v 7 h -5 v 4 c 10.0406,6.29874 -0.2011,23.88754 17,21 v -2 c -8.5193,-3.96931 -7.9962,-10.5574 -8,-19 h 7 v -4 h -7 v -7 h -4 m -550.00003,29 c -2.33536,12.5045 -10.51334,8.87393 -20,8 5.01172,8.42966 17.97043,9.36125 22.80496,-0.1284 4.02551,-7.90158 2.03198,-21.27191 1.19504,-29.8716 l -4,3 c -27.66592,-15.12755 -25.86365,35.23343 0,19 m 165,-3 c -8.78598,1.63219 -14.01544,4.41988 -20,-4 3.33408,0 6.6701,0.0305 10.004,-0.0118 22.33169,-0.28312 -2.86142,-26.62789 -12.68747,-8.73154 -8.66348,15.77902 12.52386,26.60043 22.68347,12.74334 m 106,3 c -1.1059,8.91626 -7.45239,12.81331 -15,7 l -5,1 c 5.74084,7.43365 18.67963,10.16638 23.48218,-0.16394 3.8139,-8.20375 1.51782,-20.96149 1.51782,-29.83606 l -5,3 c -26.29321,-15.59802 -25.1709,35.41489 0,19 m 68,-19 c -0.71118,-3.31889 -4.06696,-3.74342 -4.88892,0.0278 -1.52484,6.99596 -0.11108,15.80225 -0.11108,22.9722 h 5 c 0.003,-23.94957 13.99982,-24.13559 14,0 h 5 c 0,-13.16522 -0.23053,-33.33545 -19,-23 m 171.00003,17 c 4.3074,5.6539 20.2356,11.0831 20.4958,-1.00058 0.094,-4.34753 -23.0764,-20.46637 -1.4958,-11.99942 -1.3261,-7.71509 -14.6554,-10.5468 -16.7769,-1.73575 -1.1748,4.87898 22.9019,20.36022 3.867,15.75069 -2.064,-0.4998 -3.9752,-0.82234 -6.0901,-1.01494 m 90,-1 c -7.9912,1.84077 -14.4176,4.72925 -19,-4 h 20 c -1.2104,-14.11829 -21.2499,-22.53366 -24.5224,-4.98224 -2.7979,15.006 16.0396,22.24001 23.5224,8.98224 m -817.00003,-19 c 5e-5,12.80304 0.53281,34.09137 19,23 0.65442,3.05391 2.00658,2.93576 5,3 0,-7.50485 3.1241,-22.29251 -5,-26 -10e-4,24.32501 -13.9996,24.35506 -14,0 h -5 m 42,0 v 26 h 5 v -26 h -5 m 90,0 v 26 h 5 v -26 h -5 m 23,0 v 26 h 5 c 10e-4,-24.3028 13.9996,-24.34474 14,0 h 5 c 0,-13.11183 -0.46579,-32.22778 -19,-23 -0.65442,-3.05392 -2.00656,-2.93576 -5,-3 m 133,0 v 26 h 5 c 10e-4,-24.31079 13.99893,-24.33615 14,0 h 4 c 0,-12.57915 0.49988,-32.68115 -18,-23 -0.65442,-3.05394 -2.00656,-2.93576 -5,-3 m 158,0 -1,26 h 5 v -26 h -4 m 88,19 c -8.81738,1.59389 -13.9939,4.42949 -20,-4 3.33411,0 6.67023,0.0305 10.00403,-0.0118 23.94061,-0.30349 -6.44574,-28.71447 -13.61456,-5.95359 -4.93903,15.68144 15.10266,22.18029 23.61053,9.96539 m 153.00003,-19 c 3.1866,9.30339 16.7898,28.75528 2,33 v 4 c 14.9826,-1.44191 21.5951,-24.05731 24,-37 -7.567,3.13 -9.4377,12.88632 -12,20 -3.9282,-7.11975 -5.2713,-17.63014 -14,-20 m 147,0 v 26 h 5 c 10e-4,-23.92809 12.999,-23.92813 13,0 h 4 c 0,-23.75189 12.9998,-24.08563 13,0 h 5.00002 c 0,-10.98145 -0.79482,-35.40129 -18.00002,-22 h -1 c -5.3506,-4.33594 -10.0317,-4.11552 -16,-1 l -5,-3 m 56.00002,19 c 3.0887,7.34401 17.5679,11.62706 19.6331,0.92181 0.9862,-5.1121 -20.9184,-17.91995 -4.7765,-14.84266 1.7212,0.32811 3.4096,0.65693 5.1434,0.92085 -3.5979,-5.86082 -18.2015,-9.4192 -18.2016,1.00645 0,3.66649 21.9863,18.95304 3.3576,13.43642 -1.7202,-0.50941 -3.4162,-1.00055 -5.156,-1.44287 m -77.00002,-8 h -15 c 3.1965,-8.3381 11.8034,-8.3381 15,0 m -715.75664,-5.68335 c 9.62036,-4.12993 15.49083,11.21661 6.42862,15.39584 -10.05321,4.63625 -15.84663,-11.35276 -6.42862,-15.39584 m 108.93315,-0.23318 c 10.3237,-3.12011 13.77311,13.16568 3.72309,15.59549 -9.60883,2.32315 -12.82923,-12.84337 -3.72309,-15.59549 m 171.82346,5.91653 h -16 c 3.75,-8.31111 12.13635,-8.04637 16,0 m 99.25482,-5.86876 c 10.01306,-3.30969 14.3905,12.8725 4.56873,15.49996 -9.51837,2.54627 -13.90912,-12.41263 -4.56873,-15.49996 m 52.74518,5.86876 -16,-1 c 5.04224,-6.4836 12.51007,-7.24489 16,1 m -571.000003,11 v -13 c 21.942383,0.008 22.068093,12.99269 0,13 z" fill="url(#gB)"/>
+      </svg>
+      <div class="claim">Building intelligent System</div>
+    </div>
+  </div>
+
+  <div class="inhalt">
+    <h1>Projektvertrag</h1>
+    <p class="vor">zwischen den nachstehenden Parteien über die Erbringung von
+    Entwicklungs- und Automatisierungsleistungen</p>
+
+    <p><b>Auftragnehmer</b><br>Nurovelle &middot; Tino Schneider<br>Berliner Straße 12,
+    35039 Marburg<br>mail@nurovelle.de &middot; 06421/8965123</p>
+    <p style="margin-top:3mm"><b>Auftraggeber</b><br>_____________________________<br>
+    _____________________________<br>_____________________________</p>
+
+    <h2>§ 1 Vertragsgegenstand</h2>
+    <p>Der Auftragnehmer erbringt die im Angebot vom ______ (Angebotsnummer ______)
+    beschriebenen Leistungen. Das Angebot ist Bestandteil dieses Vertrages. Bei
+    Widersprüchen gilt dieser Vertrag vorrangig.</p>
+
+    <h2>§ 2 Leistungsumfang und Änderungen</h2>
+    <p>Der Leistungsumfang ergibt sich abschließend aus dem Angebot. Erweiterungen bedürfen
+    der Textform und werden gesondert vergütet. Der Auftragnehmer schuldet die sorgfältige
+    Erbringung der vereinbarten Leistungen, nicht einen bestimmten wirtschaftlichen Erfolg.</p>
+
+    <h2>§ 3 Mitwirkung des Auftraggebers</h2>
+    <ul>
+      <li>Benennung eines entscheidungsbefugten Ansprechpartners</li>
+      <li>rechtzeitige Bereitstellung von Zugängen, Daten und Systemen</li>
+      <li>Prüfung und Abnahme von Zwischenergebnissen innerhalb von zehn Werktagen</li>
+    </ul>
+    <p>Verzögerungen aus unterlassener Mitwirkung verlängern die Fristen entsprechend.</p>
+
+    <h2>§ 4 Vergütung und Zahlung</h2>
+    <p>Es gilt die im Angebot vereinbarte Vergütung. Gemäß § 19 UStG wird keine
+    Umsatzsteuer berechnet. Rechnungen sind innerhalb von 14 Tagen ohne Abzug zahlbar.</p>
+
+    <h2>§ 5 Abnahme</h2>
+    <p>Nach Fertigstellung teilt der Auftragnehmer die Abnahmebereitschaft mit. Der
+    Auftraggeber prüft innerhalb von zehn Werktagen. Unwesentliche Mängel hindern die
+    Abnahme nicht; sie werden nachgebessert.</p>
+
+    <h2>§ 6 Nutzungsrechte</h2>
+    <p>Mit vollständiger Zahlung erhält der Auftraggeber das einfache, zeitlich und
+    räumlich unbeschränkte Recht, die erstellten Ergebnisse in seinem Betrieb zu nutzen.
+    Vorbestehende Bausteine, Bibliotheken und allgemeines Know-how des Auftragnehmers
+    bleiben dessen Eigentum; hieran wird ein einfaches Nutzungsrecht eingeräumt.</p>
+
+    <h2>§ 7 Einsatz von KI-Werkzeugen</h2>
+    <p>Bei der Erbringung können KI-gestützte Werkzeuge eingesetzt werden. Ergebnisse
+    werden vor Übergabe geprüft. Werden dabei personenbezogene Daten des Auftraggebers
+    verarbeitet, gilt der gesondert geschlossene Auftragsverarbeitungsvertrag.</p>
+
+    <h2>§ 8 Vertraulichkeit</h2>
+    <p>Beide Parteien behandeln alle im Rahmen der Zusammenarbeit bekannt gewordenen
+    Informationen vertraulich. Die Pflicht besteht drei Jahre über das Vertragsende
+    hinaus fort.</p>
+
+    <h2>§ 9 Haftung</h2>
+    <p>Der Auftragnehmer haftet unbeschränkt bei Vorsatz und grober Fahrlässigkeit sowie
+    bei der Verletzung von Leben, Körper oder Gesundheit. Bei einfacher Fahrlässigkeit
+    haftet er nur für die Verletzung wesentlicher Vertragspflichten und der Höhe nach
+    begrenzt auf den vertragstypischen, vorhersehbaren Schaden.</p>
+
+    <h2>§ 10 Laufzeit und Kündigung</h2>
+    <p>Der Vertrag endet mit vollständiger Erbringung der Leistungen. Das Recht zur
+    Kündigung aus wichtigem Grund bleibt unberührt. Kündigungen bedürfen der Textform.</p>
+
+    <h2>§ 11 Schlussbestimmungen</h2>
+    <p>Es gilt deutsches Recht. Änderungen bedürfen der Textform. Sollte eine Bestimmung
+    unwirksam sein, bleibt der übrige Vertrag wirksam.</p>
+
+    <div class="unterschrift">
+      <div>Ort, Datum &middot; Nurovelle</div>
+      <div>Ort, Datum &middot; Auftraggeber</div>
+    </div>
+<div class="pruef"><b>Vor der ersten Verwendung anwaltlich prüfen lassen.</b> Diese Vorlage wurde nach den einschlägigen Vorschriften aufgebaut, ersetzt aber keine Rechtsberatung. Insbesondere Haftung, Leistungsumfang, Nutzungsrechte und Kündigungsfristen sollten auf euren tatsächlichen Geschäftsbetrieb zugeschnitten werden.</div>
+  </div>
+  <div class="fuss">
+    <div><b>Nurovelle</b>Tino Schneider<br>Berliner Stra&szlig;e 12<br>35039 Marburg</div>
+    <div><b>Kontakt</b>06421/8965123<br>mail@nurovelle.de<br>nurovelle.de</div>
+    <div><b>Steuerliches</b>Umsatzsteuer-ID: nicht&nbsp;angegeben<br>Registereintrag: nicht&nbsp;angegeben</div>
+  </div>
+</div>
+</body></html>

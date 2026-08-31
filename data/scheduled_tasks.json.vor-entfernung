@@ -1,0 +1,113 @@
+{
+  "0a2041f18621": {
+    "id": "0a2041f18621",
+    "name": "Nächtliche Sicherung",
+    "action_type": "tool",
+    "schedule": {
+      "type": "daily",
+      "at": "03:00"
+    },
+    "prompt": null,
+    "tool": "run_backup",
+    "tool_args": {},
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-08-13T17:16:06.460437+00:00",
+    "created_at": "2026-08-13T17:15:48.341933+00:00"
+  },
+  "86425f65b76d": {
+    "id": "86425f65b76d",
+    "name": "Tech-Themen sammeln",
+    "action_type": "tool",
+    "schedule": {
+      "type": "daily",
+      "at": "07:00"
+    },
+    "prompt": null,
+    "tool": "delegate_to_agent",
+    "tool_args": {
+      "name": "scraper",
+      "task": "Sammle die heutigen Tech-Meldungen zu Tesla, Nvidia, AMD, Google, Microsoft und OpenAI. Lege drei bis fuenf neue, dublettenfreie Meldungen ab – als Dokument und als Zeile in 'content_stuecke' mit Kanal='Nurovelle'. Nenne am Ende, wie viele neu waren und wie viele du als Dublette verworfen hast."
+    },
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-08-13T17:18:36.546195+00:00",
+    "created_at": "2026-08-13T17:18:35.327171+00:00"
+  },
+  "b30580e2d6a1": {
+    "id": "b30580e2d6a1",
+    "name": "Leads pruefen",
+    "action_type": "tool",
+    "schedule": {
+      "type": "daily",
+      "at": "08:00"
+    },
+    "prompt": null,
+    "tool": "delegate_to_agent",
+    "tool_args": {
+      "name": "leadmanager",
+      "task": "Fuehre den Lead-Bestand nach. Arbeite ausschliesslich auf Eintraegen in 'kontakte' mit E-Mail-Adresse. Pruefe im Postfach auf Antworten und schreibe den Status fort. Melde am Ende die Zahlen: wie viele Leads mit Adresse, wie viele je Status."
+    },
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-08-13T17:18:36.546195+00:00",
+    "created_at": "2026-08-13T17:18:35.327459+00:00"
+  },
+  "e639e31e8e83": {
+    "id": "e639e31e8e83",
+    "name": "Social-Beitraege entwerfen",
+    "action_type": "tool",
+    "schedule": {
+      "type": "daily",
+      "at": "09:30"
+    },
+    "prompt": null,
+    "tool": "delegate_to_agent",
+    "tool_args": {
+      "name": "social",
+      "task": "Nimm die Themen, die der scraper heute abgelegt hat, und entwirf je Thema einen LinkedIn-Beitrag und eine Kurzfassung. Lege sie in 'social_posts' mit Status='Idee' an und leg jeden fertigen Text mit submit_for_review vor. Kein Datum in der Vergangenheit."
+    },
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-08-13T17:18:36.546195+00:00",
+    "created_at": "2026-08-13T17:18:35.327607+00:00"
+  },
+  "e3ba1669fc2d": {
+    "id": "e3ba1669fc2d",
+    "name": "Langformat planen",
+    "action_type": "tool",
+    "schedule": {
+      "type": "daily",
+      "at": "10:30"
+    },
+    "prompt": null,
+    "tool": "delegate_to_agent",
+    "tool_args": {
+      "name": "content",
+      "task": "Nimm dir zwei Eintraege aus 'content_stuecke' mit Status='Idee' vor und mache daraus tragfaehige Langformate: Gliederung, Zielgruppe, Bezug zum Betreuungspaket. Hebe sie auf Status='In Arbeit' und lege sie zur Abnahme vor. Lege keine neuen Ideen an."
+    },
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-08-13T17:18:36.546195+00:00",
+    "created_at": "2026-08-13T17:18:35.327751+00:00"
+  },
+  "9cddb6856d1a": {
+    "id": "9cddb6856d1a",
+    "name": "Akquise-Recherche",
+    "action_type": "tool",
+    "schedule": {
+      "type": "daily",
+      "at": "11:00"
+    },
+    "prompt": null,
+    "tool": "delegate_to_agent",
+    "tool_args": {
+      "name": "outreach",
+      "task": "Trage Kontaktdaten nach. Hole aus 'kontakte' fuenf Eintraege mit Website und ohne E-Mail und suche im Impressum nach Adresse und Telefon. Trage sie ein, setze Adresstyp und Geprueft. Melde am Ende: wie viele Adressen gefunden, wie viele Firmen ohne auffindbare Adresse."
+    },
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-08-13T17:18:36.546195+00:00",
+    "created_at": "2026-08-13T17:18:35.327894+00:00"
+  }
+}

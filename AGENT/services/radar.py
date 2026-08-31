@@ -29,8 +29,8 @@ class RadarService:
         past = [_frame(f, "past") for f in radar.get("past", [])]
         nowcast = [_frame(f, "forecast") for f in radar.get("nowcast", [])]
         frames = past + nowcast
-        return {"host": data.get("host"), "generated": data.get("generated"),
+        return {"mode": "rainviewer", "host": data.get("host"), "generated": data.get("generated"),
                 "frames": frames, "past_count": len(past), "nowcast_count": len(nowcast),
                 "latitude": self.LATITUDE, "longitude": self.LONGITUDE, "address": self.ADDRESS,
                 "zip": self.ZIP, "city": self.CITY, "zoom": self.ZOOM,
-                "max_zoom": 12, "source": "RainViewer", "status": "live" if frames else "empty"}
+                "max_zoom": 7, "source": "RainViewer", "status": "live" if frames else "empty"}
