@@ -110,10 +110,14 @@ async def _scheduler() -> None:
 
 
 async def _task_scheduler() -> None:
+    # Bewusst OHNE chat_lock: Mitarbeiter-Läufe (delegate_to_agent) bauen ihr
+    # eigenes Agent-Objekt mit eigenem Gesprächsverlauf – kein geteilter
+    # Zustand mit Tinos Chat. Mit chat_lock fror der Chat für die gesamte
+    # Dauer jedes fälligen Mitarbeiter-Laufs ein; bei 13 stündlich/häufiger
+    # fälligen Mitarbeitern hätte das den Chat regelmäßig lahmgelegt.
     while True:
         with suppress(Exception):
-            async with chat_lock:
-                await asyncio.to_thread(scheduler.tick)
+            await asyncio.to_thread(scheduler.tick)
         await asyncio.sleep(30)
 
 
@@ -242,6 +246,7 @@ def memory_delete(item_id: str):
 def _chat_sync(text: str) -> dict:
     with agent_lock:
         answer_text = agent.process_input(text)
+        voice.speak_answer(answer_text)
         return {"answer": answer_text, "model": agent.last_model, "route_id": agent.last_route_id}
 
 
@@ -286,6 +291,24 @@ async def chat(payload: dict):
         raise HTTPException(400, "Text fehlt")
     async with chat_lock:
         return await asyncio.to_thread(_chat_sync, text)
+
+
+@app.get("/api/chat/model")
+def chat_model_get():
+    return {"model": agent.force_model or ""}
+
+
+@app.post("/api/chat/model")
+def chat_model_set(payload: dict):
+    """Modell für den Haupt-Chat fest vorgeben, statt der automatischen Wahl –
+    z.B. wenn Tino vorher schon weiß, dass das Standardmodell die Aufgabe
+    nicht schafft. Leer/„auto" schaltet zurück auf die normale Routenwahl."""
+    model = str(payload.get("model", "")).strip()
+    if model and model not in agent.router.models:
+        raise HTTPException(400, f"Unbekanntes Modell: {model}")
+    with agent_lock:
+        agent.force_model = model or None
+    return {"model": agent.force_model or ""}
 
 
 @app.get("/api/voice")

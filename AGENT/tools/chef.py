@@ -178,7 +178,23 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                     ", ".join(a["titel"] for a in faellige[:5]))
             except Exception:
                 pass
-        return {"ueberfaellig": len(faellige), "nachgefasst": ergebnisse}
+        # Offene Revisionen laufen bisher nur beim TÄGLICHEN Job des jeweiligen
+        # Mitarbeiters wieder an – eine mittags zurückgewiesene Vorlage blieb
+        # bis zum naechsten Morgen liegen. Der stuendliche Waechter fasst sie
+        # jetzt genauso nach wie ueberfaellige Auftraege.
+        from services.review import ReviewQueue
+        offene_revisionen = ReviewQueue().agenten_mit_offenen_revisionen()
+        revisions_ergebnisse = []
+        for eintrag in offene_revisionen[:3]:  # pro Lauf höchstens drei Mitarbeiter nachfassen
+            name = eintrag["agent"]
+            try:
+                lauf = dienst.run(name, "Du hast offene Revisionen (siehe oben im Systemprompt) – "
+                                  "arbeite sie jetzt ab, bevor du etwas anderes tust.")
+                revisions_ergebnisse.append({"agent": name, "lauf": lauf.get("status")})
+            except Exception as exc:
+                revisions_ergebnisse.append({"agent": name, "fehler": str(exc)[:200]})
+        return {"ueberfaellig": len(faellige), "nachgefasst": ergebnisse,
+                "revisionen_offen": len(offene_revisionen), "revisionen_nachgefasst": revisions_ergebnisse}
 
     def team_tagesrunde() -> dict:
         """Für den Scheduler: JEDEN Mitarbeiter einmal täglich laufen lassen –

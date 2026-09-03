@@ -179,9 +179,12 @@ def register_notion(registry: ToolRegistry, notion) -> None:
     registry.register(Tool("notion_create", "Neuen Eintrag in einer Notion-Datenbank anlegen (Felder als Objekt).",
                            notion.create, _schema({"name": {"type": "string"}, "fields": {"type": "object"}},
                                                   ["name", "fields"])))
-    registry.register(Tool("notion_update", "Felder eines vorhandenen Notion-Eintrags ändern.",
+    registry.register(Tool("notion_update", "Felder eines vorhandenen Notion-Eintrags ändern – braucht Tinos "
+                           "ausdrückliche Bestätigung. Gemessen 03.09.2026: ein Mitarbeiter schrieb ein "
+                           "erfundenes Versanddatum in echte Kontakte, ungeprüft direkt in Notion.",
                            notion.update, _schema({"name": {"type": "string"}, "page_id": {"type": "string"},
-                                                   "fields": {"type": "object"}}, ["name", "page_id", "fields"])))
+                                                   "fields": {"type": "object"}}, ["name", "page_id", "fields"]),
+                           confirm_action="notion_write"))
 
 
 def register_backup(registry: ToolRegistry, backup) -> None:

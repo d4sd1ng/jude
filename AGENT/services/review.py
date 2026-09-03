@@ -112,6 +112,18 @@ class ReviewQueue:
                 "SELECT id,art,titel,anmerkung,runde,substr(inhalt,1,3000) AS inhalt FROM reviews "
                 "WHERE agent=? AND status='revision' ORDER BY created_at", (agent,))]
 
+    def agenten_mit_offenen_revisionen(self) -> list[dict]:
+        """Für den Auftragswächter: wer hat liegengebliebene Revisionen?
+
+        Ohne diesen Aufruf sah ein Mitarbeiter seine Revision erst beim
+        nächsten TÄGLICHEN Lauf wieder – eine mittags zurückgewiesene
+        Vorlage blieb bis zum nächsten Morgen unbearbeitet liegen, obwohl
+        der Auftragswächter stündlich für genau diesen Zweck läuft."""
+        with connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT agent, COUNT(*) AS anzahl, MIN(created_at) AS aeltestes FROM reviews "
+                "WHERE status='revision' GROUP BY agent ORDER BY aeltestes")]
+
     # ---------------------------------------------------------------- Tino
 
     def liste(self, status: str = "offen", limit: int = 50, art: str | None = None) -> list[dict]:

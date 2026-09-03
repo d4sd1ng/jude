@@ -8,6 +8,7 @@ in einem Ringpuffer gesammelt, den die GUI per Polling abholt.
 
 from __future__ import annotations
 
+import concurrent.futures
 import itertools
 import logging
 import os
@@ -66,6 +67,10 @@ class VoiceController:
         self._thread: threading.Thread | None = None
         self._guard = threading.Lock()
         self._tts_warned = False
+        # Einzelner Worker statt direktem Thread pro Aufruf: mehrere schnell
+        # aufeinanderfolgende Chat-Antworten sollen nacheinander gesprochen
+        # werden, nicht gleichzeitig über sd.play() ins Gehege kommen.
+        self._speak_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="jude-speak")
         from core.paths import DATA_DIR
         self._brief_state_path = DATA_DIR / "voice_briefing.json"
 
@@ -136,6 +141,16 @@ class VoiceController:
         items = [e for e in self._events if e["id"] > since]
         last_id = items[-1]["id"] if items else since
         return {"events": items, "last_id": last_id, **self.status()}
+
+    def speak_answer(self, text: str) -> None:
+        """Liest eine Antwort aus dem Web-Chat vor, wenn Sprachsteuerung läuft.
+
+        Bisher rief nur die Wachwort-Schleife speak() auf – Text-Chat blieb
+        stumm, selbst bei aktivierter Sprachausgabe. Läuft im Hintergrund,
+        damit die Chat-Antwort im Browser nicht auf die Sprachausgabe wartet."""
+        if not text or not (self._thread and self._thread.is_alive()):
+            return
+        self._speak_executor.submit(self._speak, text, True)
 
     def skip(self) -> dict:
         """Überspringt den gerade gesprochenen Abschnitt und geht zum nächsten Thema."""

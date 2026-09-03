@@ -72,7 +72,12 @@ class SubAgentService:
     # 16 war zu knapp: allein die 8 VERBINDLICHEN QUELLEN (project_files/*.md)
     # kosten schon 8 Schritte, bevor die eigentliche Arbeit beginnt – gemessen
     # 02.09.2026, mehrere Laeufe liefen deshalb ins Limit statt zur echten Aufgabe.
-    TOOL_SCHRITTE = 26       # lesen (8x Pflichtquellen), suchen, pruefen, ablegen, notieren
+    # 26 war weiterhin zu knapp: im Kontrolllauf vom 03.09.2026 liefen Coder,
+    # scraper und sequencer bei genau 27 Aufrufen ins Limit und zaehlten als
+    # 'fehlgeschlagen', obwohl sie arbeiteten – abgeschnitten, nicht gescheitert.
+    # Die drei sind die werkzeugintensivsten Rollen (Recherche ueber mehrere
+    # Quellen, dann ablegen). 40 laesst dieselbe Kette zu Ende laufen.
+    TOOL_SCHRITTE = 40       # lesen (8x Pflichtquellen), suchen, pruefen, ablegen, notieren
     MAX_NOTES = 500          # Obergrenze je Agent
     PROMPT_NOTES = 40        # wie viele davon in den Systemprompt wandern
     MAX_LEHREN = 40          # Beanstandungen je Mitarbeiter
@@ -444,11 +449,60 @@ class SubAgentService:
         from core.tool_registry import Tool
         from services.review import ARTEN, ReviewQueue
         queue = ReviewQueue()
+        #: Was die Modelle statt der acht erlaubten Arten hinschreiben. Gemessen
+        #: 03.09.2026: engineer, outreach und redakteur scheiterten je an
+        #: "Art muss eine von [...] sein" – nicht weil die Arbeit fehlte,
+        #: sondern weil sie sie anders benannten. Uebersetzen statt abweisen.
+        ART_SYNONYME = {
+            "blog": "dokument", "blog-artikel": "dokument", "artikel": "dokument",
+            "blogartikel": "dokument", "text": "dokument", "code": "dokument",
+            "bericht": "recherche", "analyse": "recherche", "studie": "recherche",
+            "social": "post", "social-post": "post", "beitrag": "post",
+            "karussell": "post", "reel": "post", "story": "post",
+            "mail": "email", "e-mail": "email", "e_mail": "email",
+            "bild": "grafik", "image": "grafik", "visual": "grafik",
+            "sequence": "sequenz", "kampagne": "sequenz",
+        }
+
         def _einreichen(art, titel, inhalt="", quelle="", ueberarbeitet="", auftrag_id=""):
+            schluessel = str(art).strip().casefold()
+            if schluessel not in ARTEN:
+                art = ART_SYNONYME.get(schluessel, art)
+            # Pfade in quelle muessen wirklich existieren: engineer und designer
+            # meldeten wiederholt "fertig" mit Dateipfaden, die nie geschrieben
+            # wurden (kein coding_write/generate_image im Lauf) – die Vorlage
+            # sah fertig aus, war aber leer. Wer nichts geschrieben hat, kann
+            # auch nichts vorlegen.
+            for pfad in str(quelle).split(","):
+                pfad = pfad.strip()
+                if pfad.startswith("/") and not Path(pfad).is_file():
+                    raise ValueError(f"Referenzierte Datei existiert nicht: {pfad}. "
+                                     f"Erst wirklich schreiben (coding_write/generate_image), "
+                                     f"dann vorlegen.")
             # Eine Ueberarbeitung ist keine neue Vorlage: dieselbe Zeile geht
-            # eine Runde weiter zurueck zur Pruefung.
-            if str(ueberarbeitet).strip():
-                ergebnis = queue.erledigt(str(ueberarbeitet).strip(), inhalt or None, titel or None)
+            # eine Runde weiter zurueck zur Pruefung. Das Kopieren der ID aus
+            # dem Prompt wird zuverlaessig vergessen (7 liegengebliebene
+            # Landingpage-Versuche vom 16.08. bis 03.09. ohne eine einzige
+            # echte Ueberarbeitung, gemessen 03.09.2026) – darum wird eine
+            # offene Revision derselben Art automatisch angeknuepft, statt
+            # sich auf den vom Modell zitierten Klammer-Wert zu verlassen.
+            ziel = str(ueberarbeitet).strip()
+            offen = queue.offene_revisionen(spec["name"])
+            bekannt = {r["id"] for r in offen}
+            # Eine erfundene oder aus dem Prompt falsch abgeschriebene ID darf
+            # die fertige Arbeit nicht vernichten: 'Unbekannte Vorlage.' liess
+            # den Aufruf scheitern, der Text war weg (gemessen 03.09.2026 bei
+            # social und outreach, je zweimal im selben Lauf). Passt die ID
+            # nicht, wird wie ohne ID verfahren – offene Revision derselben
+            # Art, sonst neu vorlegen.
+            if ziel and ziel not in bekannt:
+                ziel = ""
+            if not ziel:
+                treffer = next((r for r in offen if r["art"] == art), offen[0] if offen else None)
+                if treffer:
+                    ziel = treffer["id"]
+            if ziel:
+                ergebnis = queue.erledigt(ziel, inhalt or None, titel or None)
             else:
                 ergebnis = queue.vorlegen(spec["name"], art, titel, inhalt, quelle, spec.get("person"))
             if str(auftrag_id).strip():
@@ -578,13 +632,23 @@ class SubAgentService:
                   f"ausdrücklich verlangt. "
                   # 21 Läufe, 1 Vorlage: Die Arbeit ging nach Notion und galt damit als
                   # fertig – bei Tino kam nie etwas zur Abnahme an. Deshalb Pflicht.
-                  f"ABNAHME-PFLICHT: Nichts gilt als fertig, was nicht vorgelegt wurde. "
-                  f"Jedes Erzeugnis, das nach außen geht oder das Tino sehen soll (Post, "
-                  f"E-Mail, Newsletter, Sequenz, Dokument, Recherche-Ergebnis, Grafik), "
-                  f"legst du am Ende deines Laufs mit submit_for_review vor – auch wenn es "
-                  f"schon in Notion steht; nenne dann die Notion-URL als quelle. Interne "
-                  f"Zuarbeit (Notizen, Hinweise an Kollegen) braucht keine Vorlage. "
-                  f"KEIN AUFTRAG HEUTE: Erst nachdem du deine Rolle wirklich geprüft hast "
+                  #
+                  # Ausnahme Redakteur: er widersprach sich selbst, weil diese Pflicht
+                  # unbedingt formuliert war UND seine eigene Rolle "NICHT: legst du
+                  # nichts ab" sagt – zwei gegensaetzliche Anweisungen im selben Prompt
+                  # (Audit-Befund F-03, 03.09.2026). Er liefert an den Auftraggeber
+                  # zurueck, der reicht es ein.
+                  + (f"ABNAHME-PFLICHT: Nichts gilt als fertig, was nicht vorgelegt wurde. "
+                     f"Jedes Erzeugnis, das nach außen geht oder das Tino sehen soll (Post, "
+                     f"E-Mail, Newsletter, Sequenz, Dokument, Recherche-Ergebnis, Grafik), "
+                     f"legst du am Ende deines Laufs mit submit_for_review vor – auch wenn es "
+                     f"schon in Notion steht; nenne dann die Notion-URL als quelle. Interne "
+                     f"Zuarbeit (Notizen, Hinweise an Kollegen) braucht keine Vorlage. "
+                     if spec["name"] != self.REDAKTEUR else
+                     f"AUSNAHME VON DER ABNAHME-PFLICHT: Du legst NICHTS selbst mit "
+                     f"submit_for_review vor – auch keine fertigen Texte. Du lieferst den "
+                     f"Text an den zurück, der dich beauftragt hat; er reicht ihn ein. ")
+                  + f"KEIN AUFTRAG HEUTE: Erst nachdem du deine Rolle wirklich geprüft hast "
                   f"(die dort genannte Quelle abgefragt, nicht nur deine offenen Aufträge "
                   f"angeschaut) und dabei nichts gefunden hast, meldest du das – nicht nur "
                   f"mit remember_finding. Melde es zusätzlich mit inform_colleague an "
@@ -661,7 +725,7 @@ class SubAgentService:
             prompt += ("\n\nWas du bisher festgehalten hast (nicht doppelt bearbeiten):\n" + recent)
         return Agent(self.router, sub, system_prompt=prompt,
                      max_tool_steps=self.TOOL_SCHRITTE if werkzeugfaehig else 0,
-                     force_model=modell)
+                     force_model=modell, agent_name=spec["name"])
 
     def run(self, name: str, task: str) -> dict:
         spec = self.get(name)
@@ -787,6 +851,12 @@ class SubAgentService:
         r"reports?|scores?|templates?|setups?|game.?changer|boost\w*)\b",
         re.IGNORECASE)
 
+    # CHEF_MASSSTAB Punkt 1 verbietet die alten Markennamen ausdruecklich – bislang
+    # gab es dafuer, anders als fuer Werbedeutsch, ueberhaupt keine deterministische
+    # Rueckfallebene, nur das Urteil des Sprachmodells. Der falsche Firmenname in
+    # einem Erzeugnis waere ein schwererer Fehler als jedes Werbewort.
+    MARKENFILTER = re.compile(r"\b(autonova|politara)\b", re.IGNORECASE)
+
     CHEF_MASSSTAB = (
         "0. Auftritt: hochwertig und ruhig, dunkelgruen und Gold auf mattem Schwarz. "
         "Marktgeschrei, Ausrufezeichen-Ketten, Emoji-Teppiche und Rabattsprache sind "
@@ -836,6 +906,58 @@ class SubAgentService:
                     lesbar = re.sub(r"<(style|script)\b.*?</\1\s*>", " ", lesbar,
                                     flags=re.S | re.I)
                     lesbar = re.sub(r"<[^>]+>", " ", lesbar)
+                # Markennamen-Filter zuerst, vor allem anderen: CHEF_MASSSTAB Punkt 1
+                # verbietet 'Autonova'/'Politara' ausdruecklich, aber bislang gab es
+                # dafuer keine deterministische Ebene, nur das Sprachmodell-Urteil –
+                # der schwerste denkbare Fehler haengt am selben unzuverlaessigen
+                # Mechanismus wie ein Werbewort.
+                marken_funde = {m.group(0).lower() for m in self.MARKENFILTER.finditer(lesbar)}
+                if marken_funde and int(voll.get("runde") or 1) < 3:
+                    grund = ("Alte(r) Markenname(n) im Text gefunden: " + ", ".join(sorted(marken_funde))
+                             + ". Es gibt nur Nurovelle.")
+                    queue.revision(vorlage["id"], f"Jude: {grund}")
+                    self.lehre_merken(agent_name,
+                                      "Alte Markennamen (Autonova, Politara) duerfen nirgends "
+                                      "vorkommen – es gibt nur Nurovelle.")
+                    try:
+                        from services.notifications import NotificationService
+                        NotificationService().create("revision",
+                                                     f"Revision (Markenname): {voll['titel'][:70]}",
+                                                     grund[:200])
+                    except Exception:
+                        pass
+                    entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                        "grund": "markenname"})
+                    continue
+                # Deterministisch, wie der Wortfilter: eckige Klammern oder doppelte
+                # geschweifte Klammern mit Text drin sind so gut wie nie Absicht,
+                # sondern ein nicht ausgefuellter Platzhalter, der als fertig
+                # vorgelegt wurde (Renate legte "[Titel des Beitrags]"/"[Der
+                # aktualisierte Inhalt...]" als fertige Revision vor, 03.09.2026 -
+                # ihre eigene Rolle verbietet das ausdruecklich, hielt sie aber nicht
+                # auf; CHEF_MASSSTAB Punkt 2 nennt "{{name}}" als Beispiel). Markdown-
+                # Links "[Text](url)" sind ausgenommen.
+                platzhalter = [m.group(0) for m in re.finditer(r"\[[^\[\]\n]{2,80}\]|\{\{[^{}\n]{1,60}\}\}", lesbar)
+                              if not lesbar[m.end():m.end() + 1] == "("]
+                if platzhalter and int(voll.get("runde") or 1) < 3:
+                    grund = ("Unausgefüllte Platzhalter in eckigen Klammern: "
+                             + "; ".join(platzhalter[:5])
+                             + ". Mit echtem Inhalt ersetzen, keine Klammer-Platzhalter vorlegen.")
+                    queue.revision(vorlage["id"], f"Jude: {grund}")
+                    self.lehre_merken(agent_name,
+                                      "Erzeugnisse mit unausgefüllten Platzhaltern in eckigen "
+                                      "Klammern (z. B. '[Titel des Beitrags]') gelten nicht als "
+                                      "fertig – erst wirklich schreiben, dann vorlegen.")
+                    try:
+                        from services.notifications import NotificationService
+                        NotificationService().create("revision",
+                                                     f"Revision (Platzhalter): {voll['titel'][:70]}",
+                                                     grund[:200])
+                    except Exception:
+                        pass
+                    entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                        "grund": "platzhalter"})
+                    continue
                 funde = {t[0].lower() if isinstance(t, tuple) else t.lower()
                          for t in self.WORTFILTER.findall(lesbar)}
                 funde = {f for f in funde if f}
@@ -844,7 +966,16 @@ class SubAgentService:
                              + ", ".join(sorted(funde)[:10])
                              + ". Ersetze sie durch deutsche, konkrete Formulierungen.")
                     queue.revision(vorlage["id"], f"Jude: {grund}")
-                    self.lehre_merken(agent_name, grund)
+                    # Immer derselbe, verallgemeinerte Text statt der konkreten Trefferliste:
+                    # sonst zaehlte "insights, tool" als andere Lehre als "insights, reports,
+                    # tool" und dieselbe Angewohnheit fragmentierte sich in mehrere
+                    # Eintraege mit je anzahl=1, statt sich zu einer starken Lehre zu summieren
+                    # (gemessen: engineer, drei separate Eintraege fuer denselben Fehler).
+                    self.lehre_merken(agent_name,
+                                      "Wortfilter schlägt wiederholt an: keine englischen "
+                                      "Marketing-Woerter/Anglizismen (z. B. insights, tool, "
+                                      "report, optimierung, loesung) – immer deutsche, "
+                                      "konkrete Formulierungen statt Werbedeutsch.")
                     try:
                         from services.notifications import NotificationService
                         NotificationService().create("revision",
@@ -855,6 +986,34 @@ class SubAgentService:
                     entschieden.append({"id": vorlage["id"], "urteil": "revision",
                                         "grund": "wortfilter"})
                     continue
+                # Deterministisch VOR dem Sprachmodell, wie der Wortfilter: eine
+                # "grafik"-Vorlage ohne echte Bilddatei ist eine Beschreibung,
+                # kein Bild – die PREMIUM-MASSSTAB-Regel in BRAND_BRIEF allein
+                # wurde ignoriert (Heike legte ein Text-Konzept als 'grafik' vor,
+                # quelle='', 03.09.2026). Das reicht kein Sprachmodell-Urteil,
+                # das laesst sich zaehlen.
+                if voll["art"] == "grafik":
+                    quelle_bild = str(voll.get("quelle") or "")
+                    hat_bild = bool(re.search(r"\.(png|jpe?g|webp|gif)(\?|$|,)", quelle_bild, re.I))
+                    if not hat_bild and int(voll.get("runde") or 1) < 3:
+                        grund = ("Keine Bilddatei vorgelegt: 'grafik' braucht ein mit generate_image "
+                                 "erzeugtes Bild samt Dateipfad in quelle, keine Text-Beschreibung des "
+                                 "geplanten Motivs.")
+                        queue.revision(vorlage["id"], f"Jude: {grund}")
+                        self.lehre_merken(agent_name,
+                                          "Eine 'grafik'-Vorlage ohne echte Bilddatei wird nicht "
+                                          "angenommen – erst generate_image aufrufen und den "
+                                          "Dateipfad als quelle angeben, dann vorlegen.")
+                        try:
+                            from services.notifications import NotificationService
+                            NotificationService().create("revision",
+                                                         f"Revision (kein Bild): {voll['titel'][:70]}",
+                                                         grund[:200])
+                        except Exception:
+                            pass
+                        entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                            "grund": "kein_bild"})
+                        continue
                 # Revisionsbremse: Nach 2 Runden entscheidet Tino, nicht die
                 # Schleife. Der Prüfer erfand sonst in jeder Runde neue Einwände.
                 if int(voll.get("runde") or 1) >= 3:

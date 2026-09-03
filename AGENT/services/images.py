@@ -63,15 +63,22 @@ class ImageService:
 
     # ---------------------------------------------------------------- API
 
-    def generate(self, prompt: str, size: str | None = None) -> dict:
+    def generate(self, prompt: str, size: str | None = None, marke: bool = True) -> dict:
         prompt = (prompt or "").strip()
         if not prompt:
             raise ValueError("Für die Bilderzeugung wird ein Prompt benötigt.")
         size = self._norm_size(size)
+        # Fest angehaengt statt nur dem Mitarbeiter aufgetragen: ein Prompt ohne
+        # diese Zeilen erzeugte zuverlaessig beliebige, markenfremde Bilder.
+        # marke=False nur fuer ausdruecklich private/markenfremde Anfragen.
+        gesendeter_prompt = prompt
+        if marke:
+            from services.marke import BILD_STIL_SUFFIX
+            gesendeter_prompt = prompt + BILD_STIL_SUFFIX
         response = requests.post(
             f"{_API_BASE}/generations",
             headers={"Authorization": f"Bearer {self._require_key()}"},
-            json={"model": self.model, "prompt": prompt, "size": size, "n": 1},
+            json={"model": self.model, "prompt": gesendeter_prompt, "size": size, "n": 1},
             timeout=self.timeout,
         )
         response.raise_for_status()

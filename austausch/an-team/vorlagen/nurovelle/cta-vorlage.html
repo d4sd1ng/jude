@@ -1,0 +1,137 @@
+<!doctype html>
+<!--
+  NUROVELLE CTA – VERBINDLICHE VORLAGE
+  Wortgleich aus der echten Live-Seite entnommen:
+  homepage_repo/homepage/nurovelle-animations.css (Zeile 1-127)
+  Es gibt genau diese eine CTA-Interaktion (Pfeil-Wechsel + Gold-Fill).
+  Markup UND CSS unten 1:1 kopieren, nicht neu erfinden oder annähern.
+  Text/Link austauschen, Struktur und Klassen NICHT ändern.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Nurovelle CTA Vorlage</title>
+<style>
+:root {
+  --nv-black: #050706;
+  --nv-matte-black: #080B09;
+  --nv-deep-green: #0A1913;
+  --nv-emerald: #112A20;
+  --nv-teal-dark: #163A35;
+  --nv-text-light: #F5F7F4;
+  --nv-text-muted: #B9C3BD;
+
+  --nv-gold-dark: #a54e07;
+  --nv-gold-mid: #b47e11;
+  --nv-gold-light: #fef1a2;
+  --nv-gold-core: #bc881b;
+  --nv-gold-border: #a55d07;
+  --nv-gold-inner-dark: #8b4208;
+  --nv-gold-inner-mid: #b17d10;
+  --nv-gold-highlight: #fae385;
+  --nv-gold-text-dark: rgb(120, 50, 5);
+  --nv-gold-gradient: linear-gradient(160deg, #a54e07, #b47e11, #fef1a2, #bc881b, #a54e07);
+  --nv-gold-soft: linear-gradient(135deg, #F9F295, #E0AA3E, #FAF398, #B88A44);
+
+  --nv-radius-card: 18px;
+  --nv-radius-button: 999px;
+  --nv-ease-premium: cubic-bezier(0.23, 1, 0.32, 1);
+  --nv-ease-press: cubic-bezier(.2, .8, .2, 1);
+}
+body{margin:0;padding:80px;background:var(--nv-black);display:flex;justify-content:center}
+
+/* --- ab hier 1:1 aus nurovelle-animations.css --- */
+.nv-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 14px 34px;
+  border: 0;
+  border-radius: var(--nv-radius-button);
+  font: inherit;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  isolation: isolate;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+.nv-btn-arrow {
+  color: var(--nv-gold-highlight);
+  background: rgba(5, 7, 6, .65);
+  box-shadow: 0 0 0 1.5px var(--nv-gold-core), 0 12px 28px rgba(0,0,0,.32);
+  transition: color .55s var(--nv-ease-premium), border-radius .55s var(--nv-ease-premium), box-shadow .55s var(--nv-ease-premium), transform .18s ease;
+  font-family: "Inter", Arial, sans-serif;
+  font-size: 15px;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+.nv-btn-arrow .nv-btn__text {
+  position: relative;
+  z-index: 2;
+  transform: translateX(-10px);
+  transition: transform .65s var(--nv-ease-premium);
+  white-space: nowrap;
+}
+.nv-btn-arrow .nv-btn__fill {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--nv-gold-gradient);
+  transform: translate(-50%, -50%) scale(.2);
+  opacity: 0;
+  transition: transform .72s var(--nv-ease-premium), opacity .45s ease;
+}
+.nv-btn-arrow .nv-btn__arrow {
+  position: absolute;
+  z-index: 3;
+  width: 23px;
+  height: 23px;
+  fill: currentColor;
+  transition: left .72s var(--nv-ease-premium), right .72s var(--nv-ease-premium), color .45s ease, opacity .45s ease;
+}
+.nv-btn-arrow .nv-btn__arrow--out { right: 16px; }
+.nv-btn-arrow .nv-btn__arrow--in { left: -28%; }
+.nv-btn-arrow:hover,
+.nv-btn-arrow:focus-visible {
+  color: var(--nv-black);
+  border-radius: 14px;
+  box-shadow: 0 0 0 10px rgba(188, 136, 27, 0), 0 18px 38px rgba(0,0,0,.42);
+}
+.nv-btn-arrow:hover .nv-btn__fill,
+.nv-btn-arrow:focus-visible .nv-btn__fill {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(13);
+}
+.nv-btn-arrow:hover .nv-btn__arrow--out,
+.nv-btn-arrow:focus-visible .nv-btn__arrow--out { right: -28%; }
+.nv-btn-arrow:hover .nv-btn__arrow--in,
+.nv-btn-arrow:focus-visible .nv-btn__arrow--in { left: 16px; }
+.nv-btn-arrow:hover .nv-btn__text,
+.nv-btn-arrow:focus-visible .nv-btn__text { transform: translateX(12px); }
+.nv-btn-arrow:active { transform: scale(.975); }
+@media (prefers-reduced-motion: reduce) {
+  .nv-btn-arrow, .nv-btn-arrow * { transition: none !important; }
+}
+/* --- Ende 1:1-Übernahme --- */
+</style>
+</head>
+<body>
+
+<!-- Markup ebenfalls 1:1 – nur href und Text anpassen -->
+<a class="nv-btn nv-btn-arrow" href="https://nurovelle.de/analyse.html">
+  <svg class="nv-btn__arrow nv-btn__arrow--in" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z"/></svg>
+  <span class="nv-btn__text">Kostenlose KI-Potenzialanalyse</span>
+  <span class="nv-btn__fill"></span>
+  <svg class="nv-btn__arrow nv-btn__arrow--out" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z"/></svg>
+</a>
+
+</body>
+</html>

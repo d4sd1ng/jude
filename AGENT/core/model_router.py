@@ -39,7 +39,16 @@ _SPERRDAUER_S = 900
 # grossen Modelle – ebenfalls nichts, was ein zweiter Versuch loest.
 _DAUERHAFT_MUSTER = re.compile(
     r"credit balance|insufficient_quota|credit_balance_exhausted|billing"
-    r"|requires a subscription", re.IGNORECASE)
+    r"|requires a subscription"
+    # Ollama Cloud's woechentliches Freikontingent: kein Rate-Limit, das nach
+    # Minuten vorbei ist – blieb bisher unerkannt und wurde alle 15 Minuten
+    # (_SPERRDAUER_S) neu versucht, ueber zwei Stunden lang, gemessen 03.09.2026.
+    r"|weekly usage limit"
+    # DeepSeeks eigene Formulierung fuer leeres Guthaben (HTTP 402) - traf
+    # keins der obigen Muster und wurde dadurch bei JEDEM Tool-Schritt und
+    # jedem verschachtelten delegate_to_agent-Aufruf erneut versucht (5x in
+    # unter 10s beobachtet bei content -> write_copy -> redakteur, 03.09.2026).
+    r"|insufficient balance", re.IGNORECASE)
 
 
 def _ist_dauerhafter_fehler(exc: Exception) -> bool:

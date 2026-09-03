@@ -9,6 +9,7 @@ vorgelesen). Aufgaben werden als JSON unter ``Jude/data`` gespeichert.
 from __future__ import annotations
 
 import json
+import queue
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -22,12 +23,61 @@ HINTERGRUND_TOOLS = {"auftragswaechter", "delegate_to_agent", "auftrag_erteilen"
 
 
 class SchedulerService:
+    #: Harte Obergrenze für gleichzeitig laufende Hintergrund-Werkzeuge
+    #: (delegate_to_agent etc.). Ohne sie feuerten nach einem Neustart alle
+    #: fälligen Mitarbeiter-Läufe im selben Tick gleichzeitig los (13 auf
+    #: einmal, gemessen 03.09.2026) – das darf nie wieder passieren, auch
+    #: nicht in diesem Kanten-fall.
+    MAX_GLEICHZEITIG = 3
+
     def __init__(self, agent=None, briefing=None, voice=None):
         self.agent = agent
         self.briefing = briefing
         self.voice = voice
         self.path = DATA_DIR / "scheduled_tasks.json"
         self._lock = threading.Lock()
+        # last_run wird erst bei echtem Abschluss geschrieben (siehe _verarbeite) –
+        # ohne dieses Set haette jeder 30-Sekunden-Tick eine noch laufende,
+        # aber weiterhin "faellige" Aufgabe erneut eingereiht, bis ein Slot frei
+        # wird. Ergebnis waeren mehrere gleichzeitige Laeufe derselben Aufgabe.
+        self._laufend_ids: set[str] = set()
+        # Ein threading.Semaphore mit einem Thread pro Aufgabe war NICHT fair:
+        # nach einem Neustart mit vielen gleichzeitig fälligen Aufgaben blieben
+        # einzelne Mitarbeiter (Coder, designer, engineer) 16+ Minuten lang
+        # unbearbeitet liegen, waehrend andere mehrfach drankamen – Python
+        # garantiert bei vielen wartenden Threads keine strikte Reihenfolge.
+        # Eine echte FIFO-Warteschlange mit festen Worker-Threads garantiert
+        # Reihenfolge: wer zuerst faellig war, kommt zuerst dran.
+        self._warteschlange: "queue.Queue[dict]" = queue.Queue()
+        for _ in range(self.MAX_GLEICHZEITIG):
+            threading.Thread(target=self._worker, daemon=True).start()
+
+    def _worker(self) -> None:
+        while True:
+            task = self._warteschlange.get()
+            try:
+                self._verarbeite(task)
+            finally:
+                with self._lock:
+                    self._laufend_ids.discard(task["id"])
+                self._warteschlange.task_done()
+
+    def _verarbeite(self, task: dict) -> None:
+        fehler = None
+        try:
+            ergebnis = self.agent.tools.execute(task["tool"], dict(task.get("tool_args") or {}))
+            if isinstance(ergebnis, str) and "fehlgeschlagen:" in ergebnis[:160]:
+                raise RuntimeError(ergebnis[:300])
+            NotificationService.create("scheduled", task["name"], str(ergebnis)[:2000], {"task_id": task["id"]})
+        except Exception as exc:
+            fehler = str(exc)
+            try:
+                NotificationService.create("scheduled_error",
+                                           f"{task.get('name', task.get('tool'))} fehlgeschlagen",
+                                           str(exc)[:300])
+            except Exception:
+                pass
+        self._abschluss(task, datetime.now(timezone.utc).astimezone(), fehler=fehler)
 
     # ------------------------------------------------------------ Speicher
 
@@ -159,20 +209,22 @@ class SchedulerService:
             # Werkzeuge, die lange laufen (z. B. Auftragswächter), können im
             # Hintergrund starten – der Scheduler-Tick blockiert sonst Minuten lang.
             if task.get("tool") in HINTERGRUND_TOOLS:
-                def _im_hintergrund():
-                    try:
-                        ergebnis = self.agent.tools.execute(task["tool"], dict(task.get("tool_args") or {}))
-                        if isinstance(ergebnis, str) and "fehlgeschlagen:" in ergebnis[:160]:
-                            raise RuntimeError(ergebnis[:300])
-                    except Exception as exc:
-                        try:
-                            NotificationService.create("scheduled_error",
-                                                       f"{task.get('name', task.get('tool'))} fehlgeschlagen",
-                                                       str(exc)[:300])
-                        except Exception:
-                            pass
-                threading.Thread(target=_im_hintergrund, daemon=True).start()
-                return "im Hintergrund gestartet"
+                # In die FIFO-Warteschlange einreihen statt einen eigenen
+                # Thread zu starten – MAX_GLEICHZEITIG feste Worker holen sich
+                # Aufgaben in der Reihenfolge, in der sie faellig wurden. Ohne
+                # dieses Sperr-Set haette jeder 30-Sekunden-Tick dieselbe, noch
+                # wartende Aufgabe erneut eingereiht, solange last_run noch
+                # nicht aktualisiert ist (last_run wird erst bei echtem
+                # Abschluss in _verarbeite gesetzt, nicht beim Einreihen –
+                # sonst gilt ein durch einen Neustart abgewuergter Lauf als
+                # "gerade erledigt" und wird erst wieder in vollen 5 Minuten
+                # faellig statt sofort erneut anzulaufen).
+                with self._lock:
+                    if task["id"] in self._laufend_ids:
+                        return None
+                    self._laufend_ids.add(task["id"])
+                self._warteschlange.put(task)
+                return None
             # Normale Werkzeuge (schnell) laufen synchron, damit der Ergebnis sofort
             # zur Benachrichtigung wird.
             ergebnis = self.agent.tools.execute(task["tool"], dict(task.get("tool_args") or {}))
@@ -193,6 +245,11 @@ class SchedulerService:
                 continue
             try:
                 result = self._run_task(task)
+                if result is None:
+                    # Im Hintergrund gestartet: der Thread selbst meldet und
+                    # schreibt last_run bei echtem Abschluss, nicht hier.
+                    fired.append({"id": task["id"], "name": task["name"], "ok": True, "hintergrund": True})
+                    continue
                 NotificationService.create("scheduled", task["name"], result[:2000], {"task_id": task["id"]})
                 if task.get("speak") and self.voice is not None and self.voice.status().get("running"):
                     try:

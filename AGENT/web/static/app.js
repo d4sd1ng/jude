@@ -7,17 +7,40 @@ function show(p){$$('section').forEach(s=>s.classList.toggle('active',s.dataset.
 function fmt(v){const d=new Date(typeof v==='number'?v*1000:v);return isNaN(d)?String(v??''):d.toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function toast(x){let t=$('#toast');t.textContent=x;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500)}
 async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let d=await r.json().catch(()=>({error:r.statusText}));if(!r.ok||d.error)throw Error(d.error||r.statusText);return d}
-api('/api/status').then(s=>{$('#health').textContent='lokal bereit';$('#stats').innerHTML=`<div class=stat><b>${s.router.models.length}</b>Modelle</div><div class=stat><b>${s.mail.filter(x=>x.configured).length}/5</b>Mailkonten</div><div class=stat><b>${s.memory.active_memories}</b>Erinnerungen</div><div class=stat><b>${s.ict.scheduler.enabled?'AN':'AUS'}</b>Kill Zones</div>`;$('#mailStatus').innerHTML=s.mail.map(x=>`<div class=source>${esc(x.address)} · ${x.configured?'bereit':'Schlüssel fehlt'}</div>`).join('')}).catch(e=>toast(e.message));
-$('#chatForm').onsubmit=async e=>{e.preventDefault();let x=$('#chatInput'),v=x.value;x.value='';
- const chat=$('#chat');chat.innerHTML+=`<div class="message user">${esc(v)}</div>`;
+api('/api/status').then(s=>{$('#health').textContent='lokal bereit';$('#stats').innerHTML=`<div class=stat><b>${s.router.models.length}</b>Modelle</div><div class=stat><b>${s.mail.filter(x=>x.configured).length}/5</b>Mailkonten</div><div class=stat><b>${s.memory.active_memories}</b>Erinnerungen</div><div class=stat><b>${s.ict.scheduler.enabled?'AN':'AUS'}</b>Kill Zones</div>`;$('#mailStatus').innerHTML=s.mail.map(x=>`<div class=source>${esc(x.address)} · ${x.configured?'bereit':'Schlüssel fehlt'}</div>`).join('');
+ const sel=$('#chatModel');sel.innerHTML='<option value="">Auto (Standard)</option>'+s.router.models.filter(m=>m.enabled).map(m=>`<option value="${esc(m.name)}">${esc(m.name)}${m.local?' · lokal':''}</option>`).join('');
+ api('/api/chat/model').then(c=>{if(c.model)sel.value=c.model}).catch(()=>{})}).catch(e=>toast(e.message));
+$('#chatModel').onchange=async e=>{try{await api('/api/chat/model',{method:'POST',body:JSON.stringify({model:e.target.value})});toast(e.target.value?`Modell fest: ${e.target.value}`:'Zurück auf automatische Auswahl')}catch(x){toast(x.message)}};
+let chatQueue=[],chatBusy=false,chatAbort=null;
+$('#chatForm').onsubmit=e=>{e.preventDefault();let x=$('#chatInput'),v=x.value.trim();if(!v)return;x.value='';
+ const chat=$('#chat'),id='q_'+Math.random().toString(36).slice(2);
+ chatQueue.push({id,text:v});
+ chat.innerHTML+=`<div class="message user${chatBusy?' queued':''}" data-qid="${id}">${esc(v)}${chatBusy?` <button class=ghost onclick="chatBringUp('${id}')">Vorziehen</button>`:''}</div>`;
+ chat.scrollTop=chat.scrollHeight;chatPump()};
+window.chatBringUp=function(id){
+ const i=chatQueue.findIndex(m=>m.id===id);if(i<0)return;
+ const [m]=chatQueue.splice(i,1);chatQueue.unshift(m);
+ const el=document.querySelector(`[data-qid="${id}"]`);if(el){el.classList.remove('queued');const b=el.querySelector('button');if(b)b.remove()}
+ if(chatBusy&&chatAbort)chatAbort.abort();else chatPump()};
+window.chatInterrupt=function(){if(chatAbort)chatAbort.abort()};
+async function chatPump(){
+ if(chatBusy||!chatQueue.length)return;
+ chatBusy=true;const m=chatQueue.shift();
+ const chat=$('#chat');
+ const userEl=document.querySelector(`[data-qid="${m.id}"]`);
+ if(userEl){userEl.classList.remove('queued');const b=userEl.querySelector('button');if(b)b.remove()}
  // Sichtbarer Denk-Zustand: vorher kam 16-60 s lang schlicht nichts.
- const wait=document.createElement('div');wait.className='message thinking';wait.textContent='Jude denkt …';
+ const wait=document.createElement('div');wait.className='message thinking';
+ wait.innerHTML=(chatQueue.length?`Jude denkt … (${chatQueue.length} weitere warten) `:'Jude denkt … ')+'<button class=ghost onclick="chatInterrupt()">Unterbrechen</button>';
  chat.append(wait);chat.scrollTop=chat.scrollHeight;
- const btn=e.target.querySelector('button');btn.disabled=true;
- try{let d=await api('/api/chat',{method:'POST',body:JSON.stringify({text:v})});noteModel(d.model);
+ chatAbort=new AbortController();
+ try{let d=await api('/api/chat',{method:'POST',body:JSON.stringify({text:m.text}),signal:chatAbort.signal});noteModel(d.model);
   wait.outerHTML=`<div class=message>${esc(d.answer)}<small> · ${esc(d.model||'')}</small>${d.route_id?`<div><button onclick="routeFeedback('${d.route_id}',1)">Passt</button> <button onclick="routeFeedback('${d.route_id}',-1)" style="background:#64748b">Unzureichend</button></div>`:''}</div>`}
- catch(err){wait.outerHTML=`<div class="message error">Fehler: ${esc(err.message)}</div>`}
- finally{btn.disabled=false;chat.scrollTop=chat.scrollHeight}};window.routeFeedback=async(id,value)=>{try{await api(`/api/routing/${id}/feedback`,{method:'POST',body:JSON.stringify({value})});toast('Routing-Feedback gespeichert')}catch(e){toast(e.message)}};
+ catch(err){
+  if(err.name==='AbortError'){wait.outerHTML='<div class="message muted small">⏹ Unterbrochen – wieder eingereiht</div>';chatQueue.push(m)}
+  else wait.outerHTML=`<div class="message error">Fehler: ${esc(err.message)}</div>`}
+ finally{chatAbort=null;chatBusy=false;chat.scrollTop=chat.scrollHeight;chatPump()}}
+window.routeFeedback=async(id,value)=>{try{await api(`/api/routing/${id}/feedback`,{method:'POST',body:JSON.stringify({value})});toast('Routing-Feedback gespeichert')}catch(e){toast(e.message)}};
 $('#loadMarket').onclick=async()=>{try{let m=$('#market').value,i=$('#interval').value,d=await api(`/api/market/${encodeURIComponent(m)}?interval=${i}&limit=300`);drawCandles(d.candles);$('#marketMeta').textContent=`${d.source} · ${d.caveat} · ${new Date(d.updated_at).toLocaleString()}`}catch(e){toast(e.message)}};
 function drawCandles(rows){let c=$('#chart'),dpr=devicePixelRatio||1,w=c.clientWidth,h=360;c.width=w*dpr;c.height=h*dpr;let x=c.getContext('2d');x.scale(dpr,dpr);x.clearRect(0,0,w,h);if(!rows.length)return;
  const padL=10,padR=74,padT=12,padB=26;
@@ -97,12 +120,22 @@ async function loadCalendar(){try{let d=await api('/api/calendar');$('#calendarE
 $('#calendarForm').onsubmit=async e=>{e.preventDefault();let p={title:$('#calendarTitle').value,starts_at:$('#calendarStart').value,ends_at:$('#calendarEnd').value,location:$('#calendarLocation').value,description:$('#calendarDescription').value};try{await requestConfirmation('calendar_create',`Termin erstellen: ${p.title} am ${p.starts_at}`,p);toast('Termin wartet auf Bestätigung')}catch(x){toast(x.message)}};loadCalendar();
 $('#reposRun').onclick=async()=>{try{let d=await api('/api/coding/repositories');$('#repos').innerHTML=d.map((r,i)=>`<div class=source><b>${esc(r.path)}</b><br><small>${esc(r.branch)} · ${r.dirty?'geändert':'sauber'}</small><br><button onclick="repoTest(${i})">Tests</button></div>`).join('');window.repoData=d}catch(e){toast(e.message)}};window.repoTest=async i=>{toast('Tests laufen…');try{let d=await api('/api/coding/test',{method:'POST',body:JSON.stringify({repo:repoData[i].path})});toast(`Tests: ${d.status}`)}catch(e){toast(e.message)}};
 $('#loadConfirmations').onclick=loadConfirmations;
+function confirmPayloadHtml(p){
+  const s=JSON.stringify(p,null,2);
+  if(s.length<=220) return `<pre class=auszug>${esc(s)}</pre>`;
+  const kurz=p&&typeof p.path==='string'?`Datei: ${esc(p.path)} (${(p.content||'').length.toLocaleString('de-DE')} Zeichen)`:esc(s.slice(0,200))+'…';
+  return `<p class="muted small">${kurz}</p><details><summary class=small>Volltext anzeigen</summary><pre class="auszug" style="max-height:40vh">${esc(s)}</pre></details>`;
+}
 function confirmHtmlBtn(payload){const vals=Object.values(payload||{});const html=vals.find(v=>typeof v==='string'&&(v.trimStart().toLowerCase().startsWith('<!doctype')||v.trimStart().startsWith('<html')||v.includes('<body')));if(!html)return '';const id='htmlprev_'+Math.random().toString(36).slice(2);window._htmlPreviews=window._htmlPreviews||{};window._htmlPreviews[id]=html;return ` <button onclick="openHtmlPreview('${id}')">Im Browser öffnen</button>`}
 window.openHtmlPreview=function(id){const html=window._htmlPreviews&&window._htmlPreviews[id];if(!html)return;const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener')};
-async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class=card><span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3><pre>${esc(JSON.stringify(c.payload,null,2))}</pre><div class=agentrun><button onclick="decide('${c.id}','approve')">Bestätigen</button> <button onclick="decide('${c.id}','reject')" style="background:#64748b">Ablehnen</button>${c.agent?`<input id="an_conf_${c.id}" placeholder="Anmerkung – nötig für eine Revision"><button class=ghost onclick="confirmRevision('${c.id}')">Zurück damit</button>`:''}${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>'}catch(e){toast(e.message)}}window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};window.confirmRevision=async id=>{const a=($('#an_conf_'+id)?.value||'').trim();if(!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter.');loadConfirmations()}catch(e){toast(e.message)}};
+async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class="card agentcard"><span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3>${confirmPayloadHtml(c.payload)}<div class=agentrun><button onclick="decide('${c.id}','approve')">Bestätigen</button> <input id="can_${c.id}" placeholder="Grund – nötig zum Ablehnen"><button onclick="decideReject('${c.id}')" style="background:#64748b">Ablehnen</button>${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>'}catch(e){toast(e.message)}}
+window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};
+window.decideReject=async(id)=>{const a=($('#can_'+id)?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.');loadConfirmations()}catch(e){toast(e.message)}};
 $('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){try{let d=await api('/api/agents/aktiv');$('#aktiv').innerHTML=d.map(a=>{
   if(a.status==='aktiv'){let sek=Math.max(0,Math.round((Date.now()-new Date(a.seit))/1000));let dauer=sek<60?sek+'s':Math.round(sek/60)+'min';
-    return `<div class=row><span>🟢 <b>${esc(a.agent)}</b> ${esc(a.person||'')} · ${esc((a.task||'').slice(0,70))}</span><small>läuft seit ${dauer}</small></div>`}
+    const generisch=(a.task||'').startsWith('Erledige deine heutige Aufgabe')||(a.task||'').startsWith('Du hast offene Revisionen');
+    const taskteil=generisch?'':` · ${esc((a.task||'').slice(0,70))}`;
+    return `<div class=row><span>🟢 <b>${esc(a.agent)}</b> ${esc(a.person||'')}${taskteil}</span><small>läuft seit ${dauer}</small></div>`}
   if(a.status==='idle'){return `<div class=row><span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small>zuletzt ${esc(a.letzter_status)} · ${fmt(a.letzter_lauf_am)}</small></div>`}
   return `<div class=row><span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small class=muted>noch nie gelaufen</small></div>`
 }).join('')||'<p class="muted small">Kein Team angelegt.</p>'}catch(e){toast(e.message)}}
@@ -117,7 +150,11 @@ let reviewArt='';
 function revToggle(art){reviewArt=reviewArt===art?'':art;show('Schreibtisch');
   loadReviews().then(()=>$('#reviews')?.scrollIntoView({behavior:'smooth'}))}
 $$('.toggle.rev').forEach(b=>b.onclick=()=>revToggle(b.dataset.art));
-$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews'+(reviewArt?'?art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.map(v=>`<article class="card agentcard"><span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`).join('')||`<p>${reviewArt?'Nichts zur Abnahme in dieser Art.':'Nichts zur Abnahme.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art)}catch(e){toast(e.message)}}
+$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews'+(reviewArt?'?art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.map(v=>{
+  const bild=(v.quelle||'').split(',').map(s=>s.trim()).find(s=>/\.(png|jpe?g|webp|gif)$/i.test(s));
+  return `<article class="card agentcard">${bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}<span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`
+}).join('')||`<p>${reviewArt?'Nichts zur Abnahme in dieser Art.':'Nichts zur Abnahme.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
+$('#reviews').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
 /* Ampeln zeigen nur den aktuellen Zustand: grün wenn etwas anliegt, sonst rot. */
 const REV_FEST=['grafik','post','email','newsletter'];
 function ampeln(nachArt){if(!nachArt)return;
@@ -188,7 +225,7 @@ window.overlayDecide=async(id,was)=>{const a=($('#ovAn')?.value||'').trim();if(w
 /* ---- Aufträge ---- */
 $('#loadAuftraege').onclick=()=>loadAuftraege();
 async function loadAuftraege(){try{const d=await api('/api/auftraege');const offen=d.filter(a=>!['abgenommen','abgebrochen'].includes(a.status));
- $('#auftraege').innerHTML=offen.map(a=>`<article class=card><span class=eyebrow>${esc(a.agent)} · ${esc(a.status)}${a.faellig_am?' · fällig '+esc(a.faellig_am.slice(0,10)):''}</span><h3>${esc(a.titel)}</h3><details><summary class=small>Details</summary><p class=small>${esc(a.beschreibung||'')}</p></details></article>`).join('')||'<p>Keine offenen Aufträge.</p>'}catch(e){toast(e.message)}}
+ $('#auftraege').innerHTML=offen.map(a=>`<article class=card><span class=eyebrow>${esc(a.agent)} · ${esc(a.status)}${a.faellig_am?' · fällig '+esc(a.faellig_am.slice(0,10)):''}</span><details><summary class="small titlerow"><h3>${esc(a.titel)}</h3><span class=muted>Details</span></summary><p class=small>${esc(a.beschreibung||'')}</p></details></article>`).join('')||'<p>Keine offenen Aufträge.</p>'}catch(e){toast(e.message)}}
 window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');loadReviews()}catch(e){toast(e.message)}};
 function tickReview(z){z=z||{};let n=z.offen||0,r=z.revision||0,p=z.pruefung||0,e=$('#tickReview');
  if(e)e.textContent=[n?`${n} offen`:'',p?`${p} bei Jude`:'',r?`${r} in Revision`:''].filter(Boolean).join(' · ')||'nichts offen'}

@@ -19,7 +19,13 @@ models:
     # VRAM, sonst kostet jede Anfrage nach 5 Minuten Pause 7,5 s Ladezeit.
     # 4,34 GB von 8 GB.
     keep_alive: -1
-    tags: [lokal, privat, schnell, tools, code, test, routing_judge, medien]
+    # routing_judge war hier fehlerhaft vergeben: die "schnelle Guete-Pruefung"
+    # lief damit ausgerechnet ueber das Modell mit 206.000ms Durchschnittslatenz
+    # (siehe Kommentar oben) und OHNE Fallback-Kette (_local_quality_check ruft
+    # call_llm direkt auf) - jede nicht-top-tier Antwort wartete dadurch bis zu
+    # eine Minute auf eine "kurze" Pruefung. Verschoben zu cloud_openai_luna
+    # (schnell, guenstig, dafuer getaggt), gemessen 03.09.2026.
+    tags: [lokal, privat, schnell, tools, code, test, medien]
     priority: 10
 
   local_dolphin:
@@ -48,7 +54,7 @@ models:
     max_tokens: 8192
     context_length: 1050000
     reasoning_effort: low
-    tags: [cloud, schnell, kostenguenstig, extraktion, routing, tools]
+    tags: [cloud, schnell, kostenguenstig, extraktion, routing, routing_judge, tools]
     priority: 7
 
   cloud_openai_terra:
@@ -278,7 +284,6 @@ router:
     - cloud_ollama_nemotron_super  # frei, Cloud, schneller
     - cloud_ollama_gptoss20        # frei, Cloud, kleiner/schneller
     - cloud_ollama_gemma           # frei, Cloud, letzte kostenlose Cloud-Reserve
-    - tags:lokal            # dolphin3 + qwen3 – Reserve, falls je alle Cloud-Stufen ausfallen
     - cloud_deepseek_chat   # günstig & fähig (übersprungen ohne DEEPSEEK_API_KEY)
     - cloud_openai_terra    # mittleres Reasoning – erste bezahlte Stufe
     - cloud_claude_sonnet   # stark
@@ -286,11 +291,22 @@ router:
     - cloud_claude_fable    # Top-Tier, stärkste/teuerste Stufe
     - cloud_openrouter_dolphin  # unzensierte Cloud-Reserve, 24B (nur unzensierter Pfad / mit Key)
     - cloud_openrouter_hermes   # groessere unzensierte Stufe, 70B
+    # War auf Position 6 (VOR fuenf Cloud-Stufen) trotz dieses Kommentars, der
+    # das Gegenteil beschreibt. Blockierte damit einen von nur 3 Worker-Slots
+    # fuer bis zu 300s (timeout_seconds unten), sobald die kostenlosen
+    # Ollama-Cloud-Stufen gesperrt waren – gemessen 03.09.2026 bei redakteur
+    # UND content, identischer Stack-Trace, echter Reserve-Charakter jetzt
+    # durch die Position ganz am Ende hergestellt.
+    - tags:lokal            # dolphin3 + qwen3 – Reserve, falls je alle Cloud-Stufen ausfallen
 
 providers:
   ollama:
     base_url: http://127.0.0.1:11434
-    timeout_seconds: 300
+    # War 300s: blockierte einen von 3 Scheduler-Worker-Slots bis zu 5 Minuten
+    # pro Versuch, wenn die lokale GPU (kein funktionierendes ROCm auf dieser
+    # Polaris-Karte) nicht rechtzeitig antwortete – jetzt ohnehin letzte
+    # Reserve nach allen Cloud-Stufen, darf kurz sein.
+    timeout_seconds: 45
     num_retries: 1
   openai:
     base_url: https://api.openai.com/v1

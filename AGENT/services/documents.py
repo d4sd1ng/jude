@@ -37,8 +37,13 @@ class DocumentService:
     # ------------------------------------------------------------ Embedding
 
     def _embed(self, text: str) -> np.ndarray:
+        # War 60s: dieser Aufruf geht direkt an lokales Ollama, ohne Fallback-
+        # Kette oder Circuit-Breaker – blockierte search_documents (und damit
+        # den ganzen Agentenlauf) bis zu einer Minute ohne Ausweich-Option,
+        # wenn die lokale GPU nicht rechtzeitig antwortete (gemessen 03.09.2026,
+        # Teil derselben Haenger-Kette wie der Chat-Fallback).
         response = requests.post(f"{self.ollama_url}/api/embeddings",
-                                 json={"model": self.model, "prompt": text}, timeout=60)
+                                 json={"model": self.model, "prompt": text}, timeout=20)
         response.raise_for_status()
         vector = np.asarray(response.json().get("embedding", []), dtype=np.float32)
         if vector.size == 0:

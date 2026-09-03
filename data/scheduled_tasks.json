@@ -12,7 +12,7 @@
     "tool_args": {},
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T01:00:10.605512+00:00",
+    "last_run": "2026-09-03T01:00:14.265337+00:00",
     "created_at": "2026-08-13T17:15:48.341933+00:00"
   },
   "7dae4a462179": {
@@ -28,16 +28,16 @@
     "tool_args": {},
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-03T00:09:09.399205+00:00",
+    "last_run": "2026-09-03T17:11:02.024542+00:00",
     "created_at": "2026-08-16T07:42:41.796930+00:00"
   },
-  "3b7d7bbee251": {
-    "id": "3b7d7bbee251",
+  "ae01dd280b2e": {
+    "id": "ae01dd280b2e",
     "name": "Tagesjob: beobachter",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "07:00"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -47,16 +47,16 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.466136+00:00",
-    "created_at": "2026-09-02T21:42:37.108616+00:00"
+    "last_run": "2026-09-03T17:42:52.726920+00:00",
+    "created_at": "2026-09-03T11:22:56.653475+00:00"
   },
-  "a20d6443e40e": {
-    "id": "a20d6443e40e",
+  "2a1619296477": {
+    "id": "2a1619296477",
     "name": "Tagesjob: projektleitung",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "07:08"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -66,16 +66,16 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.469645+00:00",
-    "created_at": "2026-09-02T21:42:37.108912+00:00"
+    "last_run": "2026-09-03T18:45:49.521507+00:00",
+    "created_at": "2026-09-03T11:22:56.653861+00:00"
   },
-  "93c9f6b388f0": {
-    "id": "93c9f6b388f0",
+  "902972418d5f": {
+    "id": "902972418d5f",
     "name": "Tagesjob: outreach",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "07:16"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -85,16 +85,16 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.474042+00:00",
-    "created_at": "2026-09-02T21:42:37.109084+00:00"
+    "last_run": "2026-09-03T17:37:36.416088+00:00",
+    "created_at": "2026-09-03T11:22:56.654188+00:00"
   },
-  "c7dd3e2afe4d": {
-    "id": "c7dd3e2afe4d",
+  "c28d448e8355": {
+    "id": "c28d448e8355",
     "name": "Tagesjob: scraper",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "07:24"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -104,16 +104,16 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.478960+00:00",
-    "created_at": "2026-09-02T21:42:37.109273+00:00"
+    "last_run": "2026-09-03T18:16:18.841931+00:00",
+    "created_at": "2026-09-03T11:22:56.654514+00:00"
   },
-  "1247a60cf36f": {
-    "id": "1247a60cf36f",
+  "62f8572a9ed0": {
+    "id": "62f8572a9ed0",
     "name": "Tagesjob: content",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "07:32"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -123,16 +123,16 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.484831+00:00",
-    "created_at": "2026-09-02T21:42:37.109454+00:00"
+    "last_run": "2026-09-03T17:55:07.568402+00:00",
+    "created_at": "2026-09-03T11:22:56.654833+00:00"
   },
-  "6e9cf5574d28": {
-    "id": "6e9cf5574d28",
+  "fbf633648da2": {
+    "id": "fbf633648da2",
     "name": "Tagesjob: social",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "07:40"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -142,16 +142,16 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.501697+00:00",
-    "created_at": "2026-09-02T21:42:37.109642+00:00"
+    "last_run": "2026-09-03T17:59:56.044964+00:00",
+    "created_at": "2026-09-03T11:22:56.655162+00:00"
   },
-  "e083d5e623dc": {
-    "id": "e083d5e623dc",
+  "e993b169353b": {
+    "id": "e993b169353b",
     "name": "Tagesjob: sequencer",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "07:48"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -161,16 +161,16 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.511069+00:00",
-    "created_at": "2026-09-02T21:42:37.109855+00:00"
+    "last_run": "2026-09-03T19:04:53.817081+00:00",
+    "created_at": "2026-09-03T11:22:56.655480+00:00"
   },
-  "fb956c84adda": {
-    "id": "fb956c84adda",
+  "6ef457090010": {
+    "id": "6ef457090010",
     "name": "Tagesjob: analyst",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "07:56"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -180,16 +180,16 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.548843+00:00",
-    "created_at": "2026-09-02T21:42:37.110076+00:00"
+    "last_run": "2026-09-03T19:21:43.188826+00:00",
+    "created_at": "2026-09-03T11:22:56.655793+00:00"
   },
-  "7de0db11126b": {
-    "id": "7de0db11126b",
+  "79e9d47cdc83": {
+    "id": "79e9d47cdc83",
     "name": "Tagesjob: leadmanager",
     "action_type": "tool",
     "schedule": {
-      "type": "daily",
-      "at": "08:04"
+      "type": "interval",
+      "every_minutes": 5
     },
     "prompt": null,
     "tool": "delegate_to_agent",
@@ -199,7 +199,64 @@
     },
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-02T21:43:06.563662+00:00",
-    "created_at": "2026-09-02T21:42:37.110301+00:00"
+    "last_run": "2026-09-03T18:55:13.135394+00:00",
+    "created_at": "2026-09-03T11:22:56.656108+00:00"
+  },
+  "bde66a9788be": {
+    "id": "bde66a9788be",
+    "name": "Tagesjob: designer",
+    "action_type": "tool",
+    "schedule": {
+      "type": "interval",
+      "every_minutes": 5
+    },
+    "prompt": null,
+    "tool": "delegate_to_agent",
+    "tool_args": {
+      "name": "designer",
+      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
+    },
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-09-03T19:32:39.606984+00:00",
+    "created_at": "2026-09-03T11:22:56.656458+00:00"
+  },
+  "bec38f809ed6": {
+    "id": "bec38f809ed6",
+    "name": "Tagesjob: engineer",
+    "action_type": "tool",
+    "schedule": {
+      "type": "interval",
+      "every_minutes": 5
+    },
+    "prompt": null,
+    "tool": "delegate_to_agent",
+    "tool_args": {
+      "name": "engineer",
+      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
+    },
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-09-03T11:52:45.218668+00:00",
+    "created_at": "2026-09-03T11:22:56.656640+00:00"
+  },
+  "ccbbc2d7f170": {
+    "id": "ccbbc2d7f170",
+    "name": "Tagesjob: redakteur",
+    "action_type": "tool",
+    "schedule": {
+      "type": "interval",
+      "every_minutes": 5
+    },
+    "prompt": null,
+    "tool": "delegate_to_agent",
+    "tool_args": {
+      "name": "redakteur",
+      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
+    },
+    "speak": false,
+    "enabled": true,
+    "last_run": "2026-09-03T11:52:45.241955+00:00",
+    "created_at": "2026-09-03T11:22:56.656827+00:00"
   }
 }
