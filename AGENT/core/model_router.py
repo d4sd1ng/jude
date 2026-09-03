@@ -14,7 +14,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -30,20 +30,69 @@ logger = logging.getLogger(__name__)
 _PROVIDER_429: dict[str, dict] = {}
 _SPERRDAUER_S = 900
 
+# Muster für Fehler, die sich NIE von selbst lösen (leeres Guthaben, gesperrter
+# Account) – anders als 429 (Rate-Limit, oft in Sekunden vorbei) lohnt sich
+# hier kein zweiter Versuch. Gemessen 01.09.: ohne das hämmerte jeder einzelne
+# Mitarbeiterlauf bis zu 10 Minuten lang alle drei Anthropic-Modelle frisch,
+# weil ein 400 ("credit balance too low") die 429-Sperre nie auslöste.
+# "requires a subscription" kam am 02.09. von Ollama Cloud (HTTP 402) fuer die
+# grossen Modelle – ebenfalls nichts, was ein zweiter Versuch loest.
+_DAUERHAFT_MUSTER = re.compile(
+    r"credit balance|insufficient_quota|credit_balance_exhausted|billing"
+    r"|requires a subscription", re.IGNORECASE)
+
+
+def _ist_dauerhafter_fehler(exc: Exception) -> bool:
+    return bool(_DAUERHAFT_MUSTER.search(str(exc)))
+
+
+def _tagesende_ts() -> float:
+    """Zeitstempel der nächsten lokalen Mitternacht."""
+    jetzt = datetime.now().astimezone()
+    mitternacht = (jetzt + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    return mitternacht.timestamp()
+
 
 def _provider_429_gesperrt(provider: str) -> bool:
     eintrag = _PROVIDER_429.get(provider)
     return bool(eintrag and eintrag.get("bis", 0) > time.time() and eintrag.get("zaehler", 0) >= 2)
 
 
-def _provider_429_merken(provider: str, war_429: bool) -> None:
+def _provider_429_merken(provider: str, war_429: bool, sofort: bool = False) -> None:
     if not war_429:
         _PROVIDER_429.pop(provider, None)
         return
-    eintrag = _PROVIDER_429.setdefault(provider, {"zaehler": 0, "bis": 0})
-    eintrag["zaehler"] += 1
-    if eintrag["zaehler"] >= 2:
-        eintrag["bis"] = time.time() + _SPERRDAUER_S
+    eintrag = _PROVIDER_429.setdefault(provider, {"zaehler": 0, "bis": 0, "tagessperre": False})
+    eintrag["zaehler"] = 2 if sofort else eintrag["zaehler"] + 1
+    if eintrag["zaehler"] < 2:
+        return
+    # Leeres Guthaben lädt sich nicht von selbst wieder auf: einmal geprüft
+    # reicht für den Tag. Ein 429 (Rate-Limit) ist dagegen oft nach Minuten
+    # vorbei und bleibt bei der kurzen Sperre.
+    bis = _tagesende_ts() if sofort else time.time() + _SPERRDAUER_S
+    if bis <= eintrag["bis"]:
+        return                          # laufende Sperre nie verkürzen
+    eintrag["bis"] = bis
+    if sofort and not eintrag.get("tagessperre"):
+        eintrag["tagessperre"] = True
+        logger.warning(
+            "Provider %s bis Mitternacht gesperrt (kein Guthaben/Quota). "
+            "Nach dem Aufladen: Jude neu starten oder provider_sperre_aufheben(%r).",
+            provider, provider)
+
+
+def provider_gesperrt(provider: str) -> bool:
+    """Ist dieser Provider gerade gesperrt (429 oder leeres Guthaben)?"""
+    return _provider_429_gesperrt(provider)
+
+
+def provider_sperre_aufheben(provider: str | None = None) -> None:
+    """Sperre eines Providers (oder aller) manuell aufheben – z. B. nach dem Aufladen."""
+    if provider is None:
+        _PROVIDER_429.clear()
+    else:
+        _PROVIDER_429.pop(provider, None)
 
 
 @dataclass(frozen=True)
@@ -62,6 +111,13 @@ class ModelSpec:
     weight: float = 1.0
     reasoning_effort: str | None = None
     think: bool | None = None
+    # Wie lange Ollama das Modell nach dem Aufruf im VRAM behält. Ollamas
+    # Standard sind 5 Minuten; danach kostet der nächste Aufruf das erneute
+    # Laden. Gemessen 02.09.2026 für qwen3:8b: kalt 7,50 s Ladezeit (8,93 s
+    # gesamt), warm 0,33 s (1,37 s gesamt). Zahl = Sekunden, -1 = dauerhaft
+    # halten; als String nur mit Einheit ("60s"), sonst lehnt Ollama mit
+    # "time: missing unit in duration" ab.
+    keep_alive: str | int | None = None
 
 
 class ComplexityEstimator:
@@ -121,6 +177,8 @@ class OllamaAdapter(ProviderAdapter):
             payload["tools"] = tools
         if spec.think is not None:
             payload["think"] = spec.think
+        if spec.keep_alive is not None:
+            payload["keep_alive"] = spec.keep_alive
         last_error: Exception | None = None
         for _ in range(self.retries + 1):
             try:
@@ -179,7 +237,12 @@ class OpenAIAdapter(ProviderAdapter):
             self.url, json=payload,
             headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"}, timeout=self.timeout,
         )
-        response.raise_for_status()
+        if not response.ok:
+            # Der bare raise_for_status() zeigt nur "400 Bad Request for url: …" –
+            # der eigentliche Grund (z. B. "insufficient_quota") steht im Body und
+            # ging bisher verloren, wodurch die Dauerhaft-Fehler-Erkennung nie griff.
+            raise requests.HTTPError(f"{response.status_code} {response.reason} für {self.url}: "
+                                     f"{response.text[:400]}", response=response)
         data = response.json()
         text_parts, calls = [], []
         for item in data.get("output", []):
@@ -244,16 +307,6 @@ class OpenAICompatAdapter(ProviderAdapter):
             headers={"Authorization": f"Bearer {os.environ[self.api_key_env]}", **self.extra_headers},
             timeout=self.timeout,
         )
-        # Groq meldet den Rest seines kostenfreien Tageskontingents in den
-        # Kopfzeilen mit – die belastbarste Quelle, weil sie auch Anfragen
-        # kennt, die nicht ueber Jude liefen.
-        if self.api_key_env == "GROQ_API_KEY":
-            with suppress(Exception):
-                from services import kontingent
-                if response.status_code == 429:
-                    kontingent.grenze_merken(response.text[:600])
-                else:
-                    kontingent.kopfzeilen_merken(response.headers)
         if response.status_code >= 400:
             # Ohne den Rumpf ist "400 Bad Request" nicht diagnostizierbar.
             raise ValueError(f"HTTP {response.status_code}: {response.text[:400]}")
@@ -330,7 +383,12 @@ class AnthropicAdapter(ProviderAdapter):
             "x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }, timeout=self.timeout)
-        response.raise_for_status()
+        if not response.ok:
+            # Body statt bare raise_for_status(): "Your credit balance is too low"
+            # steckt nur dort, nicht in der generischen "400 Bad Request"-Meldung –
+            # ohne den Text griff die Dauerhaft-Fehler-Sperre nie.
+            raise requests.HTTPError(f"{response.status_code} {response.reason} für {self.url}: "
+                                     f"{response.text[:400]}", response=response)
         data = response.json()
         text = "".join(block.get("text", "") for block in data["content"] if block["type"] == "text")
         calls = [{"id": b["id"], "type": "function", "function": {"name": b["name"], "arguments": b["input"]}}
@@ -422,6 +480,7 @@ class ModelRouter:
                 context_length=int(data["context_length"]), tags=list(data["tags"]),
                 priority=int(data.get("priority", 5)), weight=float(data.get("weight", 1.0)),
                 reasoning_effort=data.get("reasoning_effort"), think=data.get("think"),
+                keep_alive=data.get("keep_alive"),
             ) for name, data in self.config["models"].items()
         }
         self.router_cfg = self.config["router"]
@@ -449,6 +508,54 @@ class ModelRouter:
             "1", "true", "yes", "ja", "on",
         }
         self._call_lock = threading.RLock()
+        self._letztes_lokales: ModelSpec | None = None
+
+    def vorwaermen(self, intervall_s: int = 60) -> None:
+        """Dauerhaft gehaltene Ollama-Modelle im Hintergrund ins VRAM laden.
+
+        Ohne das ist erst der erste Aufruf nach dem Start warm und zahlt die
+        7,5 s Ladezeit – ausgerechnet dann, wenn Tino gerade etwas fragt.
+        Der Waechter laedt nur nach, wenn Ollama gar nichts geladen hat: zwei
+        8B-Modelle passen nicht zusammen in 8 GB, ein Nachladen gegen ein
+        gerade benutztes Modell wuerde dieses nur rauswerfen. Zurueck kommt
+        das zuletzt benutzte Modell, beim Start das Standardmodell."""
+        adapter = self.adapters.get("ollama")
+        specs = [spec for spec in self.models.values()
+                 if spec.provider == "ollama" and spec.keep_alive == -1]
+        if not adapter or not specs:
+            return
+        standard = self.models.get(self.router_cfg.get("standard_model", ""))
+
+        def _wunschmodell() -> ModelSpec:
+            for kandidat in (self._letztes_lokales, standard):
+                if kandidat in specs:
+                    return kandidat
+            return specs[0]
+
+        def _geladen() -> list[str]:
+            antwort = requests.get(f"{adapter.base_url}/api/ps", timeout=5)
+            antwort.raise_for_status()
+            return [m.get("name", "") for m in antwort.json().get("models", [])]
+
+        def _laden(spec: ModelSpec) -> None:
+            # Leere Nachrichtenliste laedt das Modell, ohne zu generieren.
+            requests.post(f"{adapter.base_url}/api/chat", timeout=300, json={
+                "model": spec.model_name, "messages": [], "stream": False,
+                "keep_alive": spec.keep_alive,
+                "options": {"num_ctx": spec.context_length},
+            }).raise_for_status()
+            logger.info("Modell %s vorgewaermt.", spec.model_name)
+
+        def _schleife() -> None:
+            while True:
+                try:
+                    if not _geladen():
+                        _laden(_wunschmodell())
+                except Exception as exc:                    # nur Komfort, nie kritisch
+                    logger.warning("Vorwaermen fehlgeschlagen: %s", exc)
+                time.sleep(intervall_s)
+
+        threading.Thread(target=_schleife, name="modell-vorwaermen", daemon=True).start()
 
     # Handlungsabsicht: Verben, die auf eine auszuführende Aktion (Werkzeug) deuten,
     # nicht auf reines Erklären/Plaudern.
@@ -559,22 +666,6 @@ class ModelRouter:
                         result.append(model)
         return result
 
-    @staticmethod
-    def _groq_verfuegbar(spec: ModelSpec, messages: list[dict]) -> bool:
-        """Reicht das freie Tageskontingent noch für diese Anfrage?"""
-        if spec.provider != "groq":
-            return True
-        try:
-            from services import kontingent
-            geschaetzt = (sum(len(_werkzeug_text(m.get("content", ""))) for m in messages) // 4
-                          + min(spec.max_tokens, 2048))
-            frei = kontingent.verfuegbar(geschaetzt)
-            if not frei:
-                logger.warning("Groq uebersprungen – Kontingent: %s", kontingent.stand())
-            return frei
-        except Exception:
-            return True                 # Buchhaltung darf nie blockieren
-
     def _cloud_affordable(self, spec: ModelSpec, messages: list[dict]) -> bool:
         if spec.provider == "ollama":
             return True
@@ -616,6 +707,11 @@ class ModelRouter:
                  request_id: str | None = None) -> dict:
         with self._call_lock:
             supported_tools = tools if "tools" in spec.tags else None
+            if spec.provider == "ollama":
+                # Wer zuletzt dran war, ist am ehesten gleich wieder dran. Der
+                # Waechter holt genau dieses Modell zurueck – sonst laege nach
+                # einem Dolphin-Gespraech plotzlich qwen3 im VRAM.
+                self._letztes_lokales = spec
             response = self.adapters[spec.provider].call(spec, messages, supported_tools)
             usage = response.pop("usage", {}) or {}
             input_tokens, output_tokens = int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0))
@@ -676,20 +772,16 @@ class ModelRouter:
             return any(self._provider_enabled(chain[j].provider) for j in range(index + 1, len(chain)))
 
         for position, spec in enumerate(chain):
-            # 429 von diesem Provider? Dann 15 Minuten gar nicht erst versuchen –
-            # das spart Wartezeit und Tokens.
+            # Provider kürzlich mit 429 oder einem dauerhaften Fehler (kein
+            # Guthaben, gesperrt) gescheitert? Dann gar nicht erst versuchen –
+            # 15 Minuten bei 429, bis Mitternacht bei leerem Guthaben. Auf
+            # debug, weil die Zeile sonst pro Kettenglied ins Log läuft.
             if _provider_429_gesperrt(spec.provider):
-                attempts.append({"model": spec.name, "status": "skipped_429_throttle"})
-                logger.info("Provider %s: 429-Sperre aktiv, Versuch übersprungen.", spec.provider)
+                attempts.append({"model": spec.name, "status": "skipped_provider_gesperrt"})
+                logger.debug("Provider %s: Sperre aktiv, Versuch übersprungen.", spec.provider)
                 continue
             if not self._cloud_affordable(spec, messages):
                 attempts.append({"model": spec.name, "status": "skipped_cost_limit"})
-                continue
-            # Kostenfrei heisst nicht unbegrenzt: unterhalb der Reserve wird
-            # Groq uebersprungen, statt das Tageskontingent leerzuraeumen und
-            # danach fuer Stunden ohne dazustehen.
-            if not self._groq_verfuegbar(spec, messages):
-                attempts.append({"model": spec.name, "status": "skipped_kontingent"})
                 continue
             try:
                 attempt_started = time.monotonic()
@@ -714,9 +806,12 @@ class ModelRouter:
                                 json.dumps(attempts), route_id))
                 return response
             except Exception as exc:
-                # War es eine 429-Antwort? Dann merken und nächstes Mal überspringen.
-                war_429 = "429" in str(exc)
-                _provider_429_merken(spec.provider, war_429)
+                # War es eine 429-Antwort oder ein dauerhafter Fehler (kein
+                # Guthaben, Account gesperrt)? Dann merken und überspringen –
+                # bei einem dauerhaften Fehler sofort, ohne zweiten Versuch.
+                dauerhaft = _ist_dauerhafter_fehler(exc)
+                war_429 = dauerhaft or "429" in str(exc)
+                _provider_429_merken(spec.provider, war_429, sofort=dauerhaft)
                 errors.append(f"{spec.name}: {exc}")
                 attempts.append({"model": spec.name, "status": "error", "error": str(exc)[:500]})
                 logger.warning("Modell %s fehlgeschlagen: %s", spec.name, exc)

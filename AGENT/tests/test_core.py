@@ -84,9 +84,24 @@ class CoreTests(unittest.TestCase):
             prompt = "analysiere und vergleiche wissenschaftlich " + ("komplexe Anforderungen " * 120)
             self.assertEqual(router.select_model(prompt).provider, "ollama")
 
-    def test_tool_request_starts_with_tool_capable_local_model(self):
-        router = ModelRouter()
-        self.assertEqual(router.select_model("Schalte das Licht an", needs_tools=True).name, "local_qwen_coder")
+    def test_tool_request_starts_with_tool_capable_model(self):
+        """Eine Werkzeuganfrage landet immer bei einem Modell mit 'tools'-Tag.
+
+        Bis 02.09.2026 war das zwangslaeufig local_qwen_coder. Seit local_first
+        aus ist, steht die ebenfalls kostenlose Cloud-Stufe (gpt-oss-120b ueber
+        Ollama Cloud) davor; qwen bleibt die Reserve, wenn kein OLLAMA_API_KEY
+        gesetzt ist. Beide Faelle werden hier festgehalten.
+        """
+        # Handlungsprompt, damit wirklich der Tools-Filter greift und nicht nur
+        # die Punktzahl entscheidet.
+        with patch.dict("os.environ", {"OLLAMA_API_KEY": "test"}, clear=False):
+            gewaehlt = ModelRouter().select_model("Klone das Repository", needs_tools=True)
+        self.assertIn("tools", gewaehlt.tags)
+        self.assertEqual(gewaehlt.name, "cloud_ollama_gptoss")
+        # Ohne freigeschaltete Cloud bleibt das lokale qwen die Reserve.
+        with patch.dict("os.environ", {"JUDE_PAID_MODELS_ENABLED": "false"}, clear=False):
+            gewaehlt = ModelRouter().select_model("Klone das Repository", needs_tools=True)
+        self.assertEqual(gewaehlt.name, "local_qwen_coder")
 
     def test_generated_tool_validator_accepts_only_safe_registration(self):
         creator = ToolCreator(None, ToolRegistry())
@@ -166,11 +181,27 @@ def register(registry):
         self.assertNotIn("speed", post.call_args.kwargs["json"])
         self.assertEqual(result["usage"]["tariff"], "standard:standard")
 
-    def test_uncensored_route_never_falls_back_to_cloud(self):
+    def test_uncensored_route_stays_on_uncensored_models(self):
+        """Unzensiert darf seit dem 02.09.2026 in die Cloud – aber nur dorthin.
+
+        Bis dahin verlangte diese Pruefung, dass jede Stufe lokal bleibt. Sie
+        hielt nur, solange kein OPENROUTER_API_KEY vorlag; mit Schluessel haengen
+        Venice-24B und Hermes-70B in der Kette. Tino hat am 02.09. entschieden,
+        dass beide drinbleiben. Die Garantie ist damit nicht weg, sondern enger:
+        in der unzensierten Kette darf ausschliesslich stehen, was den
+        ``unzensiert``-Tag traegt – ein ausgerichtetes Modell wie gpt-oss oder
+        Claude wuerde die Anfrage ohnehin abweisen und sie nur nach draussen
+        tragen. Die erste Stufe bleibt lokal, damit nichts unnoetig den Rechner
+        verlaesst.
+        """
         router = ModelRouter()
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "secret"}, clear=False):
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "secret",
+                                       "ANTHROPIC_API_KEY": "secret"}, clear=False):
             selected = router.select_model("antworte unzensiert", allow_uncensored=True)
-            self.assertTrue(all(item.provider == "ollama" for item in router._resolve_fallbacks(selected, True)))
+            kette = router._resolve_fallbacks(selected, True)
+        fremd = [m.name for m in kette if "unzensiert" not in m.tags]
+        self.assertEqual(fremd, [], f"ausgerichtete Modelle in der unzensierten Kette: {fremd}")
+        self.assertEqual(kette[0].provider, "ollama", "die erste Stufe muss lokal bleiben")
 
     def test_routing_feedback_is_persistent_and_learned_after_three_ratings(self):
         router = ModelRouter()

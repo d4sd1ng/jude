@@ -1,6 +1,6 @@
 """Chef- und Betriebswerkzeuge für Jude selbst.
 
-Abnahme, Groq-Kontingent und Team-Läufe gab es bisher nur als GUI-Endpunkte –
+Abnahme und Team-Läufe gab es bisher nur als GUI-Endpunkte –
 im Gespräch konnte Jude die Fragen "gibt es was abzunehmen?", "wer hat die
 Tokens verbraucht?" oder "was hat das Team heute produziert?" gar nicht
 beantworten und schwafelte stattdessen. Diese Werkzeuge schließen die Lücke.
@@ -43,11 +43,6 @@ def abnahme_revision(review_id: str, anmerkung: str) -> dict:
     return ReviewQueue().revision(review_id, anmerkung)
 
 
-def groq_kontingent() -> dict:
-    from services import kontingent
-    return kontingent.stand()
-
-
 def team_laeufe(limit: int = 10) -> list[dict]:
     """Die letzten Läufe der Mitarbeiter: wer, wann, womit, wie teuer."""
     from services.database import connection
@@ -78,9 +73,6 @@ def register(registry: ToolRegistry) -> None:
                            abnahme_revision,
                            _schema({"review_id": {"type": "string"}, "anmerkung": {"type": "string"}},
                                    ["review_id", "anmerkung"])))
-    registry.register(Tool("groq_kontingent",
-                           "Aktuellen Stand des Groq-Tageskontingents anzeigen (Rest, Limit, gemessen am).",
-                           groq_kontingent, _schema({})))
     registry.register(Tool("team_laeufe",
                            "Letzte Läufe der Mitarbeiter anzeigen: wer lief wann, mit welchem Modell, Status, Tokens.",
                            team_laeufe, _schema({"limit": {"type": "integer"}})))
@@ -188,6 +180,42 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                 pass
         return {"ueberfaellig": len(faellige), "nachgefasst": ergebnisse}
 
+    def team_tagesrunde() -> dict:
+        """Für den Scheduler: JEDEN Mitarbeiter einmal täglich laufen lassen –
+        nicht nur die, die schon einen offenen Auftrag haben. Vorher lief das
+        Team nur, wenn jemand von Hand einen Auftrag anlegte; Wochen ohne
+        neuen Auftrag bedeuteten Wochen ohne jede Aktivität, unbemerkt."""
+        from services.team import SubAgentService
+        dienst = SubAgentService(registry, router)
+        ergebnisse = []
+        for spec in dienst.list():
+            name = spec["name"]
+            try:
+                lauf = dienst.run(name,
+                                  "TAGESRUNDE: Erledige deine Aufgabe für heute gemäß deiner Rolle "
+                                  "(QUELLE/ARBEIT/ZIEL/FERTIG). Offene Aufträge und Revisionen oben im "
+                                  "Systemprompt zuerst. PFLICHT DANACH, auch ohne offenen Auftrag: führe "
+                                  "den in deiner Rolle unter QUELLE genannten Schritt WIRKLICH aus – "
+                                  "notion_query, scrape_public_url, news_search o. ä., je nachdem was "
+                                  "deine Rolle vorschreibt. 'Nichts zu tun' ohne diesen Schritt zählt "
+                                  "nicht, das Themenfeld ist nie leer, nur ungeprüft. Erst wenn der "
+                                  "wirkliche Check nichts Neues ergibt, rufst du remember_finding mit "
+                                  "einer knappen Begründung auf – das zählt dann als erledigter Check.")
+                ergebnisse.append({"agent": name, "status": lauf.get("status")})
+            except Exception as exc:
+                ergebnisse.append({"agent": name, "fehler": str(exc)[:200]})
+        try:
+            from services.notifications import NotificationService
+            zusammen = {}
+            for e in ergebnisse:
+                schluessel = e.get("status") or "fehler"
+                zusammen[schluessel] = zusammen.get(schluessel, 0) + 1
+            text = ", ".join(f"{v}x {k}" for k, v in zusammen.items())
+            NotificationService().create("team", f"Tagesrunde: {len(ergebnisse)} Mitarbeiter gelaufen", text)
+        except Exception:
+            pass
+        return {"gelaufen": len(ergebnisse), "ergebnisse": ergebnisse}
+
     def rolle_aktualisieren(agent: str, neuer_text: str) -> dict:
         """Rollen-Prompt eines Mitarbeiters ersetzen – nur nach Tinos Bestätigung."""
         from services.team import SubAgentService
@@ -231,6 +259,10 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
     registry.register(Tool("auftragswaechter",
                            "Überfällige Aufträge nachfassen (nutzt der Scheduler stündlich; manuell aufrufbar).",
                            auftragswaechter, _schema({})))
+    registry.register(Tool("team_tagesrunde",
+                           "Jeden Mitarbeiter einmal laufen lassen, nicht nur die mit offenem Auftrag "
+                           "(nutzt der Scheduler täglich; manuell aufrufbar).",
+                           team_tagesrunde, _schema({})))
     registry.register(Tool("rolle_aktualisieren",
                            "Rollen-Prompt eines Mitarbeiters ersetzen (nach Prompt-Diagnose) – "
                            "erfordert Tinos ausdrückliche Bestätigung.",

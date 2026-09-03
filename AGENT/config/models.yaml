@@ -5,9 +5,20 @@ models:
     think: false
     cost_per_1k_input: 0.0
     cost_per_1k_output: 0.0
-    avg_latency_ms: 220
+    # War 220 – stammte offenbar aus einer Messung ohne CPU-Anteil. Real
+    # gemessen 02.09.2026 (10 Aufrufe, 71%/29% GPU/CPU-Split): 148.000-305.000ms,
+    # Mittel ~206.000ms. Bei 220 verzerrte der Latenz-Score jede Modellwahl
+    # zugunsten von lokal, auch mit prefer_local:false.
+    avg_latency_ms: 206000
     max_tokens: 4096
-    context_length: 16384
+    # 16384 liess auf der 8GB-Polaris-GPU nur 61% der Layer aufs GPU passen,
+    # Rest lief auf CPU (ollama ps, 01.09.2026). 8192 passt komplett ins VRAM.
+    context_length: 8192
+    # Arbeitspferd der Werkzeug-/Teamlaeufe: 101 von 114 erfolgreichen Laeufen
+    # der letzten 14 Tage (route_decisions, 02.09.2026). Bleibt dauerhaft im
+    # VRAM, sonst kostet jede Anfrage nach 5 Minuten Pause 7,5 s Ladezeit.
+    # 4,34 GB von 8 GB.
+    keep_alive: -1
     tags: [lokal, privat, schnell, tools, code, test, routing_judge, medien]
     priority: 10
 
@@ -19,6 +30,11 @@ models:
     avg_latency_ms: 300
     max_tokens: 2048
     context_length: 8192
+    # Standardmodell fuers Gespraech – also genau das, bei dem Tino auf die
+    # Antwort wartet. Bleibt wie qwen3 dauerhaft im VRAM. Zwei 8B-Modelle
+    # passen zwar nicht zusammen in 8 GB, aber Ollama verdraengt bei Bedarf
+    # von selbst; wichtig ist nur, dass keines im Leerlauf rausfaellt.
+    keep_alive: -1
     tags: [lokal, privat, unzensiert, allgemein, kreativ]
     priority: 9
 
@@ -73,9 +89,11 @@ models:
     tags: [cloud, analyse, code, agentisch, grosserkontext, tools]
     priority: 8
 
-  # Team-Arbeitsmodell: werkzeugfaehig und in Sekunden statt Minuten fertig.
-  # ~1,5 Cent pro Durchschnittslauf (13k In / 0,5k Out); von Tino am
-  # 15.08.2026 freigegeben (~10 $/Monat, ~20 $ wenn Politara dazukommt).
+  # War vom 15.08. bis 03.09.2026 das Team-Arbeitsmodell (~1,5 Cent pro
+  # Durchschnittslauf, 13k In / 0,5k Out). Am 03.09. auf Tinos Ansage
+  # abgeloest durch cloud_ollama_gptoss: dasselbe Ergebnis kostenlos. Der
+  # Eintrag bleibt als Definition erhalten, steht aber in KEINER Kette und
+  # auf keinem Mitarbeiter mehr – er laesst sich jederzeit wieder einhaengen.
   cloud_claude_haiku:
     provider: anthropic
     model_name: claude-haiku-4-5
@@ -111,36 +129,108 @@ models:
     tags: [cloud, kostenguenstig, analyse, code, tools]
     priority: 8
 
-  cloud_groq_llama:
-    provider: groq
-    # Seit 16.08.2026: llama-3.3-70b-versatile wurde von Groq abgeschaltet.
-    # Nachfolger laut Groq-Empfehlung: gpt-oss-120b (per /models verifiziert,
-    # Deutsch-Qualitaet am 16.08. gegengelesen). Schluessel bleibt
-    # cloud_groq_llama, weil sub_agents.json (Heinz) und team.TEXT_MODELL
-    # darauf verweisen.
-    model_name: openai/gpt-oss-120b
+  # Groq am 02.09.2026 auf Tinos Ansage entfernt. Grund: die freie Stufe erlaubt
+  # 8000 Token pro Minute, das Modell reservierte aber allein 8192 fuer die
+  # Ausgabe – jede Anfrage, auch eine dreiwortige, lief in HTTP 413. Dasselbe
+  # Modell (gpt-oss-120b) liefert cloud_ollama_gptoss ohne diese Grenze und
+  # ebenfalls kostenfrei. Mit Groq verschwand auch services/kontingent.py.
+
+  # Ollama Cloud, 02.09.2026 eingebunden. Dasselbe Modell wie bei Groq, aber
+  # ohne dessen 8000-Token-Minutengrenze, an der jede groessere Teamanfrage
+  # mit HTTP 413 scheiterte. Werkzeugaufrufe am 02.09. gegen /v1 gemessen:
+  # sauberes tool_calls-Objekt, kein Fliesstext – daher mit 'tools'-Tag.
+  # Groessere Modelle (qwen3.5:397b, glm-5.3, kimi-k2.7-code) antworten auf
+  # diesem Konto mit HTTP 402 "requires a subscription" und fehlen deshalb.
+  cloud_ollama_gptoss:
+    provider: ollama_cloud
+    model_name: gpt-oss:120b
     cost_per_1k_input: 0.0
     cost_per_1k_output: 0.0
-    avg_latency_ms: 500
+    avg_latency_ms: 600
     max_tokens: 8192
     context_length: 131072
-    # Kein 'tools'-Tag: die alte Messung (llama-3.3 schrieb Werkzeugaufrufe als
-    # Fliesstext) gilt fuer das neue Modell nicht automatisch – erst messen,
-    # dann freischalten. Fuer alles ohne Werkzeuge bleibt Groq erste Wahl:
-    # kostenfrei und schnell.
-    tags: [cloud, schnell, allgemein, analyse]
+    tags: [cloud, schnell, allgemein, analyse, code, tools, grosserkontext]
     priority: 8
 
-  cloud_openrouter_dolphin:
-    provider: openrouter
-    model_name: cognitivecomputations/dolphin3.0-mistral-24b
-    cost_per_1k_input: 0.0002
-    cost_per_1k_output: 0.0002
+  # Weitere freie Modelle auf demselben Ollama-Cloud-Konto, am 02.09.2026 geprüft:
+  # alle vier liefern ein sauberes tool_calls-Objekt im selben Test wie oben bei
+  # gpt-oss:120b. nemotron-3-nano:30b fiel durch (kein tool_calls, leere Antwort)
+  # und fehlt deshalb absichtlich. Context-Längen der drei neuen Familien sind
+  # NICHT gemessen, nur konservativ geschätzt – anders als bei gpt-oss (Sibling
+  # von cloud_ollama_gptoss, gleiche Architektur, daher derselbe Wert).
+  cloud_ollama_gptoss20:
+    provider: ollama_cloud
+    model_name: gpt-oss:20b
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    avg_latency_ms: 400
+    max_tokens: 8192
+    context_length: 131072
+    tags: [cloud, schnell, allgemein, code, tools]
+    priority: 7
+
+  cloud_ollama_nemotron_ultra:
+    provider: ollama_cloud
+    model_name: nemotron-3-ultra
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
     avg_latency_ms: 900
     max_tokens: 8192
-    context_length: 32768
-    tags: [cloud, unzensiert, allgemein, kreativ]
+    context_length: 65536
+    tags: [cloud, analyse, code, tools, agentisch]
+    priority: 9
+
+  cloud_ollama_nemotron_super:
+    provider: ollama_cloud
+    model_name: nemotron-3-super
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    avg_latency_ms: 700
+    max_tokens: 8192
+    context_length: 65536
+    tags: [cloud, schnell, analyse, code, tools]
     priority: 7
+
+  cloud_ollama_gemma:
+    provider: ollama_cloud
+    model_name: gemma4:31b
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    avg_latency_ms: 600
+    max_tokens: 8192
+    context_length: 32768
+    tags: [cloud, schnell, allgemein, tools]
+    priority: 6
+
+  # 02.09.2026: dolphin3.0-mistral-24b gibt es bei OpenRouter nicht mehr (nicht
+  # in den 421 Katalogmodellen). Nachfolger derselben Familie, laut Anbieter
+  # ausdruecklich "uncensored". Preise vom Katalog abgeschrieben: der alte
+  # Eintrag rechnete die Ausgabe mit 0,0002 statt 0,0009 – viermal zu billig.
+  cloud_openrouter_dolphin:
+    provider: openrouter
+    model_name: cognitivecomputations/dolphin-mistral-24b-venice-edition
+    cost_per_1k_input: 0.0002
+    cost_per_1k_output: 0.0009
+    avg_latency_ms: 705      # Median aus 3 Messungen, 02.09.2026
+    max_tokens: 8192
+    context_length: 128000
+    tags: [cloud, unzensiert, allgemein, kreativ, grosserkontext]
+    priority: 7
+
+  # Groessere unzensierte Stufe (von Tino am 02.09. gewaehlt): 70B statt der
+  # lokalen 8B und trotzdem billiger als das Venice-Dolphin. Neutral
+  # ausgerichtet statt abliteriert – kein Sicherheitstraining wie gpt-oss,
+  # aber auch kein Dolphin-Verhalten. Deshalb hinter dem Dolphin in der Kette.
+  cloud_openrouter_hermes:
+    provider: openrouter
+    model_name: nousresearch/hermes-4-70b
+    cost_per_1k_input: 0.00013
+    cost_per_1k_output: 0.0004
+    avg_latency_ms: 426      # Median aus 3 Messungen, 02.09.2026
+    max_tokens: 8192
+    context_length: 131072
+    tags: [cloud, unzensiert, allgemein, kreativ, analyse, grosserkontext]
+    priority: 8
 
   cloud_gemini_flash:
     provider: google
@@ -156,30 +246,46 @@ models:
 
 router:
   budget_limit_monthly_usd: 5.0
-  prefer_local: true
-  local_first: true
+  # War true, als lokal die einzige kostenlose Stufe war. Gemessen 02.09.2026:
+  # qwen3:8b passt auf dieser 8GB-Polaris-GPU selbst bei 8192 Kontext nur zu
+  # 71% ins VRAM, der Rest laeuft auf CPU – 2,5 bis 5 Minuten JE Schritt. Ein
+  # Tagesjob mit 8-17 Schritten brauchte dadurch 15-17 Minuten. Ollama Cloud
+  # (cloud_ollama_gptoss) ist GENAUSO kostenlos und braucht dafuer ~600ms.
+  # Lokal bleibt als Fallback in der Kette – nur nicht mehr zuerst.
+  prefer_local: false
+  local_first: false
   standard_model: local_dolphin
   complexity_threshold_high: 7
   quality_judge_min_complexity: 6
   request_cost_limit_usd: 1.0
   # Eskalationsleiter: jede Stufe ist STÄRKER als die darunter. Jude bleibt so lange
   # wie möglich kostenlos und steigt nur auf, wenn die Antwort fachlich nicht reicht.
-  #   frei:      dolphin3/qwen3 (lokal)  ->  Groq llama-70b (frei, größer)
+  #   frei:      gpt-oss-120b über Ollama Cloud  ->  dolphin3/qwen3 (lokal, Reserve)
   #   günstig:   DeepSeek chat (nur mit Key)
   #   stark:     gpt-5.6-terra (mittleres Reasoning)  ->  claude-sonnet-5
   #   Top-Tier:  gpt-5.6-sol (hohes Reasoning)        ->  claude-fable-5
-  # Nicht in der Leiter: gpt-5.6-luna (leichtgewichtig, schwächer als Groq-70b -> keine
+  # Nicht in der Leiter: gpt-5.6-luna (leichtgewichtig, schwächer als gpt-oss-120b -> keine
   # echte Eskalationsstufe) und gemini-flash (Key ohne API-Zugriff). Beide bleiben als
   # Definition erhalten und lassen sich jederzeit wieder einhängen.
+  # Lokal steht jetzt NACH den freien Cloud-Stufen, nicht davor: qwen3:8b passt auf der
+  # 8GB-Polaris-GPU nicht vollstaendig ins VRAM (71%/29% GPU/CPU) UND hat sich beim echten
+  # Test (content, 02.09.2026) einen Werkzeugaufruf als Fliesstext ausgedacht statt ihn
+  # wirklich auszufuehren ("Mike lahmgelegt"-Muster) – kein einziger Direkttest gegen die
+  # Cloud-Modelle zeigte dieses Verhalten. Genauso kostenlos, zuverlässiger, schneller.
   fallback_chain:
-    - tags:lokal            # dolphin3 (Basis) + qwen3 (Tools/Code) – frei, lokal
-    - cloud_groq_llama      # frei, Cloud, 70b – erste echte Verstärkung
+    - cloud_ollama_gptoss   # frei, Cloud, 120b, werkzeugfähig – erste echte Verstärkung
+    - cloud_ollama_nemotron_ultra  # frei, Cloud, weitere werkzeugfähige Stufe vor den bezahlten
+    - cloud_ollama_nemotron_super  # frei, Cloud, schneller
+    - cloud_ollama_gptoss20        # frei, Cloud, kleiner/schneller
+    - cloud_ollama_gemma           # frei, Cloud, letzte kostenlose Cloud-Reserve
+    - tags:lokal            # dolphin3 + qwen3 – Reserve, falls je alle Cloud-Stufen ausfallen
     - cloud_deepseek_chat   # günstig & fähig (übersprungen ohne DEEPSEEK_API_KEY)
     - cloud_openai_terra    # mittleres Reasoning – erste bezahlte Stufe
     - cloud_claude_sonnet   # stark
     - cloud_openai_sol      # hohes Reasoning, Top-Tier
     - cloud_claude_fable    # Top-Tier, stärkste/teuerste Stufe
-    - cloud_openrouter_dolphin  # unzensierte Cloud-Reserve (nur unzensierter Pfad / mit Key)
+    - cloud_openrouter_dolphin  # unzensierte Cloud-Reserve, 24B (nur unzensierter Pfad / mit Key)
+    - cloud_openrouter_hermes   # groessere unzensierte Stufe, 70B
 
 providers:
   ollama:
@@ -201,10 +307,13 @@ providers:
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
     timeout_seconds: 90
-  groq:
-    base_url: https://api.groq.com/openai/v1
-    api_key_env: GROQ_API_KEY
-    timeout_seconds: 60
+  # Ollama Cloud. Eigener Provider-Name statt "ollama", obwohl dieselbe
+  # Software dahintersteckt: die Anfragen verlassen den Rechner, duerfen also
+  # weder als "lokal/privat" gelten noch am Guthaben-Gate vorbei.
+  ollama_cloud:
+    base_url: https://ollama.com/v1
+    api_key_env: OLLAMA_API_KEY
+    timeout_seconds: 180
   deepseek:
     base_url: https://api.deepseek.com/v1
     api_key_env: DEEPSEEK_API_KEY

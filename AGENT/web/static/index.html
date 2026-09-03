@@ -42,6 +42,10 @@
             <button class="toggle rev" data-art="post" title="Posts zur Freigabe"><span class="lamp"></span><small>Post</small></button>
             <button class="toggle rev" data-art="email" title="E-Mails zur Freigabe"><span class="lamp"></span><small>E-Mail</small></button>
             <button class="toggle rev" data-art="newsletter" title="Newsletter zur Freigabe"><span class="lamp"></span><small>Newsletter</small></button>
+            <!-- Ampeln fuer Dokument, Recherche, Sequenz, Sonstiges erscheinen
+                 hier, sobald etwas davon offen ist. Ohne sie blieb ein offenes
+                 Dokument im Cockpit unsichtbar. -->
+            <span id="revExtra"></span>
           </div>
         </div>
       </div></div>
@@ -72,12 +76,13 @@
   </div>
 </section>
 <section data-page="Schreibtisch">
+  <div class="sectionhead"><div><span class="eyebrow">GERADE AKTIV</span><h2>Team</h2></div><button id="loadAktiv">Aktualisieren</button></div><div id="aktiv"></div>
   <div class="sectionhead"><div><span class="eyebrow">FERTIGE ARBEIT</span><h2>Abnahme</h2></div><button id="loadReviews">Aktualisieren</button></div>
   <p class="muted small">Was ein Mitarbeiter fertig gemeldet hat. „Ansehen" zeigt alles im Ganzen — Texte formatiert, Bilder und Seiten gerendert.</p>
   <div id="reviews" class="cards"></div>
   <div class="sectionhead"><div><span class="eyebrow">SAFETY GATE</span><h2>Bestätigungen</h2></div><button id="loadConfirmations">Aktualisieren</button></div><div id="confirmations" class="cards"></div>
   <div class="sectionhead"><div><span class="eyebrow">AUFTRAGSBUCH</span><h2>Aufträge</h2></div><button id="loadAuftraege">Aktualisieren</button></div><div id="auftraege" class="cards"></div>
-  <div class="sectionhead"><div><span class="eyebrow">EREIGNISSE</span><h2>Meldungen</h2></div><button id="loadNotifications">Aktualisieren</button></div><div id="notifications" class="cards"></div>
+  <div class="sectionhead"><div><span class="eyebrow">EREIGNISSE</span><h2>Meldungen</h2></div><div><button id="readAllNotifications" class="ghost">Alle gelesen</button> <button id="loadNotifications">Aktualisieren</button></div></div><div id="notifications"></div>
   <div class="panel"><h3>Dokument an Jude übergeben</h3><p class="muted">Jude stellt es den Mitarbeitern zu, die es betrifft.</p><form id="austauschForm"><input name="file" type="file" required><input name="hinweis" type="text" placeholder="Worum geht es / für wen? (optional)"><button>Übergeben</button></form><p id="austauschStatus" class="muted"></p></div>
 </section>
 <section data-page="Märkte">

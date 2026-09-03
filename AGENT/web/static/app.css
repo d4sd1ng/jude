@@ -136,7 +136,7 @@ button.ghost{background:transparent;border:1px solid var(--line);color:var(--gre
 
 /* Kacheln, die mehr Platz verdienen */
 .output{grid-column:span 3;grid-row:span 4;display:flex;flex-direction:column}
-.output .feed{flex:1;min-height:190px;max-height:none}
+.output .feed{flex:1;min-height:190px;max-height:320px}#chatForm button{padding:5px 8px;font-size:11px;align-self:center}
 .cockC>.core{grid-column:span 2;grid-row:span 2;width:100%;max-width:none;justify-self:stretch}
 .gaugerow{grid-column:span 2;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;align-content:start}
 .gaugerow.top{grid-column:span 4;grid-template-columns:repeat(4,1fr)}

@@ -35,8 +35,10 @@ from services.database import connection
 ARTEN = {"post", "email", "newsletter", "sequenz", "dokument", "recherche",
          "grafik", "sonstiges"}
 
-#: Die vier Arten, die im Cockpit eine eigene Ampel bekommen – alles andere
-#: sammelt sich in der Abnahme-Liste im System-Tab.
+#: Diese vier Ampeln stehen im Cockpit immer da, auch mit 0 – sie sollen rot
+#: leuchten, nicht verschwinden. Alle übrigen Arten bekommen eine Ampel, sobald
+#: etwas von ihnen offen ist (siehe ``offen_nach_art``); vorher wären es acht
+#: Lampen, von denen die Hälfte dauerhaft aus ist.
 COCKPIT_ARTEN = ("grafik", "post", "email", "newsletter")
 
 
@@ -204,11 +206,15 @@ class ReviewQueue:
     def offen_nach_art(self) -> dict:
         """Wie viel je Art auf Tino wartet – speist die Ampeln im Cockpit.
 
-        Jede Art ist immer enthalten, auch mit 0: die Ampel soll rot leuchten,
-        nicht verschwinden.
+        **Alle** Arten sind enthalten, nicht nur die vier festen. Vorher zählte
+        diese Funktion ausschließlich ``COCKPIT_ARTEN``; ein offenes
+        ``dokument`` – genau der Fall vom 17.08. – tauchte damit in keiner Ampel
+        auf und war im Cockpit unsichtbar. Die vier festen stehen immer da (auch
+        mit 0), die übrigen erscheinen, sobald etwas von ihnen offen ist.
         """
         with connection() as db:
             zeilen = db.execute(
                 "SELECT art, COUNT(*) c FROM reviews WHERE status='offen' GROUP BY art").fetchall()
         gezaehlt = {row["art"]: row["c"] for row in zeilen}
-        return {art: gezaehlt.get(art, 0) for art in COCKPIT_ARTEN}
+        return {art: gezaehlt.get(art, 0)
+                for art in (*COCKPIT_ARTEN, *sorted(ARTEN - set(COCKPIT_ARTEN)))}

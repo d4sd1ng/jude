@@ -119,6 +119,7 @@ async def _task_scheduler() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    team.laufende_bereinigen()
     dwd_radar.warmup()
     task = asyncio.create_task(_scheduler()) if ict.scheduler_config()["enabled"] else None
     task_loop = asyncio.create_task(_task_scheduler())
@@ -186,8 +187,7 @@ def index():
 
 @app.get("/api/status")
 def status():
-    from services import kontingent
-    return {"router": agent.router.status(), "groq": kontingent.stand(),
+    return {"router": agent.router.status(),
             "mail": mail.account_status(), "ict": ict.stack_status(probe=False),
             "home_assistant_configured": bool(ha.url and ha.token), "news_configured": bool(os.getenv("NEWS_API_KEY")),
             "home_actions": ha.action_status(), "fake_checker": "ready", "scraper": "public_http_only",
@@ -278,7 +278,8 @@ def voice_events(since: int = 0):
 
 @app.post("/api/voice/start")
 def voice_start():
-    return voice.start()
+    # Knopf im GUI = bewusste Aktivierung, kein zusaetzliches Wachwort noetig.
+    return voice.start(wachwort_pflicht=False)
 
 
 @app.post("/api/voice/stop")
@@ -390,6 +391,13 @@ def agents_delete(name: str):
 @app.post("/api/agents/{name}/run")
 async def agents_run(name: str, payload: dict):
     return await asyncio.to_thread(team.run, name, str(payload.get("task", "")))
+
+
+@app.get("/api/agents/aktiv")
+def agents_aktiv():
+    """Wer gerade arbeitet, wer nicht, und wann zuletzt – für die Live-Anzeige
+    im Schreibtisch."""
+    return team.status_uebersicht()
 
 
 @app.get("/api/images")
@@ -575,6 +583,10 @@ def notification_list(unread_only: bool = True): return notifications.list(unrea
 def notification_read(notification_id: str): return notifications.mark_read(notification_id)
 
 
+@app.post("/api/notifications/read_all")
+def notification_read_all(): return notifications.mark_all_read()
+
+
 @app.post("/api/ict/train/{symbol}")
 async def ict_train(symbol: str):
     return await asyncio.to_thread(ict.train_live, symbol.upper())
@@ -725,7 +737,22 @@ def review_decide(review_id: str, entscheidung: str, payload: dict | None = None
         raise HTTPException(400, "Für eine Revision wird eine Anmerkung benötigt")
     try:
         if entscheidung == "abnehmen":
-            return reviews.abnehmen(review_id, anmerkung)
+            ergebnis = reviews.abnehmen(review_id, anmerkung)
+            # Bisher hielt das Team nur fest, was schiefging – nie, was gut war.
+            # Tino soll dafuer nichts extra tippen muessen: eine Abnahme ohne
+            # jede Revision ist selbst schon das Signal – automatisch erkannt
+            # aus dem Revisionsverlauf, nicht aus einem getippten Lob.
+            if int(ergebnis.get("runde") or 1) <= 1:
+                with suppress(Exception):
+                    team.lob_merken(
+                        ergebnis["agent"],
+                        f"„{ergebnis.get('titel', '')}“ ({ergebnis.get('art', '')}) "
+                        "im ersten Anlauf ohne Revision abgenommen.",
+                        quelle="automatisch")
+            if anmerkung:
+                with suppress(Exception):
+                    team.lob_merken(ergebnis["agent"], anmerkung, quelle="Tino")
+            return ergebnis
         ergebnis = reviews.revision(review_id, anmerkung)
     except KeyError:
         raise HTTPException(404, "Unbekannte Vorlage")

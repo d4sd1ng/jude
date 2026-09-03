@@ -30,29 +30,49 @@ class SubAgentService:
     #: Die Mitarbeiter fuehren Werkzeugketten aus – dafuer zaehlt nicht Groesse,
     #: sondern ob das Modell einen Werkzeugaufruf tatsaechlich absetzt. Gemessen
     #: ueber 13 Laeufe: qwen3:8b 10 von 10 mit echtem Aufruf (Median 115 s),
-    #: Groq 0 von 2 – es schreibt den Aufruf als Text hin. Deshalb ist die Basis
-    #: lokal; Groq bleibt fuer alles OHNE Werkzeuge erste Wahl (siehe
-    #: Judes Chefpruefung, den Redakteur und die Tags in ``config/models.yaml``).
+    #: das damalige Groq-Modell 0 von 2 – es schrieb den Aufruf als Text hin.
+    #: Deshalb ist die Basis lokal; fuer alles OHNE Werkzeuge zaehlt Sprache,
+    #: dafuer laeuft ``TEXT_MODELL`` (siehe Judes Chefpruefung und den
+    #: Redakteur sowie die Tags in ``config/models.yaml``).
     #: Judes eigenes Chat-Modell bleibt davon unberuehrt (dolphin3).
-    # Seit 15.08.2026: Cloud-Haiku statt lokalem qwen – qwen brauchte auf der
-    # RX 580 (Modell nur zu 73 % in der GPU) 9+ Minuten pro Lauf, Haiku ist
-    # werkzeugfaehig, zuverlaessig und in Sekunden fertig. Kosten: siehe
-    # models.yaml. Lokal bleibt als Fallback in der Kette erhalten.
-    STANDARD_MODELL = "cloud_claude_haiku"
-    #: Womit Jude prueft und Heinz textet: 70B, 128k Kontext, kostenfrei, 4 s.
-    #: Dem 8B-Modell sprachlich deutlich ueberlegen – es darf nur keine
-    #: Werkzeuge anfassen, deshalb laeuft beides ohne.
-    TEXT_MODELL = "cloud_groq_llama"
+    # Seit 15.08.2026 lief das Team auf cloud_claude_haiku, weil qwen auf der
+    # RX 580 (Modell nur zu 73 % in der GPU) 9+ Minuten pro Lauf brauchte.
+    # Am 03.09.2026 auf Tinos Ansage abgeloest: dasselbe leistet
+    # cloud_ollama_gptoss (gpt-oss-120b, 131k Kontext, werkzeugfaehig
+    # gemessen) zum Preis von null statt ~1,5 Cent je Lauf. Gemessen am
+    # selben content-Auftrag: 40 s und 16 echte Werkzeugaufrufe. Lokal bleibt
+    # als Fallback in der Kette erhalten. Haiku ist in models.yaml weiter
+    # definiert, steht aber in keiner Kette mehr.
+    STANDARD_MODELL = "cloud_ollama_gptoss"
+    #: Womit Jude prueft und Heinz textet: gpt-oss-120b, 128k Kontext,
+    #: kostenfrei. Dem 8B-Modell sprachlich deutlich ueberlegen. Lief bis zum
+    #: 02.09.2026 ueber Groq – dessen freie Stufe laesst aber nur 8000 Token pro
+    #: Minute zu, weshalb dort jede Anfrage in HTTP 413 lief. Ollama Cloud
+    #: liefert dasselbe Modell ohne diese Grenze.
+    TEXT_MODELL = "cloud_ollama_gptoss"
     #: Der Redakteur. Schreibt alle Texte, fasst selbst nichts an.
     REDAKTEUR = "redakteur"
     #: Wer ihn direkt beauftragen darf. Fuer Text braucht es keinen Umweg ueber
     #: Jude – er prueft ohnehin, was am Ende fertig vorgelegt wird. Bernd traegt
     #: nur Adressen ein, Heike macht Bilder, Joana schreibt Code.
     TEXTER = {"social", "content", "sequencer", "scraper", "leadmanager"}
-    #: Wer Kollegen von sich aus ansprechen darf. Bewusst eng: Zuruf ist
-    #: nuetzlich, wenn er selten ist, und Laerm, wenn ihn jeder darf.
-    HINWEISGEBER = {"beobachter", "scraper"}
-    TOOL_SCHRITTE = 16       # suchen, lesen, pruefen, ablegen, notieren
+    #: Das Werkzeug, das die eigene Rolle als Quelle vorschreibt (aus ihrem
+    #: QUELLE-Abschnitt) – Pflicht, bevor "nichts zu tun" als erledigt zaehlt.
+    #: Gemessen 02.09.2026: eine neutrale Auftragsformulierung allein reichte
+    #: nicht – content meldete "nichts zu tun", ohne notion_query je
+    #: aufzurufen, obwohl 78 unbearbeitete Eintraege in 'content_stuecke'
+    #: lagen. Erzwungen wird hier die Pruefung selbst, nicht ihr Ergebnis.
+    QUELLEN_PFLICHT = {
+        "outreach": "notion_query", "beobachter": "news_search",
+        "projektleitung": "notion_query", "scraper": "news_search",
+        "content": "notion_query", "social": "notion_query",
+        "sequencer": "notion_query", "analyst": "notion_query",
+        "leadmanager": "notion_query",
+    }
+    # 16 war zu knapp: allein die 8 VERBINDLICHEN QUELLEN (project_files/*.md)
+    # kosten schon 8 Schritte, bevor die eigentliche Arbeit beginnt – gemessen
+    # 02.09.2026, mehrere Laeufe liefen deshalb ins Limit statt zur echten Aufgabe.
+    TOOL_SCHRITTE = 26       # lesen (8x Pflichtquellen), suchen, pruefen, ablegen, notieren
     MAX_NOTES = 500          # Obergrenze je Agent
     PROMPT_NOTES = 40        # wie viele davon in den Systemprompt wandern
     MAX_LEHREN = 40          # Beanstandungen je Mitarbeiter
@@ -240,6 +260,48 @@ class SubAgentService:
         pfad.unlink(missing_ok=True)
         return {"agent": name, "geloescht": weg}
 
+    def _lob_pfad(self, name: str) -> Path:
+        return DATA_DIR / "sub_agent_lob" / f"{self._key(name)}.json"
+
+    def lob(self, name: str) -> list[dict]:
+        """Was an diesem Mitarbeiter schon einmal gelobt wurde."""
+        try:
+            return json.loads(self._lob_pfad(name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+
+    def lob_merken(self, name: str, anerkennung: str, quelle: str = "Jude") -> dict:
+        """Das Gegenstück zu ``lehre_merken``: bisher hielt das Team nur fest,
+        was schiefging, nie was gut war – ein Mitarbeiter, der etwas richtig
+        gemacht hat, bekam das nie bestaetigt und wusste beim naechsten Lauf
+        nicht, woran er anknuepfen soll."""
+        anerkennung = str(anerkennung).strip()
+        if len(anerkennung) < 8:
+            return {"gemerkt": False}
+        kern = self._kern(anerkennung)
+        eintraege = self.lob(name)
+        for eintrag in eintraege:
+            if eintrag.get("kern") == kern:
+                eintrag["anzahl"] = int(eintrag.get("anzahl", 1)) + 1
+                eintrag["zuletzt"] = datetime.now(timezone.utc).isoformat()
+                break
+        else:
+            eintraege.append({"kern": kern, "text": anerkennung[:400], "quelle": quelle,
+                              "anzahl": 1,
+                              "zuletzt": datetime.now(timezone.utc).isoformat()})
+        eintraege.sort(key=lambda e: (-int(e.get("anzahl", 1)), e.get("zuletzt", "")))
+        eintraege = eintraege[:self.MAX_LEHREN]
+        pfad = self._lob_pfad(name)
+        pfad.parent.mkdir(parents=True, exist_ok=True)
+        pfad.write_text(json.dumps(eintraege, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"gemerkt": True, "lob_gesamt": len(eintraege)}
+
+    def forget_lob(self, name: str) -> dict:
+        pfad = self._lob_pfad(name)
+        weg = len(self.lob(name))
+        pfad.unlink(missing_ok=True)
+        return {"agent": name, "geloescht": weg}
+
     def _hinweis_tool(self, spec: dict):
         """Einen Kollegen direkt auf etwas hinweisen.
 
@@ -289,9 +351,9 @@ class SubAgentService:
         Getextet und orchestriert wird von verschiedenen Modellen, weil kein
         verfuegbares beides gut kann: qwen3:8b setzt Werkzeugaufrufe zuverlaessig
         ab (gemessen 10 von 10), schreibt aber merklich schwaecher als ein 70B;
-        Groqs llama-3.3 schreibt gut, bekommt aber keinen Werkzeugaufruf
-        zustande (0 von 2). Heinz laeuft deshalb auf der 70B-Stufe und hat gar
-        keine Werkzeuge – genau der Pfad, auf dem Groq nie gescheitert ist.
+        das damalige Textmodell schrieb gut, bekam aber keinen Werkzeugaufruf
+        zustande (0 von 2). Heinz laeuft deshalb auf der grossen Stufe und hat
+        gar keine Werkzeuge – genau der Pfad, auf dem sie nie gescheitert ist.
 
         Der kurze Draht ist Absicht: Text ist keine Entscheidung, sondern
         Zuarbeit. Geprueft wird am Ende ohnehin – aber von Jude, an dem fertigen
@@ -428,13 +490,61 @@ class SubAgentService:
                 "required": ["note"]},
         )
 
+    def _bericht_tool(self, spec: dict):
+        """Tino/Jude direkt melden – anders als remember_finding (eigenes stilles
+        Gedächtnis) landet das sichtbar in den Meldungen. Vor allem gedacht für
+        den Fall 'nach echter Prüfung meiner Quelle gibt es heute nichts zu tun':
+        eine stille Notiz reicht dafür nicht, das muss oben ankommen."""
+        from core.tool_registry import Tool
+        wer = spec.get("person") or spec["name"]
+
+        def melden(nachricht: str) -> dict:
+            nachricht = str(nachricht).strip()
+            if len(nachricht) < 10:
+                raise ValueError("Die Meldung ist zu duenn – Grund und Kontext nennen.")
+            from services.notifications import NotificationService
+            NotificationService.create("mitarbeiter", f"{wer} ({spec['name']})", nachricht)
+            return {"gemeldet": True, "hinweis": "Steht in den Meldungen für Tino."}
+
+        return Tool(
+            name="report_to_tino",
+            description=("Tino (und Jude) direkt eine sichtbare Meldung schicken – z. B. wenn "
+                         "nach echter Prüfung deiner Quelle heute nichts zu tun war, oder ein "
+                         "Ergebnis, das Tino sehen soll, aber keine Abnahme-Vorlage ist. "
+                         "Anders als remember_finding: das ist sichtbar, kein stilles Notieren."),
+            func=melden,
+            param_schema={"type": "object", "properties": {
+                "nachricht": {"type": "string", "description": "Was Tino wissen soll, mit Begründung."}},
+                "required": ["nachricht"]},
+        )
+
+    def _brauchbares_modell(self, *namen: str | None) -> str | None:
+        """Das erste vorgegebene Modell, das gerade wirklich geht – sonst None.
+
+        Zwoelf der dreizehn Mitarbeiter sind auf cloud_ollama_gptoss festgelegt.
+        Steht dessen Provider gerade ohne Guthaben da oder fehlt der Schluessel,
+        soll der Lauf nicht daran kleben bleiben. None heisst: der Router waehlt
+        selbst und arbeitet die Fallback-Kette ab. Sobald Tino auflaedt, greift
+        die Vorgabe von allein wieder – ohne dass jemand Konfiguration anfasst.
+        """
+        from core.model_router import provider_gesperrt
+        for name in namen:
+            spec = self.router.models.get(name) if name else None
+            if spec is None:
+                continue
+            if provider_gesperrt(spec.provider) or not self.router._provider_enabled(spec.provider):
+                logger.info("Modell %s gerade nicht verfuegbar – naechste Wahl.", name)
+                continue
+            return name
+        return None
+
     def _build_agent(self, spec: dict):
         from core.agent import Agent
         from core.tool_registry import ToolRegistry
         sub = ToolRegistry()
         sub.set_confirmations(self.registry.confirmations)
         sub.agent_name = spec["name"]
-        modell = spec.get("model") or self.STANDARD_MODELL
+        modell = self._brauchbares_modell(spec.get("model") or self.STANDARD_MODELL)
         # Ein Mitarbeiter, dessen Modell keine Werkzeuge bedienen kann, bekommt
         # auch keine. Sonst entsteht genau der Schaden, der Mike lahmgelegt hat:
         # das Modell schreibt den Aufruf als Fliesstext hin, nichts wird abgelegt
@@ -448,10 +558,10 @@ class SubAgentService:
                     sub.register(tool)
             sub.register(self._memory_tool(spec["name"]))
             sub.register(self._review_tool(spec))
+            sub.register(self._bericht_tool(spec))
+            sub.register(self._hinweis_tool(spec))
             if spec["name"] in self.TEXTER:
                 sub.register(self._text_tool(spec))
-            if spec["name"] in self.HINWEISGEBER:
-                sub.register(self._hinweis_tool(spec))
         person, alter = spec.get("person"), spec.get("alter")
         wer = f"{person} ({alter})" if person and alter else (person or spec["name"])
         vorstellung = (f"Du heißt {person} und bist {alter} Jahre alt. " if person and alter
@@ -473,7 +583,13 @@ class SubAgentService:
                   f"E-Mail, Newsletter, Sequenz, Dokument, Recherche-Ergebnis, Grafik), "
                   f"legst du am Ende deines Laufs mit submit_for_review vor – auch wenn es "
                   f"schon in Notion steht; nenne dann die Notion-URL als quelle. Interne "
-                  f"Zuarbeit (Notizen, Hinweise an Kollegen) braucht keine Vorlage.")
+                  f"Zuarbeit (Notizen, Hinweise an Kollegen) braucht keine Vorlage. "
+                  f"KEIN AUFTRAG HEUTE: Erst nachdem du deine Rolle wirklich geprüft hast "
+                  f"(die dort genannte Quelle abgefragt, nicht nur deine offenen Aufträge "
+                  f"angeschaut) und dabei nichts gefunden hast, meldest du das – nicht nur "
+                  f"mit remember_finding. Melde es zusätzlich mit inform_colleague an "
+                  f"'projektleitung' (außer du bist selbst projektleitung) UND mit "
+                  f"report_to_tino an Tino. Beides ist Pflicht, keine Option.")
         prompt += f"\n\n{BRAND_BRIEF}"
         # Offene Aufträge: ohne diesen Block wusste niemand, dass etwas
         # bestellt war – 21 Läufe, 1 Vorlage, die Donnerstag-Bestellung
@@ -531,6 +647,14 @@ class SubAgentService:
                 for e in gelernt)
             prompt += ("\n\nDAS WURDE DIR SCHON BEANSTANDET – mach es nicht wieder:\n"
                        + zeilen)
+        gelobt = self.lob(spec["name"])[:self.PROMPT_LEHREN]
+        if gelobt:
+            zeilen = "\n".join(
+                f"- {e['text']}" + (f"  (schon {e['anzahl']}x bestaetigt)"
+                                    if int(e.get("anzahl", 1)) > 1 else "")
+                for e in gelobt)
+            prompt += ("\n\nDAS HAST DU GUT GEMACHT – daran anknuepfen:\n"
+                       + zeilen)
         notes = self.notes(spec["name"])
         if notes:
             recent = "\n".join(f"- {item['note']}" for item in notes[-self.PROMPT_NOTES:])
@@ -565,6 +689,8 @@ class SubAgentService:
                 fehlschlaege.append(str(ergebnis).strip()[:300])
             return ergebnis
         agent.tools.execute = mitschreiben
+        ergebnis_id = uuid.uuid4().hex[:12]
+        self._lauf_beginnen(ergebnis_id, spec, task)
         begonnen = time.monotonic()
         vorher = self.router_verbrauch()
         try:
@@ -575,11 +701,15 @@ class SubAgentService:
         if status != "fehlgeschlagen":
             status, blockers = self._bewerten(werkzeuge, fehlschlaege,
                                               hat_werkzeuge=bool(agent.tools.tools))
+        pflicht = self.QUELLEN_PFLICHT.get(spec["name"])
+        if status == "abgeschlossen" and pflicht and pflicht not in werkzeuge:
+            status = "teilweise"
+            blockers = blockers + [f"Pflicht-Quelle nicht abgefragt: '{pflicht}' fehlt in den "
+                                   f"Werkzeugaufrufen – 'nichts zu tun' zaehlt nur nach echter Pruefung."]
         # Ergebnisformat nach dem Adapter-Vertrag der Agenten-Standards:
         # agent_id, task_id, status, output, blockers und token_usage sind Pflicht.
         nachher = self.router_verbrauch()
         dauer = int((time.monotonic() - begonnen) * 1000)
-        ergebnis_id = uuid.uuid4().hex[:12]
         self._protokollieren(ergebnis_id, spec, task, status, answer, blockers,
                              agent.last_model, nachher, vorher, dauer, werkzeuge)
         # Der Mitarbeiter ist hier fertig – die Chefpruefung haelt ihn nicht auf.
@@ -771,16 +901,16 @@ class SubAgentService:
                     "Doppelpunkt und kurze Begruendung. Beanstande NUR Verstoesse gegen "
                     "Massstab oder Auftrag, die du woertlich zitieren kannst."
                 )
-                # Groq ist erste Wahl; ist das Kontingent knapp, direkt zu Haiku
-                # statt in die allgemeine Kette – die beginnt lokal, und qwen
-                # kostete hier gemessen 300 s Timeout, bevor irgendwas passierte.
-                pruefmodell = self.TEXT_MODELL
-                try:
-                    from services import kontingent
-                    if not kontingent.verfuegbar(2000):
-                        pruefmodell = "cloud_claude_haiku"
-                except Exception:
-                    pass
+                # Nicht in die allgemeine Kette fallen lassen: die beginnt lokal,
+                # und qwen kostete hier gemessen 300 s Timeout, bevor ueberhaupt
+                # etwas passierte. Also der Reihe nach das erste Modell, dessen
+                # Provider gerade wirklich antwortet.
+                # Zweite Wahl bewusst bei einem ANDEREN Anbieter: faellt Ollama
+                # Cloud als Provider aus, ist damit auch jedes Geschwistermodell
+                # gesperrt. Hermes-70B kann Analyse und kostet Bruchteile eines
+                # Cents. (Bis 03.09.2026 stand hier Haiku.)
+                pruefmodell = self._brauchbares_modell(
+                    self.TEXT_MODELL, "cloud_openrouter_hermes")
                 antwort = self.router.call_with_fallback(
                     [{"role": "user", "content": frage}], force_model=pruefmodell)
                 roh = str(antwort.get("content", "")).strip()
@@ -841,23 +971,78 @@ class SubAgentService:
                 entschieden.append({"id": vorlage["id"], "urteil": "ungeprueft"})
         return entschieden
 
-    def _protokollieren(self, lauf_id, spec, task, status, answer, blockers,
-                        modell, nachher, vorher, dauer, werkzeuge) -> None:
-        """Jeden Lauf festhalten – Nachweis, Fehlersuche und spaeter die
-        Grundlage fuer das Training des Teams. Ein Protokollfehler darf den
-        Lauf selbst nie scheitern lassen."""
+    def _lauf_beginnen(self, lauf_id, spec, task) -> None:
+        """Sofort beim Start eine Zeile anlegen (status='laufend') – sonst
+        taucht ein laufender Auftrag nirgends auf, bevor er fertig ist, und
+        es ist von aussen nicht zu sehen, ob gerade jemand arbeitet."""
         try:
             from services.database import connection
             with connection() as db:
                 db.execute(
-                    "INSERT INTO agent_runs(id,created_at,agent,person,task,status,answer,blockers,"
-                    "model,input_tokens,output_tokens,cost_usd,duration_ms,tool_calls) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO agent_runs(id,created_at,agent,person,task,status) "
+                    "VALUES(?,?,?,?,?,?)",
                     (lauf_id, datetime.now(timezone.utc).isoformat(), spec["name"],
-                     spec.get("person"), task[:4000], status, (answer or "")[:8000],
-                     " | ".join(blockers)[:2000], modell,
+                     spec.get("person"), task[:4000], "laufend"))
+        except Exception as exc:
+            logger.warning("Laufstart nicht protokolliert: %s", exc)
+
+    def laufende_bereinigen(self) -> int:
+        """Beim Start aufräumen: ein 'laufend' aus einem früheren Prozess kann
+        nur ein Geist sein – der Prozess, der ihn hätte fertigstellen können,
+        ist weg. Ohne das zeigt die Live-Anzeige für immer 'aktiv', obwohl
+        seit einem Neustart niemand mehr daran arbeitet."""
+        from services.database import connection
+        with connection() as db:
+            cur = db.execute(
+                "UPDATE agent_runs SET status='unterbrochen',"
+                " blockers='Prozess neu gestartet, Lauf verwaist' WHERE status='laufend'")
+            return cur.rowcount
+
+    def status_uebersicht(self) -> list[dict]:
+        """Für jeden Mitarbeiter: arbeitet er gerade, oder wann/wie war sein
+        letzter Lauf – nicht nur eine Liste, die meistens leer ist, weil
+        gerade niemand aktiv läuft. 'Niemand arbeitet gerade' ist etwas
+        anderes als 'hier steht nichts', und beides muss sich unterscheiden."""
+        from services.database import connection
+        with connection() as db:
+            aktiv = {r["agent"]: dict(r) for r in db.execute(
+                "SELECT agent,created_at,task FROM agent_runs "
+                "WHERE status='laufend' ORDER BY created_at").fetchall()}
+            letzte: dict[str, dict] = {}
+            for r in db.execute(
+                    "SELECT agent,status,created_at FROM agent_runs "
+                    "WHERE status!='laufend' ORDER BY created_at DESC").fetchall():
+                letzte.setdefault(r["agent"], dict(r))
+        ergebnis = []
+        for spec in self.list():
+            name = spec["name"]
+            eintrag = {"agent": name, "person": spec.get("person")}
+            if name in aktiv:
+                eintrag.update(status="aktiv", seit=aktiv[name]["created_at"], task=aktiv[name]["task"])
+            elif name in letzte:
+                eintrag.update(status="idle", letzter_status=letzte[name]["status"],
+                                letzter_lauf_am=letzte[name]["created_at"])
+            else:
+                eintrag["status"] = "noch_nie"
+            ergebnis.append(eintrag)
+        return ergebnis
+
+    def _protokollieren(self, lauf_id, spec, task, status, answer, blockers,
+                        modell, nachher, vorher, dauer, werkzeuge) -> None:
+        """Die beim Start angelegte Zeile mit dem Ergebnis abschliessen –
+        Nachweis, Fehlersuche und spaeter die Grundlage fuer das Training des
+        Teams. Ein Protokollfehler darf den Lauf selbst nie scheitern lassen."""
+        try:
+            from services.database import connection
+            with connection() as db:
+                db.execute(
+                    "UPDATE agent_runs SET status=?,answer=?,blockers=?,model=?,"
+                    "input_tokens=?,output_tokens=?,cost_usd=?,duration_ms=?,tool_calls=? "
+                    "WHERE id=?",
+                    (status, (answer or "")[:8000], " | ".join(blockers)[:2000], modell,
                      nachher["input"] - vorher["input"], nachher["output"] - vorher["output"],
-                     round(nachher["cost"] - vorher["cost"], 6), dauer, ",".join(werkzeuge)[:1000]))
+                     round(nachher["cost"] - vorher["cost"], 6), dauer, ",".join(werkzeuge)[:1000],
+                     lauf_id))
         except Exception as exc:
             logger.warning("Agentenlauf nicht protokolliert: %s", exc)
 

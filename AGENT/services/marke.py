@@ -47,7 +47,8 @@ Logo: austausch/an-team/vorlagen/nurovelle/nurovelle_logo_gold.png.
 Wortmarke: austausch/an-team/vorlagen/nurovelle/Nurovelle_schrift_gold.png.
 Freigegebene Referenzen: launchpost.png, Potentialanalyse_post.png, karussell_5_wege.zip und Karrussell_7_Prozesse,.zip in diesem Ordner. ZIP-Dateien vor Verwendung vollständig prüfen und nicht als einzelne ungeprüfte Bilder interpretieren.
 Weitere Logos, Icons und Karten: ausschließlich freigegebene Dateien aus diesem Vorlagenordner und data/marke/assets/ verwenden. Keine Ersatzlogos, generischen KI-Symbole oder erfundenen Icons.
-Dokumente und Grafiken: Wortmarke Nurovelle und die Tagline sichtbar nach freigegebener Vorlage einsetzen; Farben, Verläufe, Karten und Icons vor der Abgabe prüfen.
+CTA: Haupt-CTA ist ausschließlich "Kostenlose KI-Potenzialanalyse" mit Link nurovelle.de/analyse.html – wortgleich verwenden, nicht umformulieren. Sekundär-CTAs (z. B. KI-Quick-Start) nur wortgleich aus austausch/an-team/09_monetarisierung.md übernehmen, sonst weglassen. Keine neuen Angebote, Rabatte, Buttons oder CTA-Texte erfinden.
+Dokumente und Grafiken: Wortmarke Nurovelle, die Tagline und die freigegebene CTA sichtbar nach freigegebener Vorlage einsetzen; Farben, Verläufe, Karten, Icons und CTA vor der Abgabe prüfen.
 Nie verwenden: Blau als Markenfarbe, alte Marken wie Autonova oder Politara, beliebige Stock-/Roboteroptik oder nicht belegte Logos."""
 
 #: Gemeinsame Grundlage: Verlauf, Goldkante, Schriftimport.

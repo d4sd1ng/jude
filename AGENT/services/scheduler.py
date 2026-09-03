@@ -18,7 +18,7 @@ from services.notifications import NotificationService
 
 #: Werkzeuge, die lange laufen und im Hintergrund starten sollen, um den
 #: Scheduler-Tick nicht zu blockieren (und damit chat_lock in web/app.py zu halten).
-HINTERGRUND_TOOLS = {"auftragswaechter", "delegate_to_agent", "auftrag_erteilen"}
+HINTERGRUND_TOOLS = {"auftragswaechter", "delegate_to_agent", "auftrag_erteilen", "team_tagesrunde"}
 
 
 class SchedulerService:
@@ -56,9 +56,19 @@ class SchedulerService:
             raise ValueError("Für 'prompt' wird ein Text benötigt.")
         if action_type == "tool" and not tool:
             raise ValueError("Für 'tool' wird ein Werkzeugname benötigt.")
+        vorbelegt_last_run = None
         if at:
             datetime.strptime(at, "%H:%M")  # validiert HH:MM
             schedule = {"type": "daily", "at": at}
+            # Ohne das feuert eine "taeglich um 07:00" Aufgabe SOFORT, wenn sie
+            # nach 07:00 angelegt wird: _is_due() sieht last_run=None und die
+            # Uhrzeit bereits ueberschritten und haelt das fuer faellig. Neun
+            # Mitarbeiter-Aufgaben liefen so alle gleichzeitig um 21:43 statt
+            # gestaffelt am naechsten Morgen (02.09.2026). Ist die Zielzeit
+            # heute schon vorbei, gilt der heutige Tag als erledigt.
+            jetzt = datetime.now(timezone.utc).astimezone()
+            if jetzt.strftime("%H:%M") >= at:
+                vorbelegt_last_run = jetzt.astimezone(timezone.utc).isoformat()
         elif every_minutes:
             schedule = {"type": "interval", "every_minutes": max(1, int(every_minutes))}
         else:
@@ -66,7 +76,7 @@ class SchedulerService:
         task = {"id": uuid.uuid4().hex[:12], "name": str(name).strip() or "Aufgabe",
                 "action_type": action_type, "schedule": schedule,
                 "prompt": prompt, "tool": tool, "tool_args": tool_args or {},
-                "speak": bool(speak), "enabled": True, "last_run": None,
+                "speak": bool(speak), "enabled": True, "last_run": vorbelegt_last_run,
                 "created_at": datetime.now(timezone.utc).isoformat()}
         with self._lock:
             data = self._load()

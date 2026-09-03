@@ -71,12 +71,19 @@ class VoiceController:
 
     # ------------------------------------------------------------------ API
 
-    def start(self) -> dict:
+    def start(self, wachwort_pflicht: bool = True) -> dict:
+        """``wachwort_pflicht=False``: manuell per Knopf gestartet – der Klick
+
+        IST die Aktivierung, ein zusätzliches Wachwort macht den Knopf sinnlos.
+        Beim automatischen Start (Login, kein bewusster Klick im Moment) bleibt
+        das Wachwort Pflicht – sonst hört Jude ab dem Hochfahren dauerhaft ohne
+        jede Aktivierungsgeste mit."""
         with self._guard:
             if self._thread and self._thread.is_alive():
                 return self.status()
             self._stop.clear()
             self._error = None
+            self._wachwort_pflicht = wachwort_pflicht
             self._thread = threading.Thread(target=self._run, name="jude-voice", daemon=True)
             self._thread.start()
         return self.status()
@@ -258,34 +265,44 @@ class VoiceController:
             record_until_silence,
             transcribe,
         )
-        try:
-            listener = WakeWordListener()
-        except Exception as exc:
-            self._error = str(exc)
-            self._emit("error", f"Sprachsteuerung konnte nicht starten: {exc}")
-            self._set_state("fehler")
-            return
+        pflicht = getattr(self, "_wachwort_pflicht", True)
+        listener = None
+        if pflicht:
+            try:
+                listener = WakeWordListener()
+            except Exception as exc:
+                self._error = str(exc)
+                self._emit("error", f"Sprachsteuerung konnte nicht starten: {exc}")
+                self._set_state("fehler")
+                return
+        erstlauf = True
         try:
             while not self._stop.is_set():
-                self._set_state("wartet")
-                try:
-                    # Begrenzte Wartefenster halten den Thread stoppbar; lang genug,
-                    # damit die Erkennungspuffer nicht mitten in der Phrase zurückgesetzt werden.
-                    listener.wait(timeout=10.0)
-                except TimeoutError:
-                    continue
-                except Exception as exc:
-                    self._error = str(exc)
-                    self._emit("error", f"Wake-Word-Fehler: {exc}")
-                    self._set_state("fehler")
-                    return
-                _ready_tone()
-                # Freundliche Begrüßung beim Aufwachen statt das Wake-Wort als Befehl zu deuten.
-                self._emit("answer", self.greeting)
-                self._set_state("spricht")
-                self._speak(self.greeting)
-                self._speak_briefing()
-                # Dauerhaft aktiver Zustand bis Schlafwort oder Stille.
+                if pflicht:
+                    self._set_state("wartet")
+                    try:
+                        # Begrenzte Wartefenster halten den Thread stoppbar; lang genug,
+                        # damit die Erkennungspuffer nicht mitten in der Phrase zurückgesetzt werden.
+                        listener.wait(timeout=10.0)
+                    except TimeoutError:
+                        continue
+                    except Exception as exc:
+                        self._error = str(exc)
+                        self._emit("error", f"Wake-Word-Fehler: {exc}")
+                        self._set_state("fehler")
+                        return
+                    _ready_tone()
+                if pflicht or erstlauf:
+                    # Freundliche Begrüßung beim Aufwachen statt das Wake-Wort als Befehl zu
+                    # deuten. Ohne Wachwort-Pflicht nur einmal beim Start, sonst wiederholt sich
+                    # die Begrüßung samt Briefing nach jeder stillen Pause.
+                    self._emit("answer", self.greeting)
+                    self._set_state("spricht")
+                    self._speak(self.greeting)
+                    self._speak_briefing()
+                    erstlauf = False
+                # Dauerhaft aktiver Zustand bis Schlafwort oder Stille (mit Wachwort-Pflicht)
+                # bzw. auf Dauer ohne (der Knopf-Klick war die Aktivierung).
                 while not self._stop.is_set():
                     self._set_state("aktiv")
                     try:
@@ -300,10 +317,16 @@ class VoiceController:
                         self._emit("heard", text)
                         self._emit("answer", self.farewell)
                         self._speak(self.farewell)
+                        if not pflicht:
+                            # Ohne Wachwort gibt es kein natuerliches "wieder einschlafen" –
+                            # der Aussenkreis wuerde sofort erneut aktiv zuhoeren. Das
+                            # Schlafwort muss hier also wirklich stoppen, nicht nur pausieren.
+                            self._stop.set()
                         break
                     if self._maybe_feedback(text):
                         continue
                     self._respond(text)
         finally:
-            listener.close()
+            if listener is not None:
+                listener.close()
             self._set_state("aus")

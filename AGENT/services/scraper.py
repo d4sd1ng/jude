@@ -109,7 +109,21 @@ class ScraperService:
                 raise ValueError("Seite überschreitet das Größenlimit von 4 MB.")
             chunks.append(chunk)
         soup = BeautifulSoup(b"".join(chunks), "html.parser")
-        for node in soup(["script", "style", "noscript", "svg", "nav", "footer"]):
+        # E-Mails zuerst sichern: mailto-Links UND sichtbarer Text, denn genau
+        # hier lagen sie meist – im Footer neben Impressum/Datenschutz. Der
+        # war bisher in der Decompose-Liste und wurde mitsamt der Adresse
+        # weggeworfen, bevor der Scraper sie je gesehen hat.
+        seen_mails: list[str] = []
+        for link in soup.find_all("a", href=True):
+            href = str(link["href"])
+            if href.lower().startswith("mailto:"):
+                address = unquote(href[7:].split("?", 1)[0]).strip()
+                if address and address not in seen_mails:
+                    seen_mails.append(address)
+        for match in re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", soup.get_text(" ")):
+            if match not in seen_mails:
+                seen_mails.append(match)
+        for node in soup(["script", "style", "noscript", "svg", "nav"]):
             node.decompose()
         article = soup.find("article") or soup.find("main") or soup.body or soup
         text = "\n".join(line.strip() for line in article.get_text("\n").splitlines() if line.strip())
@@ -123,7 +137,8 @@ class ScraperService:
         published = meta("article:published_time", "date", "datePublished")
         return {"url": final_url, "title": title, "description": meta("og:description", "description"),
                 "author": meta("author", "article:author"), "published_at": published,
-                "text": text[:120_000], "content_type": content_type.split(";")[0], "bytes": size}
+                "text": text[:120_000], "content_type": content_type.split(";")[0], "bytes": size,
+                "emails": seen_mails[:20]}
 
     def search(self, query: str, limit: int = 8) -> list[dict]:
         response = requests.get("https://html.duckduckgo.com/html/", params={"q": query}, headers={"User-Agent": USER_AGENT}, timeout=20)

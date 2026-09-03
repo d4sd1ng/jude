@@ -2,7 +2,7 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const pages=$$('section').map(s=>s.dataset.page); const nav=$('#nav');
 pages.forEach((p,i)=>{let b=document.createElement('button');b.textContent=p;b.onclick=()=>show(p);if(!i)b.className='active';nav.append(b)});
 function show(p){$$('section').forEach(s=>s.classList.toggle('active',s.dataset.page===p));[...nav.children].forEach(b=>b.classList.toggle('active',b.textContent===p));if(p==='Märkte')loadICT();if(p==='Werkzeuge')loadImages();
- if(p==='Schreibtisch'){loadReviews();loadConfirmations();loadNotifications();loadAuftraege()}
+ if(p==='Schreibtisch'){loadAktiv();loadReviews();loadConfirmations();loadNotifications();loadAuftraege()}
  if(p==='System'){loadSystem();loadMemory();loadRouting();loadAgents();loadDocs()}};show(pages[0]);
 function fmt(v){const d=new Date(typeof v==='number'?v*1000:v);return isNaN(d)?String(v??''):d.toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function toast(x){let t=$('#toast');t.textContent=x;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500)}
@@ -100,13 +100,36 @@ $('#loadConfirmations').onclick=loadConfirmations;
 function confirmHtmlBtn(payload){const vals=Object.values(payload||{});const html=vals.find(v=>typeof v==='string'&&(v.trimStart().toLowerCase().startsWith('<!doctype')||v.trimStart().startsWith('<html')||v.includes('<body')));if(!html)return '';const id='htmlprev_'+Math.random().toString(36).slice(2);window._htmlPreviews=window._htmlPreviews||{};window._htmlPreviews[id]=html;return ` <button onclick="openHtmlPreview('${id}')">Im Browser öffnen</button>`}
 window.openHtmlPreview=function(id){const html=window._htmlPreviews&&window._htmlPreviews[id];if(!html)return;const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener')};
 async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class=card><span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3><pre>${esc(JSON.stringify(c.payload,null,2))}</pre><div class=agentrun><button onclick="decide('${c.id}','approve')">Bestätigen</button> <button onclick="decide('${c.id}','reject')" style="background:#64748b">Ablehnen</button>${c.agent?`<input id="an_conf_${c.id}" placeholder="Anmerkung – nötig für eine Revision"><button class=ghost onclick="confirmRevision('${c.id}')">Zurück damit</button>`:''}${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>'}catch(e){toast(e.message)}}window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};window.confirmRevision=async id=>{const a=($('#an_conf_'+id)?.value||'').trim();if(!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter.');loadConfirmations()}catch(e){toast(e.message)}};
-$('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.map(n=>`<article class=card><span class=eyebrow>${esc(n.kind||'')}</span><h3>${esc(n.title||'')}</h3><p>${esc(n.message||'')}</p><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></article>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
+$('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){try{let d=await api('/api/agents/aktiv');$('#aktiv').innerHTML=d.map(a=>{
+  if(a.status==='aktiv'){let sek=Math.max(0,Math.round((Date.now()-new Date(a.seit))/1000));let dauer=sek<60?sek+'s':Math.round(sek/60)+'min';
+    return `<div class=row><span>🟢 <b>${esc(a.agent)}</b> ${esc(a.person||'')} · ${esc((a.task||'').slice(0,70))}</span><small>läuft seit ${dauer}</small></div>`}
+  if(a.status==='idle'){return `<div class=row><span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small>zuletzt ${esc(a.letzter_status)} · ${fmt(a.letzter_lauf_am)}</small></div>`}
+  return `<div class=row><span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small class=muted>noch nie gelaufen</small></div>`
+}).join('')||'<p class="muted small">Kein Team angelegt.</p>'}catch(e){toast(e.message)}}
+setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active'))loadAktiv()},8000);
+$('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.slice(0,5).map(n=>`<div class=row><span>${esc(n.message||'')}</span><span><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></span></div>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
 window.markNotificationRead=async id=>{try{await api(`/api/notifications/${id}/read`,{method:'POST'});loadNotifications()}catch(e){toast(e.message)}};
+$('#readAllNotifications')?.addEventListener('click',async()=>{try{let r=await api('/api/notifications/read_all',{method:'POST'});toast(`${r.markiert} als gelesen markiert.`);loadNotifications()}catch(e){toast(e.message)}});
 let reviewArt='';
-$$('.toggle.rev').forEach(b=>b.onclick=()=>{reviewArt=reviewArt===b.dataset.art?'':b.dataset.art;show('System');$('#reviews')?.scrollIntoView({behavior:'smooth'})});
+// Die Abnahme-Liste (#reviews) steht auf dem Schreibtisch, nicht im System-Tab.
+// Der Klick fuehrte frueher nach 'System' und scrollte zu einem Element, das
+// dort gar nicht liegt – die Liste blieb ungeladen und unsichtbar.
+function revToggle(art){reviewArt=reviewArt===art?'':art;show('Schreibtisch');
+  loadReviews().then(()=>$('#reviews')?.scrollIntoView({behavior:'smooth'}))}
+$$('.toggle.rev').forEach(b=>b.onclick=()=>revToggle(b.dataset.art));
 $('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews'+(reviewArt?'?art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.map(v=>`<article class="card agentcard"><span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`).join('')||`<p>${reviewArt?'Nichts zur Abnahme in dieser Art.':'Nichts zur Abnahme.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art)}catch(e){toast(e.message)}}
 /* Ampeln zeigen nur den aktuellen Zustand: grün wenn etwas anliegt, sonst rot. */
-function ampeln(nachArt){if(!nachArt)return;$$('.toggle.rev').forEach(b=>{let n=nachArt[b.dataset.art]||0;b.classList.toggle('hat',n>0);b.classList.toggle('on',b.dataset.art===reviewArt);b.title=n?`${n} ${b.dataset.art} zur Freigabe`:`Nichts ${b.dataset.art} zur Freigabe`})}
+const REV_FEST=['grafik','post','email','newsletter'];
+function ampeln(nachArt){if(!nachArt)return;
+  // Arten ohne feste Ampel (dokument, recherche, sequenz, sonstiges) bekommen
+  // eine, sobald etwas offen ist – sonst faellt genau die Art durch, die keine
+  // Lampe hat. Nichts Offenes darf ohne sichtbaren Weg dorthin bleiben.
+  const extra=$('#revExtra');
+  if(extra)extra.innerHTML=Object.entries(nachArt).filter(([a,n])=>n>0&&!REV_FEST.includes(a))
+    .map(([a,n])=>`<button class="toggle rev" data-art="${esc(a)}" title="${n} ${esc(a)} zur Freigabe"><span class="lamp"></span><small>${esc(a[0].toUpperCase()+a.slice(1))}</small></button>`).join('');
+  $$('.toggle.rev').forEach(b=>{b.onclick=()=>revToggle(b.dataset.art);
+    let n=nachArt[b.dataset.art]||0;b.classList.toggle('hat',n>0);b.classList.toggle('on',b.dataset.art===reviewArt);
+    b.title=n?`${n} ${b.dataset.art} zur Freigabe`:`Nichts ${b.dataset.art} zur Freigabe`})}
 /* ---- Vorschau-Overlay: Texte formatiert, Bilder inline, Seiten gerendert ---- */
 function mdRender(t){const z=esc(t||'');const zeilen=z.split('\n');let html='',inList=false,inTable=false;
  const flush=()=>{if(inList){html+='</ul>';inList=false}if(inTable){html+='</table>';inTable=false}};
@@ -169,7 +192,11 @@ async function loadAuftraege(){try{const d=await api('/api/auftraege');const off
 window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');loadReviews()}catch(e){toast(e.message)}};
 function tickReview(z){z=z||{};let n=z.offen||0,r=z.revision||0,p=z.pruefung||0,e=$('#tickReview');
  if(e)e.textContent=[n?`${n} offen`:'',p?`${p} bei Jude`:'',r?`${r} in Revision`:''].filter(Boolean).join(' · ')||'nichts offen'}
-async function pollReviews(){try{let d=await api('/api/reviews?limit=1');tickReview(d.zusammenfassung);ampeln(d.offen_nach_art)}catch(e){}finally{setTimeout(pollReviews,60000)}}pollReviews();
+async function pollReviews(){try{let d=await api('/api/reviews?limit=1');tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
+  // Liegt der Schreibtisch offen, auch die Liste nachziehen: sonst zeigt eine
+  // stundenlang offene Seite den Stand vom Seitenwechsel.
+  if(document.querySelector('section.active')?.dataset.page==='Schreibtisch')loadReviews()}
+  catch(e){}finally{setTimeout(pollReviews,60000)}}pollReviews();
 $('#loadMemory').onclick=loadMemory;async function loadMemory(){try{let d=await api('/api/memory'),s=d.stats;$('#memoryStats').textContent=`${s.active_memories} bestätigt · ${s.memory_candidates} Kandidaten · ${s.training_turns} lokal gespeicherte Trainingsturns · ${s.excluded_turns} ausgeschlossen`;$('#memoryItems').innerHTML=d.items.map(x=>`<article class=card><span class=eyebrow>${esc(x.status)} · ${esc(x.source)}</span><p>${esc(x.content)}</p><small>${x.occurrences}× erkannt · ${fmt(x.updated_at)}</small><div>${x.status==='candidate'?`<button onclick="approveMemory('${x.id}')">Übernehmen</button> `:''}<button onclick="forgetMemory('${x.id}')" style="background:#64748b">Vergessen</button></div></article>`).join('')||'<p>Noch keine Erinnerungen.</p>'}catch(e){toast(e.message)}}
 $('#memoryForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/memory',{method:'POST',body:JSON.stringify({content:$('#memoryContent').value})});$('#memoryContent').value='';loadMemory()}catch(x){toast(x.message)}};window.approveMemory=async id=>{try{await api(`/api/memory/${id}/approve`,{method:'POST'});loadMemory()}catch(e){toast(e.message)}};window.forgetMemory=async id=>{try{await api(`/api/memory/${id}`,{method:'DELETE'});loadMemory()}catch(e){toast(e.message)}};
 $('#loadRouting').onclick=loadRouting;async function loadRouting(){try{let s=(await api('/api/status')).router,u=s.usage,t=s.routing_training;$('#routingStats').innerHTML=`<div class=stat><b>$${Number(s.budget_used_usd).toFixed(4)} / $${Number(s.budget_limit_usd).toFixed(2)}</b>Monatsbudget</div><div class=stat><b>${Number(u.input_tokens).toLocaleString('de-DE')}</b>Input-Tokens</div><div class=stat><b>${Number(u.output_tokens).toLocaleString('de-DE')}</b>Output-Tokens</div><div class=stat><b>${t.escalated}/${t.total}</b>Eskalationen</div>`;$('#routingUsage').innerHTML=s.usage_by_model.map(x=>`<div class=source><b>${esc(x.model)}</b> · ${x.calls} Aufrufe · $${Number(x.cost_usd).toFixed(5)}<br><small>${Number(x.input_tokens).toLocaleString('de-DE')} in · ${Number(x.output_tokens).toLocaleString('de-DE')} out · ${Number(x.cached_input_tokens).toLocaleString('de-DE')} Cache · Tarif ${esc(x.tariffs||'standard')}</small></div>`).join('')||'Noch kein Verbrauch.';$('#routingHistory').innerHTML=s.recent_routes.map(x=>`<div class=source><b>${esc(x.final_model||x.selected_model)}</b> · ${esc(x.task_type)} · Stufe ${x.complexity}<br><small>${x.escalated?'eskaliert':'lokal/erste Wahl'} · ${x.latency_ms} ms · ${x.user_feedback===1?'passt':x.user_feedback===-1?'unzureichend':'ohne Feedback'}</small></div>`).join('')||'Noch keine Entscheidungen.'}catch(e){toast(e.message)}}
@@ -225,9 +252,8 @@ async function pollTokens(){try{const s=await api('/api/status'),u=s.router.usag
   if(c&&c.context_length){const p=Math.min(100,c.input_tokens/c.context_length*100);
     const cls=p>=88?'hot':(p>=70?'warn':'');
     ctx=`<div class="row ctx ${cls}" title="${c.model}: ${c.input_tokens.toLocaleString('de-DE')} von ${c.context_length.toLocaleString('de-DE')} Token"><span>Kontext</span><b>${p.toFixed(0)}%</b><i class=ctxbar><i style="width:${p.toFixed(1)}%"></i></i></div>`}
-  let gq='';if(s.groq){const g=s.groq,p=g.anteil,cls=g.gesperrt?'hot':(p>=70?'warn':'');
-  const t=g.gesperrt?`gesperrt bis ${new Date(g.frei_ab).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`:`${Number(g.rest).toLocaleString('de-DE')} frei`;
-  gq=`<div class="row ctx ${cls}" title="Groq kostenfrei: ${Number(g.verbraucht).toLocaleString('de-DE')} von ${Number(g.limit).toLocaleString('de-DE')} Token heute, Reserve ${Number(g.reserve).toLocaleString('de-DE')}"><span>Groq</span><b>${t}</b><i class=ctxbar><i style="width:${Math.min(100,p)}%"></i></i></div>`}
+  // Groq-Anzeige am 02.09.2026 entfernt, zusammen mit dem Provider selbst.
+  const gq='';
   $('#hudTokens').innerHTML=`<div class=row><span>Input</span><b>${Number(u.input_tokens).toLocaleString('de-DE')}</b></div><div class=row><span>Output</span><b>${Number(u.output_tokens).toLocaleString('de-DE')}</b></div><div class=row><span>Budget</span><b>$${Number(s.router.budget_used_usd).toFixed(3)} / $${Number(s.router.budget_limit_usd).toFixed(0)}</b></div>`+ctx+gq
 }catch(e){}finally{setTimeout(pollTokens,15000)}}
 async function pollTicker(){if(toggles.market){try{const x=await api('/api/market/XAU%2FUSD?interval=1h&limit=2&refresh=true');const c=x.candles.at(-1),pr=x.candles.at(-2);if(c)$('#tickXau').innerHTML=`<span class="${!pr||c.close>=pr.close?'up':'down'}">${c.close.toFixed(2)}</span>`}catch(e){}
