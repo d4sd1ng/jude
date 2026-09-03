@@ -1,0 +1,499 @@
+.radarMap{position:relative;width:min(100%,520px);aspect-ratio:1;overflow:hidden;border-radius:10px;background:#dbe8ed}.radarMap img{position:absolute;inset:0;width:100%;height:100%;min-height:0}.radarMap .marker{position:absolute;left:50%;top:50%;transform:translate(-50%,-60%);z-index:2;color:#e63946;font-size:25px;text-shadow:0 1px 3px white}.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}summary{cursor:pointer;font-weight:700}
+textarea{width:100%;min-height:96px;resize:vertical;border:1px solid #bbc7d1;background:white;border-radius:8px;padding:11px 12px;color:var(--ink);font:inherit}.button{display:inline-block;border-radius:8px;padding:10px 16px;background:var(--blue);color:#fff;font-weight:750;text-decoration:none}.linkbutton{padding:0;background:transparent;color:var(--blue);text-align:left}
+:root{--ink:#14213d;--accent:#e76f51;--blue:#287b9e;--paper:#f5f1e8;--panel:#fffdf8;--muted:#64748b;--line:#dbe2e8;--ok:#28765b}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}header{height:86px;padding:16px clamp(20px,5vw,72px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}h1,h2,h3,p{margin-top:0}h1{font:700 28px Georgia,serif;margin:0}h2{font:700 clamp(28px,4vw,48px) Georgia,serif;margin:4px 0 10px}.eyebrow{font-size:11px;letter-spacing:.18em;color:var(--accent);font-weight:800}.badge{border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:#fff}nav{display:flex;gap:4px;overflow:auto;padding:10px clamp(16px,5vw,68px);position:sticky;top:0;background:rgba(245,241,232,.94);backdrop-filter:blur(12px);z-index:3;border-bottom:1px solid var(--line)}nav button{white-space:nowrap;background:transparent;color:var(--muted);padding:8px 13px}nav button.active{background:var(--ink);color:white}button{border:0;border-radius:8px;padding:10px 16px;background:var(--blue);color:#fff;font-weight:750;cursor:pointer}button:hover{filter:brightness(.94)}main{margin:0;padding:16px clamp(12px,1.6vw,26px) 24px}section{display:none}section.active{display:block}.hero,.sectionhead{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:24px}.hero{padding:44px;border-radius:18px;color:white;background:linear-gradient(125deg,#14213d,#214d68)}.hero p{color:#d9e7ef}.stats{display:grid;grid-template-columns:repeat(2,minmax(110px,1fr));gap:10px}.stat{padding:13px;background:#ffffff16;border:1px solid #ffffff30;border-radius:10px}.stat b{display:block;font-size:22px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 8px 30px #1f29370b;margin-bottom:18px}.controls,form{display:flex;gap:10px;flex-wrap:wrap}input,select{border:1px solid #bbc7d1;background:white;border-radius:8px;padding:11px 12px;color:var(--ink);min-width:130px}input{flex:1}.feed{min-height:100px;max-height:360px;overflow:auto}.message{padding:10px 12px;margin:8px 0;border-left:3px solid var(--blue);background:#edf6f9}.message.user{border-color:var(--accent)}.muted{color:var(--muted)}canvas{width:100%;display:block}.cards,.toolgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:12px;padding:18px}.card.setup{border-top-color:var(--ok)}.card.blocked{border-top-color:var(--accent)}.radar{display:grid;grid-template-columns:minmax(280px,520px) 1fr;gap:24px;align-items:center}.radar img{width:100%;min-height:300px;background:#dbe8ed;image-rendering:auto;border-radius:10px}pre{white-space:pre-wrap;max-height:360px;overflow:auto}.source{display:block;padding:8px 0;border-top:1px solid var(--line);word-break:break-word}#toast{position:fixed;right:20px;bottom:20px;max-width:420px;padding:13px 18px;background:var(--ink);color:white;border-radius:10px;opacity:0;transform:translateY(10px);transition:.2s;pointer-events:none}#toast.show{opacity:1;transform:none}@media(max-width:720px){header{height:72px}.hero,.sectionhead{align-items:stretch;flex-direction:column}.hero{padding:26px}.radar{grid-template-columns:1fr}.toolgrid,.cards{grid-template-columns:1fr}button,input,select{min-height:44px}main{padding-top:22px}}.headercontrols{align-items:center}
+.badge.on{border-color:var(--ok);color:var(--ok);font-weight:700;animation:voicepulse 2.2s ease-in-out infinite}
+@keyframes voicepulse{0%,100%{box-shadow:0 0 0 0 #28765b33}50%{box-shadow:0 0 0 6px #28765b00}}
+
+/* ============ Jude Theme: Schwarz / Grün / Orange / Off-White / Gold ============ */
+:root{--ink:#f2efe6;--paper:#0b0d0a;--panel:#13160f;--muted:#9aa38f;--line:#2a2f24;
+  --blue:#1f7a3d;--accent:#e8781e;--gold:#d4a017;--ok:#3fae5f;--green:#3fae5f}
+body{background:radial-gradient(1200px 700px at 60% -10%,#12251533,transparent),var(--paper)}
+header{background:linear-gradient(90deg,#0f2c18,#123a1e 55%,#0b0d0a);border-bottom:1px solid #1f4d2c}
+h1{color:var(--gold)}
+.badge{background:#0f130c;border-color:#31402a}
+nav{background:rgba(11,13,10,.92);border-bottom:1px solid var(--line)}
+nav button.active{background:var(--green);color:#08130b}
+input,select,textarea{background:#0f130c;border-color:#31402a;color:var(--ink)}
+.hero{background:linear-gradient(125deg,#0f2c18,#123a1e)}
+.message{background:#12251566;border-left-color:var(--green)}
+.message.user{border-left-color:var(--accent)}
+.stat{background:#ffffff0d;border-color:#ffffff1f}
+.card{border-top-color:var(--green)}
+.panel{box-shadow:0 8px 30px #00000066}
+#toast{background:#123a1e;border:1px solid var(--green)}
+.clock{text-align:center}.clock b{display:block;font:700 26px/1.1 Georgia,serif;color:var(--gold);letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.clock span{color:var(--muted);font-size:12px;letter-spacing:.14em;text-transform:uppercase}
+
+/* --------------------------------- Cockpit --------------------------------- */
+.cockpit{display:grid;grid-template-columns:290px minmax(320px,1fr) 380px;gap:16px;align-items:stretch}
+.hudpanel{margin-bottom:14px;padding:16px}
+.hudpanel h3{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+.hudweather b{font:700 34px Georgia,serif;color:var(--ink)}
+.hudweather .cond{color:var(--accent);font-weight:700}
+.hudweather .small,.small{color:var(--muted);font-size:12px}
+.hudradar{position:relative;aspect-ratio:1.25;overflow:hidden;border-radius:10px;background:#0f130c}
+.hudradar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(.9) brightness(.9)}
+.hudradar .marker{position:absolute;left:50%;top:50%;transform:translate(-50%,-60%);color:var(--accent);text-shadow:0 0 6px #000}
+.toggles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.toggle{display:flex;flex-direction:column;align-items:center;gap:2px;aspect-ratio:1;border-radius:50%;
+  background:#0f130c;border:2px solid #31402a;color:var(--muted);padding:6px;font-size:18px}
+.toggle small{font-size:10px;letter-spacing:.06em}
+.toggle.on{border-color:var(--green);color:var(--ink);box-shadow:0 0 14px #3fae5f55,inset 0 0 10px #3fae5f22}
+.toggle.on small{color:var(--green)}
+.hudtokens{display:grid;gap:6px;font-variant-numeric:tabular-nums}
+.hudtokens .row{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0}
+.hudtokens .row b{color:var(--gold)}
+/* Reaktor-Kern */
+.cockC{display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:14px;padding:8px 0}
+.core{position:relative;width:min(320px,60vw);aspect-ratio:1;display:grid;place-items:center}
+.core>div{position:absolute;inset:0;border-radius:50%}
+.core .c1{border:2px solid #3fae5f33;box-shadow:0 0 40px #3fae5f22 inset,0 0 60px #3fae5f14}
+.core .c2{inset:9%;border:3px dashed #3fae5f66;animation:spin 24s linear infinite}
+.core .c3{inset:20%;border:2px solid transparent;background:conic-gradient(from 0deg,#d4a01700 0 70%,#d4a017cc 85%,#d4a01700 100%) border-box;
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;padding:2px;animation:spin 6s linear infinite}
+.core .c4{inset:31%;border:2px solid #e8781e55;box-shadow:0 0 34px #3fae5f44 inset,0 0 44px #3fae5f33;animation:pulse 3.2s ease-in-out infinite}
+.corelabel{position:relative;text-align:center;z-index:1}
+.corelabel b{display:block;font:700 44px/1 Georgia,serif;color:var(--green);text-shadow:0 0 18px #3fae5f88}
+.corelabel small{color:var(--muted);letter-spacing:.16em}
+.corelabel span{display:block;margin-top:6px;font-size:12px;color:var(--gold)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 34px #3fae5f44 inset,0 0 44px #3fae5f33}50%{box-shadow:0 0 44px #3fae5f77 inset,0 0 70px #3fae5f55}}
+/* Rundinstrumente */
+.gaugerow{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}
+.gauge{position:relative;width:92px;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:50%;background:#0f130c}
+.gauge .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(var(--gc,#3fae5f) calc(var(--p,0)*1%),#232920 0)}
+.gauge .ring::after{content:"";position:absolute;inset:6px;border-radius:50%;background:#0f130c}
+.gauge b{position:relative;font-size:17px;color:var(--ink);font-variant-numeric:tabular-nums}
+.gauge small{position:relative;font-size:9.5px;color:var(--muted);letter-spacing:.06em}
+.gauge.warn .ring{--gc:var(--accent)}.gauge.hot .ring{--gc:#d43b3b}
+/* Ausgabespalte + Ticker */
+.cockR .output .feed{max-height:460px;min-height:320px}
+.ticker{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-top:16px;
+  background:linear-gradient(90deg,#0f2c18,#123a1e);border:1px solid #1f4d2c;border-radius:12px;padding:12px 16px}
+.tick{min-width:0}.tick div{color:var(--ink);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.tick .up{color:var(--green)}.tick .down{color:var(--accent)}
+@media(max-width:1100px){.cockpit{grid-template-columns:1fr}.ticker{grid-template-columns:1fr 1fr}.cockR .output .feed{min-height:200px}}
+
+/* Regenradar-Zeitleiste (Leaflet) */
+.radartimeline{margin-top:12px}
+#radarFrame{width:100%;accent-color:var(--green)}
+.leaflet-container{background:#0f130c}
+.radarpin{color:var(--accent);font-size:22px;text-shadow:0 0 6px #000;line-height:1}
+#radarMeta .fc{color:var(--accent);font-weight:700}
+#radarMeta .now{color:var(--green);font-weight:700}
+
+/* Team / Sub-Agenten */
+.skillgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;max-height:220px;overflow:auto;margin:8px 0}
+.skillgrid label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);background:#0f130c;border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer}
+.skillgrid input{flex:none;min-width:0}
+.agentcard .role{color:var(--muted);font-size:13px}
+.agentcard .skills{color:var(--gold);font-size:12px;word-break:break-word}
+.agentrun{display:flex;gap:8px;margin-top:8px}
+
+/* ------------------------- Cockpit über den ganzen Schirm ------------------ */
+/* Vier Spalten statt drei: die mittlere Spalte trug früher nur den Kern und
+   stand zu 80 % leer. Höhe an den Viewport gekoppelt, damit keine tote
+   Fläche unter dem Ticker bleibt. */
+.cockpit{grid-template-columns:minmax(260px,1fr) minmax(300px,1.1fr) minmax(340px,1.6fr) minmax(240px,1fr);
+  align-items:start;height:calc(100vh - 210px);min-height:520px}
+.cockL,.cockC,.cockR,.cockD{display:flex;flex-direction:column;gap:12px;height:100%;overflow:auto;padding-right:2px}
+.cockC{align-items:stretch}
+.cockR .output{flex:1;display:flex;flex-direction:column}
+.cockR .feed{flex:1;max-height:none}
+.hudpanel{margin-bottom:0}
+
+.hudmap{width:100%;height:190px;border-radius:10px;overflow:hidden;background:#0f130c}
+.radarbar{display:flex;align-items:center;gap:8px;margin-top:8px;overflow:hidden}
+.radarbar input[type=range]{flex:1;min-width:0;padding:0}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--green);padding:4px 10px;min-width:0}
+.radarpin{color:var(--accent);font-size:15px;text-shadow:0 0 6px #000}
+.radarbase{filter:grayscale(.5) brightness(.55) contrast(1.1)}
+
+.hudgrow,.hudmeals{display:grid;gap:5px;font-variant-numeric:tabular-nums}
+.hudgrow .row,.hudmeals .row{display:flex;justify-content:space-between;gap:10px;
+  border-bottom:1px solid var(--line);padding:3px 0}
+.hudgrow .row b,.hudmeals .row b{color:var(--gold)}
+.hudmeals details{border-top:1px solid var(--line);padding:5px 0}
+.hudmeals summary{font-weight:600;font-size:13px;cursor:pointer}
+.hudmeals summary .eyebrow{margin-right:6px}
+.factpanel #factResult{max-height:170px;overflow:auto}
+
+@media(max-width:1300px){.cockpit{grid-template-columns:1fr 1fr;height:auto}
+  .cockL,.cockC,.cockR,.cockD{height:auto;overflow:visible}}
+@media(max-width:720px){.cockpit{grid-template-columns:1fr}}
+.hudmeals .mealname{font:700 17px Georgia,serif;color:var(--ink);display:block}
+.hudmeals details p{margin:4px 0 0;white-space:pre-wrap}
+
+/* =========================== Cockpit als Kachelraster ======================= */
+/* Vier feste Spalten liessen jedes Panel auf Spaltenhoehe aufblasen – daher die
+   toten Flaechen. Die Spaltencontainer verschwinden per display:contents, alle
+   Panels werden direkte Rasterkinder und sind nur so hoch wie ihr Inhalt. */
+.cockpit{grid-template-columns:repeat(auto-fill,minmax(196px,1fr));grid-auto-rows:min-content;
+  gap:10px;height:auto;min-height:0;align-items:start}
+.cockL,.cockC,.cockR,.cockD{display:contents}
+.hudpanel{margin:0;padding:13px}
+.hudpanel h3{margin-bottom:8px;font-size:11px}
+
+/* Kacheln, die mehr Platz verdienen */
+.output{grid-column:span 3;grid-row:span 4;display:flex;flex-direction:column}
+.output .feed{flex:1;min-height:190px;max-height:none}
+.cockC>.core{grid-column:span 2;grid-row:span 2;width:100%;max-width:none;justify-self:stretch}
+.gaugerow{grid-column:span 2;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;align-content:start}
+.gaugerow.top{grid-column:span 4;grid-template-columns:repeat(4,1fr)}
+.factpanel,.hudmeals-tile{grid-column:span 2}
+
+/* Gauges im HUD-Stil: Teilstrichkranz aussen, Fuellbogen innen. */
+.gauge{position:relative;aspect-ratio:1;display:grid;place-items:center;padding:6px}
+.gauge .ring{position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(var(--green) calc(var(--p,0)*1%),#ffffff0d 0);
+  -webkit-mask:radial-gradient(circle,transparent 61%,#000 62%);mask:radial-gradient(circle,transparent 61%,#000 62%)}
+.gauge::before{content:"";position:absolute;inset:-3px;border-radius:50%;
+  background:repeating-conic-gradient(var(--line) 0 1.4deg,transparent 1.4deg 9deg);
+  -webkit-mask:radial-gradient(circle,transparent 72%,#000 73%,#000 79%,transparent 80%);
+  mask:radial-gradient(circle,transparent 72%,#000 73%,#000 79%,transparent 80%)}
+.gauge.warn .ring{background:conic-gradient(var(--gold) calc(var(--p,0)*1%),#ffffff0d 0)}
+.gauge.hot .ring{background:conic-gradient(var(--accent) calc(var(--p,0)*1%),#ffffff0d 0)}
+.gauge b{font:700 19px Georgia,serif;color:var(--ink);line-height:1}
+.gauge small{display:block;font-size:9px;letter-spacing:.09em;color:var(--muted);text-transform:uppercase}
+
+/* Kern: Teilstrichkranz statt leerem Ring. */
+.core{aspect-ratio:1;min-height:190px}
+.core .c1{background:repeating-conic-gradient(#3fae5f44 0 .8deg,transparent .8deg 6deg);
+  -webkit-mask:radial-gradient(circle,transparent 84%,#000 85%);mask:radial-gradient(circle,transparent 84%,#000 85%);border:0}
+.corelabel b{font:700 34px Georgia,serif;color:var(--green);display:block;line-height:1}
+.corelabel small{font-size:10px;letter-spacing:.22em;color:var(--muted)}
+.corelabel span{display:block;font-size:11px;color:var(--gold);letter-spacing:.1em}
+
+.ticker{margin-top:10px}
+@media(max-width:1300px){.cockpit{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+  .cockL,.cockC,.cockR,.cockD{display:contents}}
+
+/* ===================== HUD statt Dokument ===================== */
+/* Runde Ecken, Serifen-Ueberschriften und breite Polster liessen das Cockpit
+   wie ein Formular wirken. Kanten werden gekappt statt gerundet, Beschriftungen
+   laufen schmal und versal, Polster runter. */
+.hudpanel,.output,.factpanel{border-radius:0;clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px);
+  background:linear-gradient(180deg,#12180f,#0d110b);border:1px solid #2f4a33;box-shadow:none;padding:10px 12px}
+.hudpanel h3{font:700 10px/1.2 ui-monospace,"DejaVu Sans Mono",monospace;letter-spacing:.2em;
+  color:var(--green);text-transform:uppercase;margin:0 0 7px;padding-bottom:5px;border-bottom:1px solid #24361f}
+.hudpanel .small,.hudpanel .muted{font-size:11px}
+.hudweather b,.gauge b,.corelabel b,.hudmeals .mealname{font-family:ui-monospace,"DejaVu Sans Mono",monospace}
+
+/* Kopfzeile: Temperatur links, Uhr mittig, Token daneben. */
+header{height:auto;min-height:62px;padding:8px clamp(12px,1.6vw,26px);gap:18px}
+.headweather{display:flex;align-items:baseline;gap:8px}
+.headweather b{font-size:27px;color:var(--gold)}
+.headweather .small{font-size:10px;max-width:280px}
+.headtokens{grid-template-columns:repeat(3,auto);display:grid;gap:0 14px;font-size:11px}
+.headtokens .row{border:0;padding:0;gap:6px}
+
+/* Raster nach Vorgabe: Radar/Grow/Fake links, Essensplan daneben,
+   Schalter und Gauges in der Mitte, Ausgabe ganz rechts. */
+.cockpit{grid-template-columns:repeat(12,1fr);gap:8px}
+.cockL>.hudpanel:first-child{grid-column:1/4;grid-row:1}
+#hudGrow{min-height:74px}
+.cockL>.hudpanel:nth-child(2){grid-column:1/4;grid-row:2}
+.factpanel{grid-column:1/4;grid-row:3}
+.cockD>.hudpanel{grid-column:4/6;grid-row:1/4}
+.cockL>.hudpanel:nth-child(3){grid-column:6/9;grid-row:1}
+.gaugerow.top{grid-column:6/9;grid-row:2;grid-template-columns:repeat(4,1fr)}
+.cockC>.core{grid-column:6/8;grid-row:3;min-height:0}
+.gaugerow.bottom{grid-column:8/9;grid-row:3;grid-template-columns:1fr}
+.output{grid-column:9/13;grid-row:1/4}
+.hudmap{height:236px}
+.hudmeals{align-content:start}
+/* Essensplan und Ausgabe fuellen ihre Rasterzeilen; ohne align-self bleiben sie
+   auf Inhaltshoehe stehen, weil .cockpit auf align-items:start steht. */
+.cockD>.hudpanel,.output{align-self:stretch}
+/* Der Kern trieb Zeile 3 auf 305px und zog Essensplan/Ausgabe mit. Gedeckelt
+   richtet sich die Zeile nach den linken Karten. */
+.cockC>.core{max-height:200px;align-self:start}
+
+/* ==================== Farbregel + kompaktes Systemband ===================== */
+/* Kontrastmessung (WCAG): Off-White auf Schwarz 17.0, Gold auf Schwarz 8.2,
+   Text auf Gruen nur als Schwarz lesbar (6.9). Gruen traegt ab jetzt keine
+   Schrift mehr, sondern nur Boegen, Kanten und Aktivzustaende. */
+body{background:var(--paper)}                        /* Gruenschimmer raus */
+.gauge b,.corelabel b,.hudweather b{color:var(--ink)}
+.toggle.on{color:var(--ink)}.toggle.on small{color:var(--ink)}
+.ticker{background:#0d110b;border:1px solid #2f4a33;border-radius:0;
+  clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
+.ticker .tick div{color:var(--ink)}
+nav button.active{background:var(--green);color:#08130b}
+
+/* Systemband: Schalter und alle Gauges in EINER Reihe, deutlich kleiner. */
+.bandpanel{grid-column:6/10;grid-row:1}
+.output{grid-column:10/13}
+.cockD>.hudpanel{grid-column:4/6}
+.factpanel{grid-column:1/4;grid-row:3}
+.hudband{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;overflow-x:auto}
+.hudband .toggles{display:flex;gap:6px;flex:0 0 auto}
+.hudband .toggle{width:44px;height:44px;aspect-ratio:auto;font-size:13px;padding:2px;border-width:1px}
+.hudband .toggle small{font-size:7px}
+.hudband .gauge{flex:0 0 60px;width:60px;aspect-ratio:1;padding:3px}
+.hudband .gauge b{font-size:13px}
+.hudband .gauge small{font-size:7px;letter-spacing:.05em}
+.hudband .gauge::before{inset:-2px}
+/* Kontextbalken in der Titelleiste */
+.headtokens{grid-template-columns:repeat(4,auto)}
+.headtokens .ctx{display:flex;align-items:center;gap:6px}
+.ctxbar{display:inline-block;width:56px;height:5px;background:#ffffff14;overflow:hidden}
+.ctxbar i{display:block;height:100%;background:var(--green)}
+.ctx.warn .ctxbar i{background:var(--gold)}.ctx.hot .ctxbar i{background:var(--accent)}
+.ctx.warn b{color:var(--gold)}.ctx.hot b{color:var(--accent)}
+/* Band passgenau: 4 Schalter + 7 Gauges muessen ohne Scrollen in die Zeile. */
+.hudband{gap:6px}
+.hudband .toggles{gap:4px}
+.hudband .toggle{width:40px;height:40px;font-size:12px}
+.hudband .gauge{flex:0 0 52px;width:52px}
+.hudband .gauge b{font-size:12px}
+.hudband{gap:5px}.hudband .toggles{gap:3px}
+
+/* ============ Lesbarkeit: neutrale Flaechen, Gold-Titel, echte Schalter ===== */
+/* Gruen-auf-Gruen abgeschafft: Ueberschriften Gold (Kontrast 7.7 auf Panel),
+   Flaechen neutral dunkel, Kopfleiste dunkel statt gruenem Verlauf. */
+:root{--paper:#070807;--panel:#0e100e;--line:#2c332c}
+header{background:#0b0d0b;border-bottom:1px solid #39423a}
+.hudpanel h3{color:var(--gold);border-bottom-color:#2c332c}
+.hudpanel,.output,.factpanel{background:linear-gradient(180deg,#111411,#0b0d0b);border-color:#39423a}
+.badge{background:#0b0d0b;border-color:#39423a}
+.ticker{background:#0b0d0b;border-color:#39423a}
+
+/* Spalten: links 20 %, Essensplan 15 %, Systemband 40 %, Ausgabe 25 % */
+.cockpit{grid-template-columns:repeat(20,1fr)}
+.cockL>.hudpanel:first-child{grid-column:1/5;grid-row:1}
+.cockL>.hudpanel:nth-child(2){grid-column:1/5;grid-row:2}
+.factpanel{grid-column:1/5;grid-row:3}
+.cockD>.hudpanel{grid-column:5/8}
+.bandpanel{grid-column:8/17;grid-row:1}
+.output{grid-column:16/21}
+
+/* Schalter: beschriftete Tasten statt Mini-Kreise. Aktiv = Gruen mit
+   schwarzer Schrift (einzige lesbare Schrift auf Gruen, gemessen 6.9). */
+.hudband{gap:8px}
+.hudband .toggles{display:grid;grid-template-columns:repeat(2,auto);gap:5px;flex:0 0 auto}
+.hudband .toggle{width:auto;height:27px;flex-direction:row;gap:6px;border-radius:2px;aspect-ratio:auto;
+  padding:2px 10px;border:1px solid #39423a;color:var(--muted);box-shadow:none}
+.hudband .toggle span{font-size:13px}
+.hudband .toggle small{font-size:10px;letter-spacing:.09em;color:inherit;text-transform:uppercase}
+.hudband .toggle.on{background:var(--green);border-color:var(--green);color:#08130b;box-shadow:none}
+.hudband .toggle.on small{color:#08130b}
+/* Mehr Bandbreite -> Gauges wieder groesser und beschriftbar */
+.hudband .gauge{flex:0 0 64px;width:64px}
+.hudband .gauge b{font-size:14px}
+.hudband .gauge small{font-size:8px;letter-spacing:.07em}
+/* Growcontroller-Kachel exakt auf Radar-Kachelhoehe (Ansage Tino) */
+.cockL>.hudpanel:nth-child(2){min-height:535px}
+.cockL>.hudpanel:nth-child(2){min-height:268px}
+
+/* ==== Systemband: echte Tasten + klare Gauges (Ansage Tino) ==== */
+/* Schalter als 3D-Tasten: sichtbare Kante, drueckt beim Klick ein. */
+.hudband .toggle{height:36px;width:auto;padding:4px 14px;border-radius:6px;
+  background:linear-gradient(180deg,#2c3331,#181c1a);border:1px solid #0a0c0b;
+  color:#d6dcd4;font-weight:600;
+  box-shadow:0 3px 0 #060807,0 5px 9px #000000aa,inset 0 1px 0 #ffffff1f;
+  transition:transform .05s,box-shadow .05s}
+.hudband .toggle:active{transform:translateY(3px);box-shadow:0 0 0 #060807,inset 0 2px 6px #000000cc}
+.hudband .toggle.on{background:linear-gradient(180deg,#49bd69,#2c8a49);border-color:#164726;
+  color:#06130a;box-shadow:0 3px 0 #164726,0 5px 12px #3fae5f44,inset 0 1px 0 #ffffff55}
+.hudband .toggle.on:active{transform:translateY(3px);box-shadow:0 0 0 #164726,inset 0 2px 6px #00000088}
+.hudband .toggle small{font-size:11px;letter-spacing:.05em;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+.hudband .toggle span{font-size:14px}
+
+/* Gauges: dicker Bogen statt Haarlinie, Zierkranz weg, Wert mittig. */
+.hudband .gauge{flex:0 0 68px;width:68px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px}
+.hudband .gauge::before{content:none}
+.hudband .gauge .ring{background:conic-gradient(var(--green) calc(var(--p,0)*1%),#ffffff1c 0);
+  -webkit-mask:radial-gradient(circle,transparent 55%,#000 56%);mask:radial-gradient(circle,transparent 55%,#000 56%)}
+.gauge.warn .ring{background:conic-gradient(var(--gold) calc(var(--p,0)*1%),#ffffff1c 0)}
+.gauge.hot .ring{background:conic-gradient(var(--accent) calc(var(--p,0)*1%),#ffffff1c 0)}
+.hudband .gauge b{font:700 16px/1 Inter,ui-sans-serif,system-ui,sans-serif;color:#f2efe6}
+.hudband .gauge small{font:600 9px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;
+  letter-spacing:.04em;color:#aab3a6;text-transform:uppercase}
+
+/* ==== Dunkleres Gruen (Ansage Tino): helles #3fae5f ueberall ersetzt ==== */
+:root{--green:#2e6b40;--ok:#2e6b40;--blue:#1d5c31}
+.hudpanel,.output,.factpanel{border-color:#26302a}
+.ticker{border-color:#26302a}
+.hudband .toggle.on{background:linear-gradient(180deg,#2f7c47,#1d5c31);border-color:#11331c;
+  color:#eaf2e9;box-shadow:0 3px 0 #11331c,0 5px 10px #00000088,inset 0 1px 0 #ffffff33}
+.hudband .toggle.on:active{box-shadow:0 0 0 #11331c,inset 0 2px 6px #00000088}
+.hudband .toggle.on small{color:#eaf2e9}
+nav button.active{background:#2e6b40;color:#eaf2e9}
+input[type=range]{accent-color:#2e6b40}
+.radarpin{color:var(--accent)}
+/* Tausch (Ansage Tino): Ausgabe an die alte Essensplan-Position, Essensplan nach rechts aussen */
+.output{grid-column:5/8}
+.cockD>.hudpanel{grid-column:16/21}
+/* Ausgabe breit (25 %), Essensplan schmal (15 %) - Positionen bleiben getauscht */
+.output{grid-column:6/18;grid-row:2}
+.bandpanel{grid-column:6/18}
+.factpanel{grid-column:1/5}
+.cockD>.hudpanel{grid-column:18/21}
+
+/* Kopfzeile: Temperatur nicht groesser als die Uhr */
+.headweather b{font-size:22px}
+/* Links waren zu dunkel (Browser-Standardblau auf Schwarz) */
+a{color:#8fbf9c}
+a:hover{color:#b8d9c0}
+.source{color:#cfd8cc}
+.source b{color:var(--ink)}
+.source small{color:#9aa38f}
+/* Shopping-Treffer mit Produktbild */
+.shopitem{display:flex;align-items:center;gap:10px}
+.shopitem .thumb{width:52px;height:52px;object-fit:cover;flex:0 0 52px;background:#0f130c}
+.message.thinking{color:#9aa38f;font-style:italic;animation:voicepulse 1.6s ease-in-out infinite}
+.message.error{border-left-color:#d4583b;color:#e8a99a}
+
+/* ============ Layout- und Lesbarkeitskorrekturen (Ansage Tino) ============ */
+/* 1) Growcontroller füllt die mittlere Zeile bis zum Fake-Checker.
+   2) Kalender nur so hoch wie sein Inhalt.
+   3) Aktivierungswort direkt darunter in dieselbe Spalte. */
+.cockpit{grid-template-rows:auto 1fr auto}
+.cockL>.hudpanel:nth-child(2){min-height:0;align-self:stretch;grid-row:2}
+.cockD>.hudpanel{grid-column:18/21;grid-row:1;align-self:start}
+.cockD>.wakepanel{grid-column:18/21;grid-row:2/4;align-self:start}
+.output{grid-row:2/4;align-self:stretch}
+.bandpanel{align-self:stretch}
+.factpanel{grid-row:3;align-self:start}
+
+/* 4) + 5) Kein Grün auf Grün, kein Weiß auf hellem Grün.
+   Gemessen: auf grünen Flächen ist nur Schwarz lesbar (6.9), Weiß liegt bei 2.5.
+   Also tragen alle grünen Knöpfe schwarze Schrift. */
+button,.button{background:#2e6b40;color:#08130b;font-weight:700}
+button:hover,.button:hover{background:#367a4a;filter:none}
+button.ghost{background:transparent;color:#8fbf9c}
+nav button{background:transparent;color:var(--muted);font-weight:600}
+nav button.active{background:#2e6b40;color:#08130b}
+.hudband .toggle{color:#c9d2c6}
+.hudband .toggle.on,.hudband .toggle.on small{color:#08130b}
+
+/* Badges in der Kopfzeile: helle Schrift auf dunklem Grund statt grün auf grün */
+.badge{background:#0b0d0b;border-color:#39423a;color:#d6dcd4}
+.badge.on{border-color:#4f9e69;color:#a8d9b8}
+#health,#voiceState{color:#d6dcd4}
+/* Nach dem Abdunkeln des Grüns trägt Schwarz nur noch 3,0 Kontrast.
+   Off-White auf #2e6b40 ergibt 5,6 – das ist die richtige Kombination. */
+button,.button{color:#f2efe6}
+nav button.active{color:#f2efe6}
+.hudband .toggle.on,.hudband .toggle.on small{color:#f2efe6}
+
+/* ================= Schluss mit Grün auf Grün ==================
+   Grün war Fläche, Rahmen, Knopf und Zustand zugleich – dadurch hob sich
+   nichts mehr voneinander ab. Ab jetzt gilt:
+     Flächen  = neutrales Anthrazit (kein Grünstich)
+     Schrift  = Off-White, Überschriften Gold
+     Knöpfe   = neutrale Tasten mit heller Schrift
+     Grün     = ausschließlich Zustand (aktiv, Messwert, Bestätigung) */
+:root{--paper:#080a09;--panel:#101312;--line:#2b312e}
+body{background:var(--paper)}
+header{background:#0c0f0e;border-bottom:1px solid #2b312e}
+nav{background:rgba(8,10,9,.94);border-bottom:1px solid #2b312e}
+
+.hudpanel,.output,.factpanel,.panel{background:#101312;border:1px solid #2b312e}
+.hudpanel h3{color:var(--gold);border-bottom-color:#2b312e}
+.ticker{background:#0c0f0e;border-color:#2b312e}
+
+/* Knöpfe: neutrale Taste, klar abgesetzt von der Panelfläche */
+button,.button{background:linear-gradient(180deg,#39413d,#252b28);color:#f2efe6;
+  border:1px solid #4a534e;border-radius:5px;font-weight:600;
+  box-shadow:0 2px 0 #171b19,inset 0 1px 0 #ffffff14}
+button:hover,.button:hover{background:linear-gradient(180deg,#454e49,#2c332f)}
+button:active,.button:active{transform:translateY(2px);box-shadow:none}
+button.ghost{background:transparent;border-color:#3a423c;color:#c9d2c6;box-shadow:none}
+
+/* Zustände tragen Grün – und nur die */
+nav button{background:transparent;border:0;box-shadow:none;color:var(--muted)}
+nav button.active{background:#2e6b40;color:#f2efe6;border:0}
+.hudband .toggle{background:linear-gradient(180deg,#39413d,#252b28);border:1px solid #4a534e;color:#c9d2c6}
+.hudband .toggle.on{background:linear-gradient(180deg,#3d9159,#26663a);border-color:#4f9e69;color:#f2efe6}
+.hudband .toggle.on small{color:#f2efe6}
+.badge{background:#0c0f0e;border:1px solid #3a423c;color:#d6dcd4}
+.badge.on{border-color:#4f9e69;color:#a8d9b8}
+/* Growcontroller füllt die Lücke zwischen Radar und Fake-Checker vollständig:
+   oben direkt unter dem Radar beginnen (align-self:start reichte nicht, die
+   Kachel wurde in der Zeile zentriert), nach unten bis an den Fake-Checker. */
+.cockL>.hudpanel:nth-child(2){align-self:stretch;justify-self:stretch;margin:0;height:auto}
+.cockL>.hudpanel:first-child{align-self:stretch}
+/* Linke Spalte als eigener Stapel statt drei Rasterzeilen: Radar und
+   Fake-Checker so hoch wie ihr Inhalt, der Growcontroller nimmt exakt den
+   Rest – damit gibt es weder über noch unter ihm eine Lücke. */
+.cockL{display:flex;flex-direction:column;gap:8px;grid-column:1/6;grid-row:1/4;min-height:0}
+.cockC{display:flex;flex-direction:column;gap:8px;grid-column:6/18;grid-row:1/4;min-height:0}
+.cockC>.bandpanel{flex:0 0 auto}
+.cockC>.output{flex:1 1 auto;min-height:120px}
+.cockL>.hudpanel{grid-column:auto;grid-row:auto;align-self:auto}
+.cockL>.hudpanel:first-child,.cockL>.factpanel{flex:0 0 auto}
+.cockL>.hudpanel:nth-child(2){flex:0 0 288px;min-height:120px}
+.cockL>.factpanel{flex:0 0 auto;grid-column:auto;grid-row:auto}
+/* Ohne definierte Gesamthöhe bedeutet "1fr" nichts – der Growcontroller hatte
+   nichts zu füllen. Das Raster reicht jetzt bis zum unteren Fensterrand. */
+.cockpit{min-height:0}
+
+/* Abnahme: fertige Arbeit, die auf Tinos Entscheidung wartet. Der Auszug
+   bleibt niedrig, damit zehn Vorlagen nebeneinander noch überschaubar sind –
+   den Volltext holt der Knopf nach. */
+#reviews .card pre{max-height:150px;font-size:12px;background:#0b0e0c;border:1px solid var(--line);border-radius:8px;padding:10px;margin:10px 0}
+#reviews .agentrun{margin-top:10px;flex-wrap:wrap}
+#reviews .agentrun input{min-width:180px}
+
+/* Systemkachel: Gauges oben in voller Breite, darunter eine Reihe aus acht
+   Knöpfen – die vier Schalter und die vier Freigabe-Ampeln. Die Schalter saßen
+   vorher als 2×2-Block im Gauge-Band; der frei gewordene Platz geht an die
+   Gauges, die dadurch von 68 auf bis zu 96 px wachsen. */
+.hudband{overflow-x:visible}
+.hudband .gauge{flex:1 1 0;width:auto;min-width:62px;max-width:none}
+.hudrow{display:flex;align-items:flex-end;gap:10px;margin-top:12px;flex-wrap:wrap}
+/* Beide Vierergruppen teilen sich die Zeile: gleiche Flex-Basis, damit acht
+   gleich breite Knöpfe nebeneinander stehen statt umzubrechen. */
+.hudrow .toggles{display:flex;gap:8px;flex:1 1 250px;min-width:0}
+.hudrow .toggle{flex:1 1 0;min-width:0}
+.freigabe{flex:1 1 250px;min-width:0}
+.freigabe .eyebrow{display:block;margin-bottom:5px;color:var(--gold)}
+.freigabebtns{display:flex;gap:8px}
+/* Ampel: nur der aktuelle Zustand. Grün = da liegt etwas, Rot = nichts.
+   Der Knopf selbst bleibt neutral, damit das Licht die Aussage trägt. */
+.toggle.rev .lamp{width:11px;height:11px;border-radius:50%;background:#7d2f2f;
+  box-shadow:inset 0 1px 2px #00000099;flex:0 0 auto}
+.toggle.rev.hat .lamp{background:#3fae5f;box-shadow:0 0 8px #3fae5faa,inset 0 1px 2px #0006}
+.toggle.rev.hat{border-color:#2e6b40}
+.toggle.rev{cursor:pointer}
+@media(max-width:1500px){.hudrow{gap:8px}.hudrow .toggles,.freigabebtns{gap:6px}
+  .hudrow .toggle small{font-size:10px}}
+/* Die Knopfreihe trägt zusätzlich .hudband, damit die vorhandene 3D-Optik der
+   Schalter greift; Ausrichtung und Umbruch kommen aber von .hudrow. */
+.hudrow{display:flex;align-items:flex-end;flex-wrap:wrap;overflow:visible}
+.hudrow .toggle{height:36px}
+.hudrow .toggles{display:flex}
+.hudmap{width:100%;height:260px;aspect-ratio:auto;min-height:0}
+.hudrow{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+.hudrow .toggles{grid-column:span 4;min-width:0}
+.hudrow .toggle{padding:4px 5px;white-space:nowrap;overflow:visible}
+.hudrow .toggle small{font-size:clamp(8px,.65vw,10px);white-space:nowrap}
+.freigabe{grid-column:span 4;min-width:0}
+.freigabebtns{min-width:0}
+
+/* ---- Schreibtisch: Vorschau-Overlay (Texte formatiert, Bilder, Seiten) ---- */
+#overlay[hidden]{display:none !important}
+#overlay{position:fixed;inset:0;background:#000c;z-index:60;display:flex;align-items:center;justify-content:center;padding:3vh 3vw}
+#overlayInner{background:var(--bg,#0d110e);border:1px solid var(--line);border-radius:14px;width:min(1100px,94vw);height:92vh;display:flex;flex-direction:column;box-shadow:0 18px 60px #000b}
+#overlayHead{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
+#overlayHead h3{margin:0;font-size:17px}
+#overlayTabs{display:flex;gap:8px;padding:10px 18px 0}
+#overlayBody{flex:1;overflow-y:auto;padding:14px 18px}
+#overlayActions{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
+#overlayActions input{flex:1}
+.ovmd h2,.ovmd h3,.ovmd h4{margin:14px 0 6px}
+.ovmd p{margin:4px 0;line-height:1.55}
+.ovmd ul{margin:6px 0 6px 20px}
+.ovmd hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+.mdtable{border-collapse:collapse;margin:8px 0;width:100%;overflow-x:auto;display:block}
+.mdtable td{border:1px solid var(--line);padding:5px 9px;font-size:13px}
+.ovimg{max-width:100%;border-radius:10px;border:1px solid var(--line)}
+.oviframe{width:100%;height:70vh;border:1px solid var(--line);border-radius:10px;background:#fff}
+/* Auszüge scrollbar statt abgeschnitten; Mitarbeiter-Karten als Aufklapper */
+#reviews .card pre.auszug{max-height:150px;overflow-y:auto;white-space:pre-wrap}
+.agentcard details summary{cursor:pointer;list-style:revert;padding:2px 0}
+.agentcard details[open] summary{margin-bottom:8px}
+#auftraege details summary{cursor:pointer}

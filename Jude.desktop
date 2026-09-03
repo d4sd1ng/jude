@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Jude
+GenericName=KI-Assistent
+Comment=Lokaler KI-Assistent mit Sprachsteuerung
+Exec=/media/d4sd1ng/AI-Data/Projects/Jude/start.sh
+Icon=/media/d4sd1ng/AI-Data/Projects/Jude/jude.png
+Terminal=false
+Categories=Utility;
+Keywords=Jude;Assistent;Voice;KI;
+StartupNotify=true
