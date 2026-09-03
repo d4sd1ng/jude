@@ -174,8 +174,27 @@ class OllamaAdapter(ProviderAdapter):
         return {item["name"] for item in response.json().get("models", [])}
 
     def call(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None) -> dict:
-        messages = [{**m, "content": _werkzeug_text(m.get("content"))}
-                    if isinstance(m.get("content"), dict) else m for m in messages]
+        # Dieselbe Umwandlung wie im OpenAI-kompatiblen Adapter, hier bisher
+        # gefehlt: kam ein frueherer Zug dieses Gespraechs von einem Anbieter,
+        # der Argumente als JSON-String liefert/speichert, wies Ollama den
+        # Verlauf mit "Value looks like object, but can't find closing '}'
+        # symbol" ab, sobald es als letzte Stufe erreicht wurde (gemessen
+        # 03.09.2026 bei redakteur, 9 Werkzeugaufrufe tief). Tief kopieren,
+        # damit auch hier nichts am geteilten Gespraechsverlauf haengen bleibt.
+        outgoing: list[dict] = []
+        for message in messages:
+            if isinstance(message.get("content"), dict):
+                message = {**message, "content": _werkzeug_text(message["content"])}
+            item = copy.deepcopy(dict(message))
+            for call in item.get("tool_calls", []) or []:
+                arguments = call.get("function", {}).get("arguments")
+                if isinstance(arguments, str):
+                    try:
+                        call["function"]["arguments"] = json.loads(arguments or "{}")
+                    except json.JSONDecodeError:
+                        call["function"]["arguments"] = {}
+            outgoing.append(item)
+        messages = outgoing
         payload: dict[str, Any] = {
             "model": spec.model_name,
             "messages": messages,
