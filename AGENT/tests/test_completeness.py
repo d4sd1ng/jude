@@ -212,6 +212,22 @@ def test_remote_gui_requires_auth_and_status_is_fast(monkeypatch):
     assert page.status_code == 200 and 'id="mealResult"' in page.text and 'id="shopBrand"' in page.text
 
 
+def test_static_mount_is_behind_the_same_auth(monkeypatch):
+    """Gemountete Unter-Apps erben die ``dependencies`` der FastAPI-App NICHT.
+
+    Ohne die Middleware ``_mount_auth`` lieferte /static/app.js jedem, der den
+    Port erreicht, HTTP 200 – waehrend / und /api/status schon 401 gaben.
+    """
+    monkeypatch.setenv("JUDE_GUI_USER", "jude")
+    monkeypatch.setenv("JUDE_GUI_PASSWORD", "secret")
+    client = TestClient(app)
+    assert client.get("/static/app.js").status_code == 401
+    assert client.get("/static/app.js", auth=("jude", "secret")).status_code == 200
+    monkeypatch.delenv("JUDE_GUI_USER", raising=False)
+    monkeypatch.delenv("JUDE_GUI_PASSWORD", raising=False)
+    assert client.get("/static/app.js").status_code == 403
+
+
 def test_gui_downloads_recorded_meal_pdf(monkeypatch):
     monkeypatch.setenv("JUDE_GUI_USER", "jude")
     monkeypatch.setenv("JUDE_GUI_PASSWORD", "secret")

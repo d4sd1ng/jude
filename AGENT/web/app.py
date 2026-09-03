@@ -170,6 +170,28 @@ async def _origin_guard(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def _mount_auth(request: Request, call_next):
+    """Schliesst die Luecke, die ``dependencies`` der FastAPI-App offenlaesst.
+
+    ``app.mount()`` haengt eine eigenstaendige Starlette-App ein; deren
+    Anfragen laufen am Router der Hauptanwendung vorbei und damit auch an
+    ``Depends(require_auth)``. Gemessen am 03.09.2026 gegen die laufende
+    Instanz: ``/`` und ``/api/status`` antworteten mit 401, ``/static/app.js``
+    dagegen mit 200 – die komplette Oberflaeche samt jedem darin genannten
+    API-Pfad war ohne Anmeldung lesbar. Seit start.sh an 0.0.0.0 bindet, gilt
+    das fuer jeden im Netz. Middleware laeuft vor dem Routing und deckt die
+    Mounts deshalb mit ab.
+    """
+    if request.url.path.startswith(("/static", "/images")):
+        try:
+            require_auth(request)
+        except HTTPException as fehler:
+            return JSONResponse({"error": fehler.detail}, status_code=fehler.status_code,
+                                headers=dict(fehler.headers or {}))
+    return await call_next(request)
+
+
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
