@@ -505,7 +505,10 @@ class SubAgentService:
         treffer = []
         for pfad in str(quelle).split(","):
             pfad = pfad.strip().strip('"').strip("'")
-            if not re.search(r"\.(png|jpe?g|webp|gif)(\?|$)", pfad, re.I):
+            # .svg dazu (04.09.2026) - grafik_infografik/grafik_onepager legen
+            # echte SVG-Dateien mit verlaesslich lesbarem Text ab (Wortmarke,
+            # Kennzahlen), kein von einem Bildgenerator gerendertes Pixelbild.
+            if not re.search(r"\.(png|jpe?g|webp|gif|svg)(\?|$)", pfad, re.I):
                 continue
             voll = Path(pfad) if Path(pfad).is_absolute() else JUDE_DIR / pfad
             if voll.is_file():
@@ -1229,7 +1232,7 @@ class SubAgentService:
                     # kamen so durch. Jetzt zaehlt nur eine Datei auf der Platte.
                     hat_bild = bool(self._bilddateien(quelle_bild))
                     if not hat_bild:
-                        genannt = re.search(r"\.(png|jpe?g|webp|gif)(\?|$|,)", quelle_bild, re.I)
+                        genannt = re.search(r"\.(png|jpe?g|webp|gif|svg)(\?|$|,)", quelle_bild, re.I)
                         grund = ("Keine Bilddatei vorgelegt: 'grafik' braucht ein mit generate_image "
                                  "erzeugtes Bild samt Dateipfad in quelle, keine Text-Beschreibung des "
                                  "geplanten Motivs.")

@@ -18,6 +18,38 @@ def generate_image(prompt: str, size: str = "1024x1024", marke: bool = True) -> 
     return _images.generate(prompt, size, marke=marke)
 
 
+def _svg_speichern(svg: str, kind: str) -> dict:
+    """SVG-Grafiken (infografik/onepager) genauso ablegen wie generate_image -
+    Zeitstempel-Dateiname unter Jude/images, Pfad zurueckgeben. Kein Rasterizer
+    (cairosvg o.ae.) installiert - SVG bleibt SVG, statt PNG vorzutaeuschen.
+    Fuer Instagram/Story-Formate bleibt generate_image zustaendig; hier geht es
+    um Grafiken, die echten, verlaesslich lesbaren Text brauchen (Wortmarke,
+    Tagline, CTA) - das kann kein Bildgenerator zuverlaessig rendern."""
+    import uuid
+    from datetime import datetime, timezone
+    from core.paths import IMAGES_DIR
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    name = f"{stamp}_{kind}_{uuid.uuid4().hex[:8]}.svg"
+    path = IMAGES_DIR / name
+    path.write_text(svg, encoding="utf-8")
+    return {"path": str(path), "file": name, "kind": kind}
+
+
+def grafik_infografik(kicker: str, titel: str, kennzahlen: list, fussnote: str = "",
+                      breite: int = 1080, hoehe: int = 1350) -> dict:
+    from services.marke import infografik
+    svg = infografik(kicker, titel, kennzahlen, fussnote, breite, hoehe)
+    return _svg_speichern(svg, "infografik")
+
+
+def grafik_onepager(titel: str, untertitel: str, abschnitte: list, abschluss: str = "",
+                    breite: int = 1240, hoehe: int = 1754) -> dict:
+    from services.marke import onepager
+    svg = onepager(titel, untertitel, abschnitte, abschluss, breite, hoehe)
+    return _svg_speichern(svg, "onepager")
+
+
 def render_3d_scene(blender_python: str, title: str = "szene", width: int = 1024,
                     height: int = 1024, engine: str = "BLENDER_EEVEE_NEXT") -> dict:
     return _blender.render(blender_python, title=title, width=width, height=height, engine=engine)
@@ -50,6 +82,40 @@ def register(registry: ToolRegistry) -> None:
             "size": {"type": "string", "enum": ["1024x1024", "1024x1536", "1536x1024", "auto"]},
             "marke": {"type": "boolean", "description": "Nurovelle-Bildstil automatisch anhängen. Standard true."},
         }, "required": ["prompt"]},
+    ))
+    registry.register(Tool(
+        name="grafik_infografik",
+        description=("Erzeugt eine Infografik als SVG-Datei mit echtem, verlaesslich lesbarem Text - "
+                     "Wortmarke 'Nurovelle' und Tagline stehen automatisch unten, Kicker/Titel/bis zu vier "
+                     "Kennzahlen kommen von dir. Nutze das statt generate_image, wenn die Grafik selbst "
+                     "Text/Zahlen zeigen muss - ein Bildgenerator kann Text nicht zuverlaessig rendern, "
+                     "dieses Werkzeug schon (echtes SVG-Text-Element, kein generiertes Pixelbild)."),
+        func=grafik_infografik,
+        param_schema={"type": "object", "properties": {
+            "kicker": {"type": "string", "description": "Kurze Kategoriezeile ueber dem Titel."},
+            "titel": {"type": "string"},
+            "kennzahlen": {"type": "array", "items": {"type": "object", "properties": {
+                "wert": {"type": "string"}, "label": {"type": "string"},
+            }}, "description": "Bis zu vier {wert, label} Paare, z.B. {'wert':'8 h','label':'Dokumentation pro Woche'}."},
+            "fussnote": {"type": "string"},
+            "breite": {"type": "integer"}, "hoehe": {"type": "integer"},
+        }, "required": ["kicker", "titel", "kennzahlen"]},
+    ))
+    registry.register(Tool(
+        name="grafik_onepager",
+        description=("Erzeugt einen Onepager (A4-Format) als SVG-Datei mit echtem, verlaesslich lesbarem "
+                     "Text - Wortmarke steht automatisch oben, Abschnitte mit Kopf+Text kommen von dir. "
+                     "Nutze das statt generate_image, wenn ein Dokument/eine Grafik echten Fliesstext samt "
+                     "Ueberschriften braucht."),
+        func=grafik_onepager,
+        param_schema={"type": "object", "properties": {
+            "titel": {"type": "string"}, "untertitel": {"type": "string"},
+            "abschnitte": {"type": "array", "items": {"type": "object", "properties": {
+                "kopf": {"type": "string"}, "text": {"type": "string"},
+            }}, "description": "Bis zu fuenf {kopf, text} Abschnitte."},
+            "abschluss": {"type": "string", "description": "Optionale hervorgehobene Schlusszeile/CTA."},
+            "breite": {"type": "integer"}, "hoehe": {"type": "integer"},
+        }, "required": ["titel", "untertitel", "abschnitte"]},
     ))
     registry.register(Tool(
         name="render_3d_objects",
