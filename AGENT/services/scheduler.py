@@ -19,7 +19,7 @@ from services.notifications import NotificationService
 
 #: Werkzeuge, die lange laufen und im Hintergrund starten sollen, um den
 #: Scheduler-Tick nicht zu blockieren (und damit chat_lock in web/app.py zu halten).
-HINTERGRUND_TOOLS = {"auftragswaechter", "delegate_to_agent", "auftrag_erteilen", "team_tagesrunde"}
+HINTERGRUND_TOOLS = {"delegate_to_agent", "auftrag_erteilen", "team_tagesrunde"}
 
 
 class SchedulerService:

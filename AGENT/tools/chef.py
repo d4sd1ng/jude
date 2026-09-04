@@ -152,50 +152,6 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         from services.auftraege import Auftragsbuch
         return Auftragsbuch().abbrechen(auftrag_id)
 
-    def auftragswaechter() -> dict:
-        """Für den Scheduler: überfällige Aufträge nachfassen und Tino melden."""
-        from services.auftraege import Auftragsbuch
-        from services.team import SubAgentService
-        buch = Auftragsbuch()
-        faellige = buch.ueberfaellig()
-        ergebnisse = []
-        dienst = SubAgentService(registry, router)
-        for a in faellige:  # kein Deckel mehr - jeder Ueberfaellige wird nachgefasst (04.09.2026)
-            try:
-                buch.status_setzen(a["id"], "in_arbeit")
-                lauf = dienst.run(a["agent"],
-                                  f"ÜBERFÄLLIGER AUFTRAG [{a['id']}]: {a['titel']}\n{a['beschreibung']}\n"
-                                  f"Erledige ihn JETZT und lege das Ergebnis mit submit_for_review "
-                                  f"vor (auftrag_id='{a['id']}').")
-                ergebnisse.append({"id": a["id"], "lauf": lauf.get("status")})
-            except Exception as exc:
-                ergebnisse.append({"id": a["id"], "fehler": str(exc)[:200]})
-        if faellige:
-            try:
-                from services.notifications import NotificationService
-                NotificationService().create(
-                    "auftraege", f"{len(faellige)} Aufträge überfällig",
-                    ", ".join(a["titel"] for a in faellige[:5]))
-            except Exception:
-                pass
-        # Offene Revisionen laufen bisher nur beim TÄGLICHEN Job des jeweiligen
-        # Mitarbeiters wieder an – eine mittags zurückgewiesene Vorlage blieb
-        # bis zum naechsten Morgen liegen. Der stuendliche Waechter fasst sie
-        # jetzt genauso nach wie ueberfaellige Auftraege.
-        from services.review import ReviewQueue
-        offene_revisionen = ReviewQueue().agenten_mit_offenen_revisionen()
-        revisions_ergebnisse = []
-        for eintrag in offene_revisionen:  # kein Deckel mehr (04.09.2026)
-            name = eintrag["agent"]
-            try:
-                lauf = dienst.run(name, "Du hast offene Revisionen (siehe oben im Systemprompt) – "
-                                  "arbeite sie jetzt ab, bevor du etwas anderes tust.")
-                revisions_ergebnisse.append({"agent": name, "lauf": lauf.get("status")})
-            except Exception as exc:
-                revisions_ergebnisse.append({"agent": name, "fehler": str(exc)[:200]})
-        return {"ueberfaellig": len(faellige), "nachgefasst": ergebnisse,
-                "revisionen_offen": len(offene_revisionen), "revisionen_nachgefasst": revisions_ergebnisse}
-
     def team_tagesrunde() -> dict:
         """Für den Scheduler: JEDEN Mitarbeiter einmal täglich laufen lassen –
         nicht nur die, die schon einen offenen Auftrag haben. Vorher lief das
@@ -272,9 +228,6 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                            "Einen Auftrag abbrechen – nur wenn Tino es sagt.",
                            auftrag_abbrechen,
                            _schema({"auftrag_id": {"type": "string"}}, ["auftrag_id"])))
-    registry.register(Tool("auftragswaechter",
-                           "Überfällige Aufträge nachfassen (nutzt der Scheduler stündlich; manuell aufrufbar).",
-                           auftragswaechter, _schema({})))
     registry.register(Tool("team_tagesrunde",
                            "Jeden Mitarbeiter einmal laufen lassen, nicht nur die mit offenem Auftrag "
                            "(nutzt der Scheduler täglich; manuell aufrufbar).",
