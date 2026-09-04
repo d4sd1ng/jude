@@ -697,6 +697,18 @@ class ModelRouter:
     def _cloud_affordable(self, spec: ModelSpec, messages: list[dict]) -> bool:
         if spec.provider == "ollama":
             return True
+        # Ein echtes 0-Kosten-Modell (lokales Ollama UEBER ollama_cloud, alle
+        # fuenf Modelle auf demselben kostenlosen Konto) darf nie am Budget
+        # scheitern - egal wie ausgeschoepft budget_used bereits ist, seine
+        # Grenzkosten sind 0. Ohne diese Pruefung sperrte ein ausgeschoepftes
+        # Budget auch die kostenlose Ollama-Cloud-Stufe mit, weil ihr Provider
+        # ("ollama_cloud") nicht dem obigen "ollama" entspricht - der Fallback
+        # landete dadurch beim quälend langsamen lokalen GPU-Modell statt bei
+        # der genauso kostenlosen, aber ~100x schnelleren Cloud-Stufe (gemessen
+        # 04.09.2026: budget_used 5.003 > budget_limit 5.0 sperrte alle fuenf
+        # gpt-oss/nemotron/gemma-Ollama-Cloud-Modelle trotz cost=0.0).
+        if spec.cost_input <= 0 and spec.cost_output <= 0:
+            return True
         approximate_input = sum(len(str(item.get("content", ""))) for item in messages) // 4
         approximate_output = min(spec.max_tokens, 4096)
         estimate = (approximate_input * spec.cost_input + approximate_output * spec.cost_output) / 1000

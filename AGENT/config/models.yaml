@@ -251,7 +251,7 @@ models:
     priority: 8
 
 router:
-  budget_limit_monthly_usd: 5.0
+  budget_limit_monthly_usd: 10.0
   # War true, als lokal die einzige kostenlose Stufe war. Gemessen 02.09.2026:
   # qwen3:8b passt auf dieser 8GB-Polaris-GPU selbst bei 8192 Kontext nur zu
   # 71% ins VRAM, der Rest laeuft auf CPU – 2,5 bis 5 Minuten JE Schritt. Ein
