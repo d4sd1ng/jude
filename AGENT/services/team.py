@@ -53,6 +53,9 @@ class SubAgentService:
     TEXT_MODELL = "cloud_ollama_gptoss"
     #: Der Redakteur. Schreibt alle Texte, fasst selbst nichts an.
     REDAKTEUR = "redakteur"
+    #: Prueft seit 04.09.2026 aktiv, was die deterministischen Gates
+    #: bestanden hat - loest die automatische Judes-Pruefung ab.
+    PROJEKTLEITUNG = "projektleitung"
     #: Wer ihn direkt beauftragen darf. Fuer Text braucht es keinen Umweg ueber
     #: Jude – er prueft ohnehin, was am Ende fertig vorgelegt wird. Bernd traegt
     #: nur Adressen ein, Heike macht Bilder, Joana schreibt Code.
@@ -631,6 +634,79 @@ class SubAgentService:
             }, "required": ["art", "titel"]},
         )
 
+    def _pruefung_tool(self, spec: dict):
+        """Projektleitungs aktive Pruef-Werkzeuge (04.09.2026 - loest die
+        automatische Judes-Pruefung ab). Duenne Wrapper um ReviewQueue,
+        die deterministischen Gates in _chefpruefung laufen weiter unveraendert
+        VOR diesen Werkzeugen - was hier ankommt, hat die schon bestanden.
+        """
+        from core.tool_registry import Tool
+        from services.review import ReviewQueue
+        wer = spec.get("person") or spec["name"]
+
+        def pruefungsliste() -> list[dict]:
+            return ReviewQueue().zur_pruefung(limit=50)
+
+        def pruefung_entscheiden(review_id: str, urteil: str, begruendung: str) -> dict:
+            urteil = str(urteil).strip().lower()
+            if urteil not in ("freigabe", "revision"):
+                raise ValueError("urteil muss 'freigabe' oder 'revision' sein.")
+            if len(str(begruendung).strip()) < 10:
+                raise ValueError("Begruendung ist zu duenn - konkret benennen, woran es liegt "
+                                 "bzw. warum es passt.")
+            queue = ReviewQueue()
+            text = f"{wer}: {str(begruendung).strip()}"
+            if urteil == "freigabe":
+                ergebnis = queue.freigeben(review_id, text)
+                try:
+                    from services.notifications import NotificationService
+                    voll = queue.zeigen(review_id)
+                    NotificationService().create("abnahme",
+                                                 f"Zur Abnahme: {voll['titel'][:80]}",
+                                                 f"Von {voll.get('person') or voll['agent']} – von {wer} freigegeben.")
+                except Exception:
+                    pass
+            else:
+                ergebnis = queue.revision(review_id, text)
+                try:
+                    from services.notifications import NotificationService
+                    voll = queue.zeigen(review_id)
+                    NotificationService().create("revision",
+                                                 f"Revision an {voll.get('person') or voll['agent']}: {voll['titel'][:80]}",
+                                                 f"{wer} hat Überarbeitungen angefordert: {str(begruendung)[:200]}")
+                except Exception:
+                    pass
+            return ergebnis
+
+        return (
+            Tool(
+                name="pruefungsliste",
+                description=("Zeigt alle Vorlagen, die auf eine Qualitaetsentscheidung warten - "
+                             "ueber alle Kolleginnen und Kollegen hinweg, aelteste zuerst, inkl. "
+                             "runde. Diese Vorlagen haben bereits alle mechanischen Pruefungen "
+                             "bestanden (echtes Bild vorhanden, keine Platzhalter, kein Markenname, "
+                             "E-Mail nicht leer/dupliziert) - hier geht es um Ton, Nutzen und "
+                             "Massstab, nicht mehr um Vollstaendigkeit."),
+                func=pruefungsliste,
+                param_schema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="pruefung_entscheiden",
+                description=("Eine Vorlage aus pruefungsliste() freigeben (dann sichtbar bei Tino) "
+                             "oder zur Revision zurueckgeben (dann zurueck an die Kollegin/den "
+                             "Kollegen). runde >= 3 heisst: schon zweimal zurueckgewiesen - jetzt "
+                             "wirklich entscheiden, nicht noch einen dritten, neuen Einwand "
+                             "nachschieben."),
+                func=pruefung_entscheiden,
+                param_schema={"type": "object", "properties": {
+                    "review_id": {"type": "string", "description": "id aus pruefungsliste()."},
+                    "urteil": {"type": "string", "enum": ["freigabe", "revision"]},
+                    "begruendung": {"type": "string", "description":
+                                    "Konkret, mit Bezug auf Massstab oder Auftrag - keine Floskel."},
+                }, "required": ["review_id", "urteil", "begruendung"]},
+            ),
+        )
+
     def _memory_tool(self, name: str):
         from core.tool_registry import Tool
         return Tool(
@@ -721,6 +797,9 @@ class SubAgentService:
             sub.register(self._hinweis_tool(spec))
             if spec["name"] in self.TEXTER:
                 sub.register(self._text_tool(spec))
+            if spec["name"] == self.PROJEKTLEITUNG:
+                for tool in self._pruefung_tool(spec):
+                    sub.register(tool)
         person, alter = spec.get("person"), spec.get("alter")
         wer = f"{person} ({alter})" if person and alter else (person or spec["name"])
         vorstellung = (f"Du heißt {person} und bist {alter} Jahre alt. " if person and alter
@@ -769,8 +848,15 @@ class SubAgentService:
         except Exception:
             offene_auftraege = []
         if offene_auftraege:
+            jetzt = datetime.now(timezone.utc)
+            def _ueberfaellig(a: dict) -> bool:
+                try:
+                    return bool(a.get("faellig_am")) and datetime.fromisoformat(a["faellig_am"]) < jetzt
+                except Exception:
+                    return False
             zeilen = "\n".join(
-                f"- [{a['id']}] {a['titel']}"
+                ("- ÜBERFÄLLIG: " if _ueberfaellig(a) else "- ")
+                + f"[{a['id']}] {a['titel']}"
                 + (f" (fällig {a['faellig_am'][:10]})" if a.get("faellig_am") else "")
                 + (f": {a['beschreibung'][:200]}" if a.get("beschreibung") else "")
                 for a in offene_auftraege[:8])
@@ -1219,113 +1305,29 @@ class SubAgentService:
                         entschieden.append({"id": vorlage["id"], "urteil": "revision",
                                             "grund": "email_duplikat"})
                         continue
-                # Revisionsbremse: Nach 2 Runden entscheidet Tino, nicht die
-                # Schleife. Der Prüfer erfand sonst in jeder Runde neue Einwände.
-                if int(voll.get("runde") or 1) >= 3:
-                    rest = (voll.get("anmerkung") or "").strip()
-                    queue.freigeben(vorlage["id"],
-                                    "Jude: 2 Revisionen erreicht – Entscheidung bei Tino."
-                                    + (f" Restpunkte: {rest[:200]}" if rest else ""))
-                    entschieden.append({"id": vorlage["id"], "urteil": "vorbehalt"})
-                    try:
-                        from services.notifications import NotificationService
-                        NotificationService().create("abnahme",
-                                                     f"Zur Abnahme (mit Vorbehalt): {voll['titel'][:80]}",
-                                                     f"Von {voll.get('person') or voll['agent']} – von Jude mit Vorbehalt freigegeben.")
-                    except Exception:
-                        pass
+                # Projektleitungs eigene Vorlagen (z.B. Prompt-Diagnose-Dokumente)
+                # koennen nicht auf sie selbst als Pruefinstanz warten - zirkulaer.
+                # Sie ist von der aktiven Pruefung ausgenommen wie der Redakteur
+                # vom Vorlegen: die deterministischen Gates oben gelten weiter
+                # unveraendert fuer sie, aber danach direkt durch.
+                if agent_name == self.PROJEKTLEITUNG:
+                    queue.freigeben(vorlage["id"], "Automatisch freigegeben – "
+                                    "Projektleitung ist selbst die Pruefinstanz.")
+                    entschieden.append({"id": vorlage["id"], "urteil": "freigabe"})
                     continue
-                auftrag_kontext = ""
-                try:
-                    from services.auftraege import Auftragsbuch
-                    auftrag = next((a for a in Auftragsbuch().liste("alle", limit=200)
-                                    if a.get("review_id") == vorlage["id"]), None)
-                    if auftrag:
-                        auftrag_kontext = (f"\nAUFTRAG (daran misst du das Ergebnis): "
-                                           f"{auftrag['titel']} – {auftrag['beschreibung'][:400]}\n")
-                except Exception:
-                    pass
-                verlauf = (voll.get("verlauf") or "").strip()
-                frage = (
-                    "Du bist Jude, Geschaeftsfuehrer von Nurovelle. Ein Mitarbeiter legt dir "
-                    "etwas Fertiges vor. Pruefe es, bevor es Tino erreicht.\n\n"
-                    f"Massstab:\n{self.CHEF_MASSSTAB}\n\n{BRAND_BRIEF}\n\n"
-                    "FAKTEN (keine Platzhalter, nicht beanstanden): Die kostenlose "
-                    "KI-Potenzialanalyse auf nurovelle.de/analyse.html ist das echte "
-                    "Kernangebot und der gewollte Handlungsaufruf. Massgeblich sind die Markenpräambel und das Qualitaets-Playbook (austausch/an-team/qualitaets-playbook.md).\n"
-                    f"{auftrag_kontext}"
-                    + (f"\nBISHERIGE BEANSTANDUNGEN (behobene Punkte NICHT erneut aufmachen):\n{verlauf[:800]}\n" if verlauf else "")
-                    + f"\nVon: {voll.get('person') or voll['agent']}\n"
-                    f"Art: {voll['art']}\nTitel: {voll['titel']}\n"
-                    f"Inhalt:\n{(voll.get('inhalt') or '')[:4000]}\n\n"
-                    "Antworte in GENAU ZWEI Zeilen. Zeile 1: SCORE A=<0-100> C=<0-100> "
-                    "(A=Aufmerksamkeit: konkreter Alltags-Aufhaenger, Zielgruppe Mittelstand, "
-                    "Kanal-Eignung; C=Conversion: genau EIN klarer naechster Schritt, Nutzen "
-                    "im Alltag erkennbar, Vertrauen). Zeile 2: FREIGABE oder REVISION, danach "
-                    "Doppelpunkt und kurze Begruendung. Beanstande NUR Verstoesse gegen "
-                    "Massstab oder Auftrag, die du woertlich zitieren kannst."
-                )
-                # Nicht in die allgemeine Kette fallen lassen: die beginnt lokal,
-                # und qwen kostete hier gemessen 300 s Timeout, bevor ueberhaupt
-                # etwas passierte. Also der Reihe nach das erste Modell, dessen
-                # Provider gerade wirklich antwortet.
-                # Zweite Wahl bewusst bei einem ANDEREN Anbieter: faellt Ollama
-                # Cloud als Provider aus, ist damit auch jedes Geschwistermodell
-                # gesperrt. Hermes-70B kann Analyse und kostet Bruchteile eines
-                # Cents. (Bis 03.09.2026 stand hier Haiku.)
-                pruefmodell = self._brauchbares_modell(
-                    self.TEXT_MODELL, "cloud_openrouter_hermes")
-                antwort = self.router.call_with_fallback(
-                    [{"role": "user", "content": frage}], force_model=pruefmodell)
-                roh = str(antwort.get("content", "")).strip()
-                import re as _re
-                m = _re.search(r"SCORE\s+A\s*=\s*(\d{1,3})\s+C\s*=\s*(\d{1,3})", roh)
-                gesamt = None
-                if m:
-                    gesamt = (min(int(m.group(1)), 100) + min(int(m.group(2)), 100)) // 2
-                    try:
-                        queue.score_setzen(vorlage["id"], gesamt)
-                    except Exception:
-                        pass
-                urteilszeile = next((z for z in roh.splitlines()
-                                     if z.strip().upper().startswith(("FREIGABE", "REVISION"))), "")
-                begruendung = urteilszeile.split(":", 1)[-1].strip()[:400] or "ohne Begruendung"
-                content_arten = {"post", "email", "newsletter", "sequenz"}
-                if not urteilszeile:
-                    # Fail-open geschlossen: Formatverletzung wird sichtbar gemacht,
-                    # nicht stillschweigend als Freigabe gewertet.
-                    queue.freigeben(vorlage["id"],
-                                    "Jude: Pruefformat verletzt – ungeprueft durchgereicht. "
-                                    "Bitte selbst pruefen.")
-                    entschieden.append({"id": vorlage["id"], "urteil": "formatfehler"})
-                    continue
-                zu_niedrig = (voll["art"] in content_arten and gesamt is not None and gesamt < 70)
-                if urteilszeile.strip().upper().startswith("REVISION") or zu_niedrig:
-                    grund = begruendung if not zu_niedrig else (
-                        f"Score {gesamt}/100 unter der 70er-Schwelle. {begruendung}")
-                    queue.revision(vorlage["id"], f"Jude: {grund}")
-                    self.lehre_merken(agent_name, grund)
-                    entschieden.append({"id": vorlage["id"], "urteil": "revision",
-                                        "score": gesamt})
-                    try:
-                        from services.notifications import NotificationService
-                        NotificationService().create("revision",
-                                                     f"Revision an {voll.get('person') or voll['agent']}: {voll['titel'][:80]}",
-                                                     f"Jude hat Überarbeitungen angefordert: {grund[:200]}")
-                    except Exception:
-                        pass
-                else:
-                    queue.freigeben(vorlage["id"], f"Jude: {begruendung}"
-                                    + (f" (Score {gesamt}/100)" if gesamt is not None else ""))
-                    entschieden.append({"id": vorlage["id"], "urteil": "freigabe",
-                                        "score": gesamt})
-                    try:
-                        from services.notifications import NotificationService
-                        NotificationService().create("abnahme",
-                                                     f"Zur Abnahme: {voll['titel'][:80]}",
-                                                     f"Von {voll.get('person') or voll['agent']} – von Jude freigegeben.")
-                    except Exception:
-                        pass
+                # Kein automatisches Urteil mehr ab hier (04.09.2026 - Jude raus
+                # aus der Pruefung, das uebernimmt Projektleitung aktiv ueber
+                # pruefungsliste()/pruefung_entscheiden()). Was die deterministischen
+                # Gates oben besteht, bleibt einfach auf 'pruefung' stehen - das
+                # ist kein Fehlerfall, das ist der neue Normalzustand: es wartet.
+                #
+                # Die alte Revisionsbremse (Runde >= 3 -> automatischer Durchlass
+                # "mit Vorbehalt") faellt als Automatismus weg, nicht als Konzept:
+                # runde steht bereits in pruefungsliste()'s Ausgabe, Projektleitungs
+                # Rolle bekommt die Anweisung, Runde-3+-Faelle bewusst zu entscheiden
+                # statt neue Einwaende nachzuschieben - dieselbe Absicht (keine
+                # endlose Rueckweisungsschleife), aber als Urteil einer echten
+                # Pruefinstanz statt als blinder Bypass.
             except Exception as exc:
                 # Im Zweifel nach oben durchreichen: lieber legt Tino etwas
                 # Mittelmaessiges beiseite, als dass Arbeit unsichtbar liegen bleibt.
