@@ -1252,6 +1252,35 @@ class SubAgentService:
                         entschieden.append({"id": vorlage["id"], "urteil": "revision",
                                             "grund": "kein_bild"})
                         continue
+                # HTML-Vorlagen von engineer: die Tagline wird wiederholt aus dem
+                # Gedaechtnis angenaehert statt wortgleich uebernommen (gemessen
+                # 04.09.2026: "BUILDING INTELLIGENT SYSTEM" statt der echten
+                # "Building Intelligent Systems" - Grossschreibung UND das
+                # fehlende 's'). Eindeutiger String-Vergleich, kein Ermessen.
+                if voll["agent"] == "engineer" and voll["art"] == "dokument":
+                    inhalt_pruef = voll.get("inhalt") or ""
+                    falsch = re.search(r"BUILDING INTELLIGENT SYSTEMS?\b", inhalt_pruef)
+                    richtig = "Building Intelligent Systems" in inhalt_pruef
+                    if falsch and not richtig:
+                        grund = (f"Falsche Tagline-Schreibweise gefunden: '{falsch.group(0)}'. "
+                                 "Wortgleich 'Building Intelligent Systems' verwenden (nicht "
+                                 "grossgeschrieben, mit 's' am Ende) - aus homepage/index.html "
+                                 "Zeile ~1542 kopieren, nicht aus dem Gedaechtnis schreiben.")
+                        queue.revision(vorlage["id"], f"Jude: {grund}")
+                        self.lehre_merken(agent_name,
+                                          "Die Tagline wird wortgleich aus der echten Quelldatei "
+                                          "kopiert ('Building Intelligent Systems'), nicht "
+                                          "angenaehert oder grossgeschrieben.")
+                        try:
+                            from services.notifications import NotificationService
+                            NotificationService().create("revision",
+                                                         f"Revision (Tagline): {voll['titel'][:70]}",
+                                                         grund[:200])
+                        except Exception:
+                            pass
+                        entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                            "grund": "tagline_falsch"})
+                        continue
                 # Deterministisch, wie der Wortfilter: eine 'email' unter einer
                 # Mindestlaenge ist keine E-Mail, nur die CTA-Zeile ohne Anrede/Text
                 # (Tom/sequencer legte 52x nur "Kostenlose KI-Potenzialanalyse", 30
