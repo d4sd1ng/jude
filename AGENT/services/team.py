@@ -70,6 +70,29 @@ class SubAgentService:
         "sequencer": "notion_query", "analyst": "notion_query",
         "leadmanager": "notion_query",
     }
+    #: Das Werkzeug, das eine Rolle tatsaechlich SCHREIBT, bevor sie etwas als
+    #: fertig vorlegen darf. Ohne diese Pruefung reichte 'submit_for_review'
+    #: allein: engineer legte dieselben (teils gar nicht mehr existierenden)
+    #: HTML-Pfade ueber 5 Revisionsrunden hinweg erneut vor, ohne ein einziges
+    #: Mal coding_write aufzurufen (gemessen 04.09.2026, agent_runs 46ddb40d/
+    #: 4298eafd zeigen submit_for_review ohne jedes coding_write davor).
+    #: Werte als Tupel, auch wenn meist nur ein Werkzeug noetig ist – content/
+    #: social brauchen zwei (Text UND Bild). Audit 04.09.2026 (drei Durchlaeufe,
+    #: volle agent_runs-Historie): dasselbe Muster wie engineer/coding_write lag
+    #: unbehandelt bei sequencer/scraper (write_copy strukturell ungenutzt),
+    #: content/social (generate_image ueber die GESAMTE Historie 0x, auch nach
+    #: der eigenen BILD-PFLICHT-Verschaerfung vom selben Tag), designer
+    #: (notion_update 0x trotz eigenem ZIEL) und leadmanager (write_copy 0x,
+    #: das extremste Beispiel).
+    SCHREIB_PFLICHT = {
+        "engineer": ("coding_write",),
+        "sequencer": ("write_copy",),
+        "scraper": ("write_copy",),
+        "content": ("write_copy", "generate_image"),
+        "social": ("write_copy", "generate_image"),
+        "designer": ("notion_update",),
+        "leadmanager": ("write_copy",),
+    }
     # 16 war zu knapp: allein die 8 VERBINDLICHEN QUELLEN (project_files/*.md)
     # kosten schon 8 Schritte, bevor die eigentliche Arbeit beginnt – gemessen
     # 02.09.2026, mehrere Laeufe liefen deshalb ins Limit statt zur echten Aufgabe.
@@ -687,7 +710,13 @@ class SubAgentService:
                 if tool is not None:
                     sub.register(tool)
             sub.register(self._memory_tool(spec["name"]))
-            sub.register(self._review_tool(spec))
+            # Redakteur legt nichts vor - das macht, wer sie beauftragt hat
+            # (eigene Rolle + AUSNAHME VON DER ABNAHME-PFLICHT weiter unten).
+            # Bisher nur eine Prompt-Regel: submit_for_review wurde trotzdem
+            # automatisch registriert und in mehreren Laeufen tatsaechlich
+            # aufgerufen (04.09.2026 Audit). Verbot jetzt auf Code-Ebene.
+            if spec["name"] != self.REDAKTEUR:
+                sub.register(self._review_tool(spec))
             sub.register(self._bericht_tool(spec))
             sub.register(self._hinweis_tool(spec))
             if spec["name"] in self.TEXTER:
@@ -821,12 +850,19 @@ class SubAgentService:
         # zustande gebracht hatten. Deshalb wird hier jeder Rueckgabewert geprueft.
         werkzeuge: list[str] = []
         fehlschlaege: list[str] = []
+        # IDs, die submit_for_review in DIESEM Lauf tatsaechlich anlegte oder
+        # weiterreichte – ohne die laesst sich eine Vorlage, die ohne die
+        # Pflicht-Schreibfunktion vorgelegt wurde (SCHREIB_PFLICHT), nicht
+        # gezielt zurueckweisen, nur der ganze Lauf als 'teilweise' markieren.
+        eingereichte_ids: list[str] = []
         original = agent.tools.execute
         def mitschreiben(werkzeug, argumente):
             werkzeuge.append(werkzeug)
             ergebnis = original(werkzeug, argumente)
             if self._ist_fehlschlag(ergebnis):
                 fehlschlaege.append(str(ergebnis).strip()[:300])
+            if werkzeug == "submit_for_review" and isinstance(ergebnis, dict) and ergebnis.get("id"):
+                eingereichte_ids.append(ergebnis["id"])
             return ergebnis
         agent.tools.execute = mitschreiben
         ergebnis_id = uuid.uuid4().hex[:12]
@@ -846,6 +882,24 @@ class SubAgentService:
             status = "teilweise"
             blockers = blockers + [f"Pflicht-Quelle nicht abgefragt: '{pflicht}' fehlt in den "
                                    f"Werkzeugaufrufen – 'nichts zu tun' zaehlt nur nach echter Pruefung."]
+        schreib_pflicht = self.SCHREIB_PFLICHT.get(spec["name"], ())
+        fehlende_pflicht = [w for w in schreib_pflicht if w not in werkzeuge]
+        if fehlende_pflicht and eingereichte_ids:
+            from services.review import ReviewQueue
+            queue = ReviewQueue()
+            fehlend_text = " und ".join(f"'{w}'" for w in fehlende_pflicht)
+            for rid in eingereichte_ids:
+                try:
+                    voll = queue.zeigen(rid)
+                    if voll and voll.get("status") == "pruefung":
+                        queue.revision(rid, f"Jude: Vorgelegt, ohne {fehlend_text} in diesem Lauf "
+                                        f"aufzurufen – das ist dieselbe, unveraenderte Vorlage wie zuvor. "
+                                        f"Erst wirklich schreiben/erzeugen, dann vorlegen.")
+                except Exception:
+                    pass
+            status = "teilweise"
+            blockers = blockers + [f"Pflicht-Werkzeug(e) nicht aufgerufen: {fehlend_text} fehlt/fehlen – "
+                                   f"vorgelegte Datei(en) automatisch zurueckgewiesen."]
         # Ergebnisformat nach dem Adapter-Vertrag der Agenten-Standards:
         # agent_id, task_id, status, output, blockers und token_usage sind Pflicht.
         nachher = self.router_verbrauch()
@@ -1076,7 +1130,12 @@ class SubAgentService:
                 # ist selbst schon die Umgehung dieser Pruefung (gemessen
                 # 04.09.2026 - dieselbe Bild-Beschreibung ohne Datei, diesmal
                 # als 'sonstiges' statt 'grafik' vorgelegt).
-                if voll["art"] == "grafik" or voll["agent"] == "designer":
+                # 'post' von social zaehlt hier mit dazu: PREMIUM-MASSSTAB gilt
+                # auch fuer Beitraege, nicht nur fuer 'grafik' (04.09.2026 -
+                # social legte Post-/Reel-Text ohne jedes Bild vor, obwohl die
+                # eigene Rolle jetzt generate_image dafuer vorschreibt).
+                if (voll["art"] == "grafik" or voll["agent"] == "designer"
+                        or (voll["art"] == "post" and voll["agent"] == "social")):
                     quelle_bild = str(voll.get("quelle") or "")
                     # Bis 04.09.2026 pruefte dieses Tor die Zeichenkette, nicht
                     # die Datei: ein korrekt geschriebenes 'Infografik_2.png'
