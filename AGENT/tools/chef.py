@@ -160,7 +160,7 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         faellige = buch.ueberfaellig()
         ergebnisse = []
         dienst = SubAgentService(registry, router)
-        for a in faellige[:3]:  # pro Lauf höchstens drei nachfassen
+        for a in faellige:  # kein Deckel mehr - jeder Ueberfaellige wird nachgefasst (04.09.2026)
             try:
                 buch.status_setzen(a["id"], "in_arbeit")
                 lauf = dienst.run(a["agent"],
@@ -185,7 +185,7 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         from services.review import ReviewQueue
         offene_revisionen = ReviewQueue().agenten_mit_offenen_revisionen()
         revisions_ergebnisse = []
-        for eintrag in offene_revisionen[:3]:  # pro Lauf höchstens drei Mitarbeiter nachfassen
+        for eintrag in offene_revisionen:  # kein Deckel mehr (04.09.2026)
             name = eintrag["agent"]
             try:
                 lauf = dienst.run(name, "Du hast offene Revisionen (siehe oben im Systemprompt) – "
