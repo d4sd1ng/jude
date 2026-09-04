@@ -127,6 +127,13 @@ def initialize_database(path: Path | None = None) -> None:
         for name, declaration in confirmation_migrations.items():
             if name not in confirmation_columns:
                 db.execute(f"ALTER TABLE confirmations ADD COLUMN {name} {declaration}")
+        # Ohne diese Spalte landeten Hauptchat und alle Sub-Agenten-Läufe in
+        # derselben Tabelle ohne Unterscheidung – ein Neustart hätte beim
+        # Wiederherstellen der Chat-Historie zufällige Mitarbeiter-Läufe in
+        # Judes eigenes Gespräch mit Tino gemischt.
+        turn_columns = {row[1] for row in db.execute("PRAGMA table_info(conversation_turns)")}
+        if "agent" not in turn_columns:
+            db.execute("ALTER TABLE conversation_turns ADD COLUMN agent TEXT NOT NULL DEFAULT 'jude'")
 
 
 @contextmanager

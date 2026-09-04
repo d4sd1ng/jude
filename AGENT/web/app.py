@@ -110,15 +110,20 @@ async def _scheduler() -> None:
 
 
 async def _task_scheduler() -> None:
+    # Bewusst OHNE chat_lock: Mitarbeiter-Läufe (delegate_to_agent) bauen ihr
+    # eigenes Agent-Objekt mit eigenem Gesprächsverlauf – kein geteilter
+    # Zustand mit Tinos Chat. Mit chat_lock fror der Chat für die gesamte
+    # Dauer jedes fälligen Mitarbeiter-Laufs ein; bei 13 stündlich/häufiger
+    # fälligen Mitarbeitern hätte das den Chat regelmäßig lahmgelegt.
     while True:
         with suppress(Exception):
-            async with chat_lock:
-                await asyncio.to_thread(scheduler.tick)
+            await asyncio.to_thread(scheduler.tick)
         await asyncio.sleep(30)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    team.laufende_bereinigen()
     dwd_radar.warmup()
     task = asyncio.create_task(_scheduler()) if ict.scheduler_config()["enabled"] else None
     task_loop = asyncio.create_task(_task_scheduler())
@@ -169,6 +174,28 @@ async def _origin_guard(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def _mount_auth(request: Request, call_next):
+    """Schliesst die Luecke, die ``dependencies`` der FastAPI-App offenlaesst.
+
+    ``app.mount()`` haengt eine eigenstaendige Starlette-App ein; deren
+    Anfragen laufen am Router der Hauptanwendung vorbei und damit auch an
+    ``Depends(require_auth)``. Gemessen am 03.09.2026 gegen die laufende
+    Instanz: ``/`` und ``/api/status`` antworteten mit 401, ``/static/app.js``
+    dagegen mit 200 – die komplette Oberflaeche samt jedem darin genannten
+    API-Pfad war ohne Anmeldung lesbar. Seit start.sh an 0.0.0.0 bindet, gilt
+    das fuer jeden im Netz. Middleware laeuft vor dem Routing und deckt die
+    Mounts deshalb mit ab.
+    """
+    if request.url.path.startswith(("/static", "/images")):
+        try:
+            require_auth(request)
+        except HTTPException as fehler:
+            return JSONResponse({"error": fehler.detail}, status_code=fehler.status_code,
+                                headers=dict(fehler.headers or {}))
+    return await call_next(request)
+
+
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
@@ -186,8 +213,7 @@ def index():
 
 @app.get("/api/status")
 def status():
-    from services import kontingent
-    return {"router": agent.router.status(), "groq": kontingent.stand(),
+    return {"router": agent.router.status(),
             "mail": mail.account_status(), "ict": ict.stack_status(probe=False),
             "home_assistant_configured": bool(ha.url and ha.token), "news_configured": bool(os.getenv("NEWS_API_KEY")),
             "home_actions": ha.action_status(), "fake_checker": "ready", "scraper": "public_http_only",
@@ -220,6 +246,7 @@ def memory_delete(item_id: str):
 def _chat_sync(text: str) -> dict:
     with agent_lock:
         answer_text = agent.process_input(text)
+        voice.speak_answer(answer_text)
         return {"answer": answer_text, "model": agent.last_model, "route_id": agent.last_route_id}
 
 
@@ -266,6 +293,24 @@ async def chat(payload: dict):
         return await asyncio.to_thread(_chat_sync, text)
 
 
+@app.get("/api/chat/model")
+def chat_model_get():
+    return {"model": agent.force_model or ""}
+
+
+@app.post("/api/chat/model")
+def chat_model_set(payload: dict):
+    """Modell für den Haupt-Chat fest vorgeben, statt der automatischen Wahl –
+    z.B. wenn Tino vorher schon weiß, dass das Standardmodell die Aufgabe
+    nicht schafft. Leer/„auto" schaltet zurück auf die normale Routenwahl."""
+    model = str(payload.get("model", "")).strip()
+    if model and model not in agent.router.models:
+        raise HTTPException(400, f"Unbekanntes Modell: {model}")
+    with agent_lock:
+        agent.force_model = model or None
+    return {"model": agent.force_model or ""}
+
+
 @app.get("/api/voice")
 def voice_status():
     return voice.status()
@@ -278,7 +323,8 @@ def voice_events(since: int = 0):
 
 @app.post("/api/voice/start")
 def voice_start():
-    return voice.start()
+    # Knopf im GUI = bewusste Aktivierung, kein zusaetzliches Wachwort noetig.
+    return voice.start(wachwort_pflicht=False)
 
 
 @app.post("/api/voice/stop")
@@ -390,6 +436,13 @@ def agents_delete(name: str):
 @app.post("/api/agents/{name}/run")
 async def agents_run(name: str, payload: dict):
     return await asyncio.to_thread(team.run, name, str(payload.get("task", "")))
+
+
+@app.get("/api/agents/aktiv")
+def agents_aktiv():
+    """Wer gerade arbeitet, wer nicht, und wann zuletzt – für die Live-Anzeige
+    im Schreibtisch."""
+    return team.status_uebersicht()
 
 
 @app.get("/api/images")
@@ -575,6 +628,10 @@ def notification_list(unread_only: bool = True): return notifications.list(unrea
 def notification_read(notification_id: str): return notifications.mark_read(notification_id)
 
 
+@app.post("/api/notifications/read_all")
+def notification_read_all(): return notifications.mark_all_read()
+
+
 @app.post("/api/ict/train/{symbol}")
 async def ict_train(symbol: str):
     return await asyncio.to_thread(ict.train_live, symbol.upper())
@@ -725,7 +782,22 @@ def review_decide(review_id: str, entscheidung: str, payload: dict | None = None
         raise HTTPException(400, "Für eine Revision wird eine Anmerkung benötigt")
     try:
         if entscheidung == "abnehmen":
-            return reviews.abnehmen(review_id, anmerkung)
+            ergebnis = reviews.abnehmen(review_id, anmerkung)
+            # Bisher hielt das Team nur fest, was schiefging – nie, was gut war.
+            # Tino soll dafuer nichts extra tippen muessen: eine Abnahme ohne
+            # jede Revision ist selbst schon das Signal – automatisch erkannt
+            # aus dem Revisionsverlauf, nicht aus einem getippten Lob.
+            if int(ergebnis.get("runde") or 1) <= 1:
+                with suppress(Exception):
+                    team.lob_merken(
+                        ergebnis["agent"],
+                        f"„{ergebnis.get('titel', '')}“ ({ergebnis.get('art', '')}) "
+                        "im ersten Anlauf ohne Revision abgenommen.",
+                        quelle="automatisch")
+            if anmerkung:
+                with suppress(Exception):
+                    team.lob_merken(ergebnis["agent"], anmerkung, quelle="Tino")
+            return ergebnis
         ergebnis = reviews.revision(review_id, anmerkung)
     except KeyError:
         raise HTTPException(404, "Unbekannte Vorlage")

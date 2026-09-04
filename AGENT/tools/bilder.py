@@ -14,8 +14,8 @@ def analyze_image(path: str, question: str = "Beschreibe dieses Bild genau auf D
     return _vision.describe_path(path, question)
 
 
-def generate_image(prompt: str, size: str = "1024x1024") -> dict:
-    return _images.generate(prompt, size)
+def generate_image(prompt: str, size: str = "1024x1024", marke: bool = True) -> dict:
+    return _images.generate(prompt, size, marke=marke)
 
 
 def render_3d_scene(blender_python: str, title: str = "szene", width: int = 1024,
@@ -40,11 +40,15 @@ def register(registry: ToolRegistry) -> None:
     ))
     registry.register(Tool(
         name="generate_image",
-        description="Erzeugt ein Bild aus einer Textbeschreibung über OpenAI (gpt-image-1) und speichert es lokal unter Jude/images.",
+        description=("Erzeugt ein Bild aus einer Textbeschreibung über OpenAI (gpt-image-1) und speichert es "
+                     "lokal unter Jude/images. Der Nurovelle-Bildstil (Farben, Material, Verbote) wird automatisch "
+                     "an jeden Prompt angehängt (marke=true, Standard) – nicht selbst wiederholen. Nur für "
+                     "ausdrücklich private/markenfremde Bilder marke=false setzen."),
         func=generate_image,
         param_schema={"type": "object", "properties": {
-            "prompt": {"type": "string", "description": "Bildbeschreibung"},
+            "prompt": {"type": "string", "description": "Bildbeschreibung (Motiv/Szene – der Markenstil kommt automatisch dazu)"},
             "size": {"type": "string", "enum": ["1024x1024", "1024x1536", "1536x1024", "auto"]},
+            "marke": {"type": "boolean", "description": "Nurovelle-Bildstil automatisch anhängen. Standard true."},
         }, "required": ["prompt"]},
     ))
     registry.register(Tool(

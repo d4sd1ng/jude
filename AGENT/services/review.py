@@ -35,8 +35,10 @@ from services.database import connection
 ARTEN = {"post", "email", "newsletter", "sequenz", "dokument", "recherche",
          "grafik", "sonstiges"}
 
-#: Die vier Arten, die im Cockpit eine eigene Ampel bekommen – alles andere
-#: sammelt sich in der Abnahme-Liste im System-Tab.
+#: Diese vier Ampeln stehen im Cockpit immer da, auch mit 0 – sie sollen rot
+#: leuchten, nicht verschwinden. Alle übrigen Arten bekommen eine Ampel, sobald
+#: etwas von ihnen offen ist (siehe ``offen_nach_art``); vorher wären es acht
+#: Lampen, von denen die Hälfte dauerhaft aus ist.
 COCKPIT_ARTEN = ("grafik", "post", "email", "newsletter")
 
 
@@ -109,6 +111,40 @@ class ReviewQueue:
             return [dict(row) for row in db.execute(
                 "SELECT id,art,titel,anmerkung,runde,substr(inhalt,1,3000) AS inhalt FROM reviews "
                 "WHERE agent=? AND status='revision' ORDER BY created_at", (agent,))]
+
+    def offene_gleiche(self, agent: str, art: str, titel: str) -> dict | None:
+        """Liegt von diesem Mitarbeiter dieselbe Sache schon in der Schlange?
+
+        Ohne diese Abfrage legte jeder Wiederholungslauf eine neue Zeile an,
+        statt an die vorhandene anzuknuepfen: gemessen 04.09.2026 lagen 69 mal
+        dieselbe E-Mail 'Kostenlose KI-Potenzialanalyse' und 41 mal dieselbe
+        'Infografik 2 fuer KW 36' in der Pruefung, alle in Runde 1. Die
+        Wiedervorlage-Automatik griff nicht, weil sie nur ``status='revision'``
+        kannte – zum Zeitpunkt des erneuten Einreichens stand die Vorgaengerin
+        aber noch auf ``pruefung``.
+        """
+        titel = str(titel).strip()[:300]
+        if not titel:
+            return None
+        with connection() as db:
+            row = db.execute(
+                "SELECT id,art,titel,status,runde FROM reviews "
+                "WHERE agent=? AND art=? AND lower(titel)=lower(?) "
+                "AND status IN ('pruefung','revision') ORDER BY created_at LIMIT 1",
+                (agent, str(art).strip().lower(), titel)).fetchone()
+        return dict(row) if row else None
+
+    def agenten_mit_offenen_revisionen(self) -> list[dict]:
+        """Für den Auftragswächter: wer hat liegengebliebene Revisionen?
+
+        Ohne diesen Aufruf sah ein Mitarbeiter seine Revision erst beim
+        nächsten TÄGLICHEN Lauf wieder – eine mittags zurückgewiesene
+        Vorlage blieb bis zum nächsten Morgen unbearbeitet liegen, obwohl
+        der Auftragswächter stündlich für genau diesen Zweck läuft."""
+        with connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT agent, COUNT(*) AS anzahl, MIN(created_at) AS aeltestes FROM reviews "
+                "WHERE status='revision' GROUP BY agent ORDER BY aeltestes")]
 
     # ---------------------------------------------------------------- Tino
 
@@ -204,11 +240,15 @@ class ReviewQueue:
     def offen_nach_art(self) -> dict:
         """Wie viel je Art auf Tino wartet – speist die Ampeln im Cockpit.
 
-        Jede Art ist immer enthalten, auch mit 0: die Ampel soll rot leuchten,
-        nicht verschwinden.
+        **Alle** Arten sind enthalten, nicht nur die vier festen. Vorher zählte
+        diese Funktion ausschließlich ``COCKPIT_ARTEN``; ein offenes
+        ``dokument`` – genau der Fall vom 17.08. – tauchte damit in keiner Ampel
+        auf und war im Cockpit unsichtbar. Die vier festen stehen immer da (auch
+        mit 0), die übrigen erscheinen, sobald etwas von ihnen offen ist.
         """
         with connection() as db:
             zeilen = db.execute(
                 "SELECT art, COUNT(*) c FROM reviews WHERE status='offen' GROUP BY art").fetchall()
         gezaehlt = {row["art"]: row["c"] for row in zeilen}
-        return {art: gezaehlt.get(art, 0) for art in COCKPIT_ARTEN}
+        return {art: gezaehlt.get(art, 0)
+                for art in (*COCKPIT_ARTEN, *sorted(ARTEN - set(COCKPIT_ARTEN)))}

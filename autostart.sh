@@ -9,4 +9,4 @@ if [ ! -x .venv/bin/python ]; then
   .venv/bin/pip install -r AGENT/requirements.txt
 fi
 cd AGENT
-exec ../.venv/bin/python main.py --gui --host 127.0.0.1 --port "${JUDE_PORT:-8765}" --voice
+exec ../.venv/bin/python main.py --gui --host 0.0.0.0 --port "${JUDE_PORT:-8765}" --voice

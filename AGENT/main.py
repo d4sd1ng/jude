@@ -24,6 +24,7 @@ def build_application() -> tuple[Agent, ToolCreator]:
     load_dotenv(Path(__file__).with_name(".env"))
     registry = ToolRegistry()
     router = ModelRouter()
+    router.vorwaermen()
     confirmations = ConfirmationQueue()
     load_all_tools(registry, router=router, confirmations=confirmations)
     creator = ToolCreator(router, registry)

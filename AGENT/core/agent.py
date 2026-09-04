@@ -22,11 +22,17 @@ class Agent:
     )
 
     def __init__(self, model_router: ModelRouter, tool_registry: ToolRegistry, max_tool_steps: int = 8,
-                 system_prompt: str | None = None, force_model: str | None = None):
+                 system_prompt: str | None = None, force_model: str | None = None,
+                 agent_name: str | None = None):
         self.router = model_router
         self.tools = tool_registry
         self.max_tool_steps = max_tool_steps
         self.force_model = force_model
+        # "jude" markiert Judes eigenes Gespräch mit Tino (Cockpit-Chat/Sprache) –
+        # nur dessen Verlauf wird nach einem Neustart wiederhergestellt. Sub-Agenten
+        # bekommen ihren Namen, damit ihre Läufe in derselben Tabelle nicht mit
+        # Judes Chat vermischt werden.
+        self.agent_name = agent_name or ("jude" if not system_prompt else "sub")
         self.memory = MemoryService()
         if system_prompt:
             # Sub-Agent mit eigener Rolle; Sicherheitsregeln bleiben verbindlich.
@@ -57,6 +63,12 @@ class Agent:
         self.conversation_history: list[dict[str, Any]] = [
             {"role": "system", "content": self._base_system}
         ]
+        if self.agent_name == "jude":
+            # Bisher startete jeder Neustart mit leerem Verlauf – Jude wusste
+            # danach nichts mehr von dem, woran gerade gearbeitet wurde.
+            for turn in self.memory.recent_turns(limit=6, agent=self.agent_name):
+                self.conversation_history.append({"role": "user", "content": turn["user_text"]})
+                self.conversation_history.append({"role": "assistant", "content": turn["assistant_text"]})
         self.last_model: str | None = None
         self.last_route_id: str | None = None
 
@@ -133,7 +145,7 @@ class Agent:
             self.conversation_history.append(response)
             if not calls:
                 answer = str(response.get("content") or "")
-                self.memory.record_turn(user_text, answer, self.last_model)
+                self.memory.record_turn(user_text, answer, self.last_model, agent=self.agent_name)
                 self.memory.capture_candidates(user_text)
                 return answer
             for call in calls:

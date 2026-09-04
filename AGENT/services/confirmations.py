@@ -14,7 +14,7 @@ class ConfirmationQueue:
     ALLOWED_ACTIONS = {"mail_send", "mail_delete", "git_merge", "file_delete", "external_write", "calendar_create",
                        "home_switch", "home_action", "mail_archive", "code_write", "code_commit",
                        "code_push", "code_pr", "code_branch", "code_clone", "code_pull",
-                       "shell_command", "create_agent", "ssh_command", "scp_transfer"}
+                       "shell_command", "create_agent", "ssh_command", "scp_transfer", "notion_write"}
 
     def request(self, action_type: str, summary: str, payload: dict, agent: str = "") -> dict:
         if action_type not in self.ALLOWED_ACTIONS:
@@ -27,11 +27,16 @@ class ConfirmationQueue:
         # Ein Mitarbeiter, der eine Revision überarbeitet, ruft dasselbe Werkzeug
         # einfach erneut auf – ohne diesen Abgleich häufte sich pro Runde eine
         # weitere Zeile an, und die alte Revision blieb für immer offen im Prompt.
+        # Galt bisher nur für 'revision': eine noch UNENTSCHIEDENE ('pending')
+        # Anfrage wurde nie abgeglichen, darum haeufte jeder stuendliche
+        # Auftragswaechter-Lauf eine weitere Zeile fuer dieselbe Datei an, ohne
+        # dass Tino je entschieden hatte – 73 haengende Bestaetigungen fuer
+        # 3 Dateien, gemessen 03.09.2026.
         if agent:
             with connection() as db:
                 laufend = db.execute(
                     "SELECT id, payload_json FROM confirmations WHERE agent=? AND action_type=? "
-                    "AND status='revision' ORDER BY created_at DESC", (agent, action_type),
+                    "AND status IN ('revision','pending') ORDER BY created_at DESC", (agent, action_type),
                 ).fetchall()
             pfad = payload.get("path")
             treffer = None

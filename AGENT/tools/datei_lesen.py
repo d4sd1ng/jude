@@ -28,8 +28,16 @@ _STANDARD_QUELLEN = ("/media/d4sd1ng/AI-Data/Projects/homepage_repo",)
 
 
 def _wurzeln() -> list[Path]:
+    """Homepage-Repo VOR dem Jude-Projekt: project_files/task_contract.md,
+    decision_log.md, todo.md und project_overview.md existieren in BEIDEN
+    Wurzeln mit demselben Namen, aber völlig anderem Inhalt – Jude/project_files/
+    beschreibt, wie an Jude selbst gearbeitet wird, nicht Nurovelle. Stand die
+    Jude-Wurzel zuerst, bekam jeder Sub-Agent, dessen Rolle "lies project_files/"
+    vorschreibt, die falschen (Jude-eigenen) Dateien statt der Nurovelle-Vorgaben –
+    gemessen 02.09.2026, u.a. Ursache für Sub-Agenten, die sich in read_project_file
+    verhaspelten, bis das Werkzeug-Budget aufgebraucht war."""
     zusatz = [p for p in os.getenv("JUDE_READONLY_ROOTS", "").split(":") if p.strip()]
-    wurzeln = [PROJECT_ROOT]
+    wurzeln = []
     for pfad in (*_STANDARD_QUELLEN, *zusatz):
         try:
             aufgeloest = Path(pfad).expanduser().resolve()
@@ -37,6 +45,7 @@ def _wurzeln() -> list[Path]:
             continue
         if aufgeloest.is_dir():
             wurzeln.append(aufgeloest)
+    wurzeln.append(PROJECT_ROOT)
     return wurzeln
 
 

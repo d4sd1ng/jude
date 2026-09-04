@@ -6,5 +6,9 @@
   {
     "note": "Auftrag von Tino (15.08., dringend): 3 Banner für neue Social-Media-Konten (Querformat-Header 1200×627 mit Headline \"KLARHEIT. PROZESSE. ZUKUNFT.\" + Unterzeile, Variante mit Fokus \"Kostenlose KI-Potenzialanalyse in 5 Minuten\", quadratisches Profilbild mit goldenem N). Stilbeschreibung und Account-Setup-Briefing gelesen, Spezifikationen fertig und unter \"DRINGEND: Banner für Social-Media-Accounts\" vorgelegt (id a4433f4f84f4). generate_image liefert seit mehreren Versuchen durchgehend 429 Too Many Requests – API-seitig überlastet, unabhängig vom Prompt. Noch KEIN Bild erzeugt. Sobald API wieder verfügbar: die 3 Banner exakt nach den vorgelegten Spezifikationen generieren und mit submit_for_review (art=grafik, quelle=Dateipfad) einzeln vorlegen.",
     "created_at": "2026-08-15T17:40:25.291565+00:00"
+  },
+  {
+    "note": "Keine offenen Aufträge oder Revisionen. Der Themenbereich ist ruhig, sodass keine zusätzliche Arbeit erledigt werden muss.",
+    "created_at": "2026-09-01T19:38:45.006491+00:00"
   }
 ]

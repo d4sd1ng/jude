@@ -197,14 +197,16 @@ MITARBEITER = [
         ),
     },
     {
-        # Heinz laeuft bewusst auf der 70B-Stufe und bekommt KEINE Werkzeuge:
-        # Groqs llama-3.3 schreibt gut, setzt aber keinen Werkzeugaufruf ab
-        # (0 von 2 Versuchen). Ohne Werkzeuge kann ihm das nicht passieren.
-        # Die anderen holen seinen Text ab und legen ihn selbst ab.
+        # Heinz laeuft bewusst auf der grossen Stufe und bekommt KEINE
+        # Werkzeuge: sein Vorgaengermodell schrieb gut, setzte aber keinen
+        # Werkzeugaufruf ab (0 von 2 Versuchen). Ohne Werkzeuge kann ihm das
+        # nicht passieren. Die anderen holen seinen Text ab und legen ihn ab.
+        # 02.09.2026 von Groq auf Ollama Cloud umgestellt (gleiches Modell,
+        # ohne die 8000-Token-Minutengrenze).
         "name": "redakteur",
         "person": "Heinz",
         "alter": 49,
-        "model": "cloud_groq_llama",
+        "model": "cloud_ollama_gptoss",
         "skills": ["read_project_file", "list_project_files"],
         "role": (
             "Du bist Redakteur und schreibst alle Texte des Hauses – Posts, E-Mails, "

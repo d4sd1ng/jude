@@ -138,11 +138,15 @@ def test_router_actionable_detection():
 
 
 def test_router_routes_actions_to_tool_model():
-    r = ModelRouter()
-    action = r.select_model("Klone das Repo und pushe es", needs_tools=True)
-    chat = r.select_model("Wie geht es dir heute?", needs_tools=True)
+    # Handlungsanfragen brauchen ein Tools-Modell, Plaudern bleibt beim
+    # unzensierten Standardmodell. Erste Tools-Wahl ist seit 02.09.2026 die
+    # freie Cloud-Stufe (siehe test_core), nicht mehr das lokale qwen.
+    with patch.dict("os.environ", {"OLLAMA_API_KEY": "test"}, clear=False):
+        r = ModelRouter()
+        action = r.select_model("Klone das Repo und pushe es", needs_tools=True)
+        chat = r.select_model("Wie geht es dir heute?", needs_tools=True)
     assert "tools" in action.tags
-    assert action.name == "local_qwen_coder"
+    assert action.name == "cloud_ollama_gptoss"
     assert chat.name == "local_dolphin"
 
 
