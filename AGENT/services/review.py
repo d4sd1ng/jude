@@ -112,6 +112,28 @@ class ReviewQueue:
                 "SELECT id,art,titel,anmerkung,runde,substr(inhalt,1,3000) AS inhalt FROM reviews "
                 "WHERE agent=? AND status='revision' ORDER BY created_at", (agent,))]
 
+    def offene_gleiche(self, agent: str, art: str, titel: str) -> dict | None:
+        """Liegt von diesem Mitarbeiter dieselbe Sache schon in der Schlange?
+
+        Ohne diese Abfrage legte jeder Wiederholungslauf eine neue Zeile an,
+        statt an die vorhandene anzuknuepfen: gemessen 04.09.2026 lagen 69 mal
+        dieselbe E-Mail 'Kostenlose KI-Potenzialanalyse' und 41 mal dieselbe
+        'Infografik 2 fuer KW 36' in der Pruefung, alle in Runde 1. Die
+        Wiedervorlage-Automatik griff nicht, weil sie nur ``status='revision'``
+        kannte – zum Zeitpunkt des erneuten Einreichens stand die Vorgaengerin
+        aber noch auf ``pruefung``.
+        """
+        titel = str(titel).strip()[:300]
+        if not titel:
+            return None
+        with connection() as db:
+            row = db.execute(
+                "SELECT id,art,titel,status,runde FROM reviews "
+                "WHERE agent=? AND art=? AND lower(titel)=lower(?) "
+                "AND status IN ('pruefung','revision') ORDER BY created_at LIMIT 1",
+                (agent, str(art).strip().lower(), titel)).fetchone()
+        return dict(row) if row else None
+
     def agenten_mit_offenen_revisionen(self) -> list[dict]:
         """Für den Auftragswächter: wer hat liegengebliebene Revisionen?
 

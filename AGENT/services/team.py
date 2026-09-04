@@ -19,6 +19,7 @@ from pathlib import Path
 import logging
 
 from core.paths import DATA_DIR
+from services.database import connection
 from services.marke import BRAND_BRIEF
 
 logger = logging.getLogger(__name__)
@@ -440,6 +441,67 @@ class SubAgentService:
             }, "required": ["auftrag"]},
         )
 
+    #: Was ein Erzeugnis je Art mindestens an Text haben muss, damit es eine
+    #: Abnahme wert ist. Gemessen 04.09.2026: 86 der 295 Vorlagen lagen unter
+    #: 100 Zeichen, die kuerzeste E-Mail enthielt als Inhalt exakt ihren
+    #: eigenen Titel ("Kostenlose KI-Potenzialanalyse", 30 Zeichen). Es gab
+    #: dafuer bis dahin keine untere Schranke – ``inhalt`` hatte schlicht "" als
+    #: Vorgabewert. Bei 'grafik' ist der Text nur das Konzept, das Erzeugnis ist
+    #: die Bilddatei; deshalb dort die niedrigste Schranke.
+    MINDESTLAENGE = {"email": 300, "newsletter": 500, "sequenz": 300,
+                     "dokument": 300, "recherche": 250, "post": 150,
+                     "grafik": 80, "sonstiges": 80}
+
+    #: Ordner, unter denen ein projektrelativer Pfad wirklich liegen kann. Nur
+    #: fuer diese wird die Existenz erzwungen – so bleibt eine Quellenangabe wie
+    #: 'nurovelle.de/analyse.html' oder eine http-Adresse unangetastet.
+    PROJEKT_ORDNER = ("austausch/", "data/", "project_files/", "images/",
+                      "AGENT/", "backups/", "models/")
+
+    @classmethod
+    def _fehlende_datei(cls, pfad: str) -> str | None:
+        """Gibt den Pfad zurueck, wenn er eine Datei meint, die es nicht gibt."""
+        from core.paths import JUDE_DIR
+        pfad = str(pfad).strip().strip('"').strip("'")
+        if not pfad or "://" in pfad or pfad.lower().startswith("www."):
+            return None
+        kandidat = Path(pfad)
+        if kandidat.is_absolute():
+            return None if kandidat.is_file() else pfad
+        if not pfad.startswith(cls.PROJEKT_ORDNER):
+            return None
+        return None if (JUDE_DIR / pfad).is_file() else pfad
+
+    @classmethod
+    def _bilddateien(cls, quelle: str) -> list[str]:
+        """Die in ``quelle`` genannten Bilder, die es wirklich gibt."""
+        from core.paths import JUDE_DIR
+        treffer = []
+        for pfad in str(quelle).split(","):
+            pfad = pfad.strip().strip('"').strip("'")
+            if not re.search(r"\.(png|jpe?g|webp|gif)(\?|$)", pfad, re.I):
+                continue
+            voll = Path(pfad) if Path(pfad).is_absolute() else JUDE_DIR / pfad
+            if voll.is_file():
+                treffer.append(pfad)
+        return treffer
+
+    @classmethod
+    def _laenge_pruefen(cls, art: str, inhalt: str, neu: bool) -> None:
+        """Zu kurz ist kein Erzeugnis. Bei einer Ueberarbeitung ohne neuen Text
+        bleibt der alte stehen (COALESCE in ``ReviewQueue.erledigt``) – dann
+        gibt es hier nichts zu pruefen."""
+        text = str(inhalt or "").strip()
+        if not neu and not text:
+            return
+        mindest = cls.MINDESTLAENGE.get(str(art).strip().lower(), 80)
+        if len(text) < mindest:
+            raise ValueError(
+                f"Zu kurz zum Vorlegen: {len(text)} Zeichen, '{art}' braucht mindestens "
+                f"{mindest}. Der Inhalt gehoert vollstaendig in 'inhalt' – nicht nur der "
+                f"Titel, keine Ankuendigung, kein Verweis auf eine Datei. Erst schreiben, "
+                f"dann vorlegen.")
+
     def _review_tool(self, spec: dict):
         """Fertiges vorlegen – ohne zu warten.
 
@@ -473,10 +535,17 @@ class SubAgentService:
             # wurden (kein coding_write/generate_image im Lauf) – die Vorlage
             # sah fertig aus, war aber leer. Wer nichts geschrieben hat, kann
             # auch nichts vorlegen.
+            #
+            # Die Pruefung galt bis 04.09.2026 nur fuer absolute Pfade. Die
+            # Mitarbeiter geben aber ausnahmslos projektrelative an, also lief
+            # sie ins Leere: 41 Vorlagen zeigten auf
+            # 'austausch/an-team/vorlagen/nurovelle/Infografik_2.png', eine
+            # Datei, die es nie gab. Jetzt wird jeder projektrelative Pfad
+            # gegen die Projektwurzel aufgeloest und geprueft.
             for pfad in str(quelle).split(","):
-                pfad = pfad.strip()
-                if pfad.startswith("/") and not Path(pfad).is_file():
-                    raise ValueError(f"Referenzierte Datei existiert nicht: {pfad}. "
+                fehlend = self._fehlende_datei(pfad)
+                if fehlend:
+                    raise ValueError(f"Referenzierte Datei existiert nicht: {fehlend}. "
                                      f"Erst wirklich schreiben (coding_write/generate_image), "
                                      f"dann vorlegen.")
             # Eine Ueberarbeitung ist keine neue Vorlage: dieselbe Zeile geht
@@ -501,6 +570,13 @@ class SubAgentService:
                 treffer = next((r for r in offen if r["art"] == art), offen[0] if offen else None)
                 if treffer:
                     ziel = treffer["id"]
+            if not ziel:
+                # Dieselbe Sache liegt schon in der Pruefung: anknuepfen statt
+                # eine 70. Zeile anzulegen (siehe ReviewQueue.offene_gleiche).
+                gleiche = queue.offene_gleiche(spec["name"], art, titel)
+                if gleiche:
+                    ziel = gleiche["id"]
+            self._laenge_pruefen(art, inhalt, neu=not ziel)
             if ziel:
                 ergebnis = queue.erledigt(ziel, inhalt or None, titel or None)
             else:
@@ -911,8 +987,11 @@ class SubAgentService:
                 # dafuer keine deterministische Ebene, nur das Sprachmodell-Urteil –
                 # der schwerste denkbare Fehler haengt am selben unzuverlaessigen
                 # Mechanismus wie ein Werbewort.
+                # Kein Runden-Deckel: ein alter Markenname ist keine Ermessensfrage,
+                # die nach zwei Runden an Tino durchgereicht werden darf (03.09.2026 -
+                # eine bildlose 'grafik' entkam der Prüfung genau ueber diesen Deckel).
                 marken_funde = {m.group(0).lower() for m in self.MARKENFILTER.finditer(lesbar)}
-                if marken_funde and int(voll.get("runde") or 1) < 3:
+                if marken_funde:
                     grund = ("Alte(r) Markenname(n) im Text gefunden: " + ", ".join(sorted(marken_funde))
                              + ". Es gibt nur Nurovelle.")
                     queue.revision(vorlage["id"], f"Jude: {grund}")
@@ -939,7 +1018,7 @@ class SubAgentService:
                 # Links "[Text](url)" sind ausgenommen.
                 platzhalter = [m.group(0) for m in re.finditer(r"\[[^\[\]\n]{2,80}\]|\{\{[^{}\n]{1,60}\}\}", lesbar)
                               if not lesbar[m.end():m.end() + 1] == "("]
-                if platzhalter and int(voll.get("runde") or 1) < 3:
+                if platzhalter:
                     grund = ("Unausgefüllte Platzhalter in eckigen Klammern: "
                              + "; ".join(platzhalter[:5])
                              + ". Mit echtem Inhalt ersetzen, keine Klammer-Platzhalter vorlegen.")
@@ -961,7 +1040,7 @@ class SubAgentService:
                 funde = {t[0].lower() if isinstance(t, tuple) else t.lower()
                          for t in self.WORTFILTER.findall(lesbar)}
                 funde = {f for f in funde if f}
-                if funde and int(voll.get("runde") or 1) < 3:
+                if funde:
                     grund = ("Wortfilter: verbotene/englische Woerter im Text: "
                              + ", ".join(sorted(funde)[:10])
                              + ". Ersetze sie durch deutsche, konkrete Formulierungen.")
@@ -991,14 +1070,28 @@ class SubAgentService:
                 # kein Bild – die PREMIUM-MASSSTAB-Regel in BRAND_BRIEF allein
                 # wurde ignoriert (Heike legte ein Text-Konzept als 'grafik' vor,
                 # quelle='', 03.09.2026). Das reicht kein Sprachmodell-Urteil,
-                # das laesst sich zaehlen.
-                if voll["art"] == "grafik":
+                # das laesst sich zaehlen. Gilt auch, wenn Heike unter einer
+                # anderen Art (z. B. 'sonstiges') vorlegt: ihre eigene Rolle
+                # schreibt ausschliesslich art='grafik' vor, ein anderes Label
+                # ist selbst schon die Umgehung dieser Pruefung (gemessen
+                # 04.09.2026 - dieselbe Bild-Beschreibung ohne Datei, diesmal
+                # als 'sonstiges' statt 'grafik' vorgelegt).
+                if voll["art"] == "grafik" or voll["agent"] == "designer":
                     quelle_bild = str(voll.get("quelle") or "")
-                    hat_bild = bool(re.search(r"\.(png|jpe?g|webp|gif)(\?|$|,)", quelle_bild, re.I))
-                    if not hat_bild and int(voll.get("runde") or 1) < 3:
+                    # Bis 04.09.2026 pruefte dieses Tor die Zeichenkette, nicht
+                    # die Datei: ein korrekt geschriebenes 'Infografik_2.png'
+                    # genuegte, obwohl die Datei nie existierte – 41 Vorlagen
+                    # kamen so durch. Jetzt zaehlt nur eine Datei auf der Platte.
+                    hat_bild = bool(self._bilddateien(quelle_bild))
+                    if not hat_bild:
+                        genannt = re.search(r"\.(png|jpe?g|webp|gif)(\?|$|,)", quelle_bild, re.I)
                         grund = ("Keine Bilddatei vorgelegt: 'grafik' braucht ein mit generate_image "
                                  "erzeugtes Bild samt Dateipfad in quelle, keine Text-Beschreibung des "
                                  "geplanten Motivs.")
+                        if genannt:
+                            grund = (f"Die angegebene Bilddatei existiert nicht: {quelle_bild[:120]}. "
+                                     f"Einen Dateinamen hinzuschreiben erzeugt kein Bild – erst "
+                                     f"generate_image aufrufen, dann den entstandenen Pfad vorlegen.")
                         queue.revision(vorlage["id"], f"Jude: {grund}")
                         self.lehre_merken(agent_name,
                                           "Eine 'grafik'-Vorlage ohne echte Bilddatei wird nicht "
@@ -1013,6 +1106,59 @@ class SubAgentService:
                             pass
                         entschieden.append({"id": vorlage["id"], "urteil": "revision",
                                             "grund": "kein_bild"})
+                        continue
+                # Deterministisch, wie der Wortfilter: eine 'email' unter einer
+                # Mindestlaenge ist keine E-Mail, nur die CTA-Zeile ohne Anrede/Text
+                # (Tom/sequencer legte 52x nur "Kostenlose KI-Potenzialanalyse", 30
+                # Zeichen, als 'email' vor, 03./04.09.2026 - das laesst sich zaehlen,
+                # kein Sprachmodell-Urteil noetig).
+                if voll["art"] == "email":
+                    email_text = (voll.get("inhalt") or "").strip()
+                    if len(email_text) < 100:
+                        grund = (f"E-Mail zu kurz ({len(email_text)} Zeichen) - das ist keine "
+                                 "E-Mail, nur eine Zeile. Mit write_copy einen echten Text mit "
+                                 "Anrede, Inhalt und Grussformel erzeugen lassen, dann vorlegen.")
+                        queue.revision(vorlage["id"], f"Jude: {grund}")
+                        self.lehre_merken(agent_name,
+                                          "Eine 'email'-Vorlage unter 100 Zeichen wird nicht "
+                                          "angenommen - erst write_copy fuer einen echten Text "
+                                          "beauftragen, dann vorlegen.")
+                        try:
+                            from services.notifications import NotificationService
+                            NotificationService().create("revision",
+                                                         f"Revision (zu kurz): {voll['titel'][:70]}",
+                                                         grund[:200])
+                        except Exception:
+                            pass
+                        entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                            "grund": "email_zu_kurz"})
+                        continue
+                    # Dupliktat: dieselbe E-Mail wortgleich fuer mehrere Kontakte
+                    # vorgelegt statt pro Kontakt personalisiert (Tom legte denselben
+                    # generischen Text 12x identisch vor, 04.09.2026).
+                    with connection() as db:
+                        doppel = db.execute(
+                            "SELECT COUNT(*) FROM reviews WHERE agent=? AND art='email' "
+                            "AND id!=? AND inhalt=? AND status IN ('offen','abgenommen','pruefung')",
+                            (voll["agent"], vorlage["id"], voll.get("inhalt") or "")).fetchone()[0]
+                    if doppel:
+                        grund = (f"Wortgleiche E-Mail liegt bereits {doppel}x vor - jede E-Mail "
+                                 "braucht eigenen, auf den jeweiligen Empfaenger zugeschnittenen "
+                                 "Text, kein Wiederverwenden desselben Entwurfs.")
+                        queue.revision(vorlage["id"], f"Jude: {grund}")
+                        self.lehre_merken(agent_name,
+                                          "Dieselbe E-Mail wortgleich fuer mehrere Kontakte "
+                                          "vorzulegen wird nicht angenommen - pro Kontakt einzeln "
+                                          "bei write_copy Empfaenger/Branche/Taetigkeit angeben.")
+                        try:
+                            from services.notifications import NotificationService
+                            NotificationService().create("revision",
+                                                         f"Revision (Duplikat): {voll['titel'][:70]}",
+                                                         grund[:200])
+                        except Exception:
+                            pass
+                        entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                            "grund": "email_duplikat"})
                         continue
                 # Revisionsbremse: Nach 2 Runden entscheidet Tino, nicht die
                 # Schleife. Der Prüfer erfand sonst in jeder Runde neue Einwände.
