@@ -1378,8 +1378,18 @@ class SubAgentService:
                     entschieden.append({"id": vorlage["id"], "urteil": "revision",
                                         "grund": "platzhalter"})
                     continue
+                # URLs koennen legitime Fremdwoerter im Pfad tragen (z. B.
+                # ".../new-tools-and-pricing") - das ist eine zitierte Adresse,
+                # keine Wortwahl des Verfassers, und laesst sich nicht "auf
+                # Deutsch umformulieren". Ohne den Ausschluss blockierte eine
+                # echte Quellenangabe den Wortfilter (scraper, Pipeline-Pilot,
+                # 05.09.2026: 'tools' stammte ausschliesslich aus einer
+                # zitierten Cloud-Wars-URL im 'source'-Feld; der Lauf danach in
+                # eine 40x-read_project_file-Schleife, weil er nicht wusste,
+                # wie er einer URL gehorchen sollte, bis der Schritt-Deckel griff).
+                lesbar_ohne_urls = re.sub(r"https?://\S+", " ", lesbar)
                 funde = {t[0].lower() if isinstance(t, tuple) else t.lower()
-                         for t in self.WORTFILTER.findall(lesbar)}
+                         for t in self.WORTFILTER.findall(lesbar_ohne_urls)}
                 funde = {f for f in funde if f}
                 if funde:
                     grund = ("Wortfilter: verbotene/englische Woerter im Text: "
