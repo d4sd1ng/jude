@@ -641,25 +641,27 @@ class ModelRouter:
         return key is None or (self.paid_models_enabled and bool(os.getenv(key)))
 
     def select_model(self, prompt: str, allow_uncensored: bool = False, force_local: bool = False,
-                     needs_tools: bool = False) -> ModelSpec:
+                     needs_tools: bool = False, strict_tools: bool = False) -> ModelSpec:
         task_type = self.task_type(prompt)
         candidates = [m for m in self.models.values() if self._provider_enabled(m.provider)]
         if force_local or self.budget_used >= self.budget_limit or self.router_cfg.get("local_first", True):
             candidates = [m for m in candidates if "lokal" in m.tags]
         if allow_uncensored:
             candidates = [m for m in candidates if "unzensiert" in m.tags]
-        elif needs_tools:
-            # needs_tools kommt aus bool(tools) beim Aufrufer - Werkzeuge wurden
-            # also tatsaechlich uebergeben, das ist kein Ermessen mehr. Die
-            # fruehere Zusatzbedingung (nur bei task_type != "allgemein" oder
-            # is_actionable(prompt)) liess genau das durch: ein Dispatch-Text
-            # wie "Du hast offene Revisionen - arbeite sie ab" galt als
-            # "allgemein" und nicht "actionable", die Filterung wurde
-            # uebersprungen, local_dolphin (nicht werkzeugfaehig) gewann per
-            # standard_bonus - der Lauf lieferte eine erfundene Antwort ohne
-            # einen einzigen Werkzeugaufruf (content, 05.09.2026, Runde 1 der
-            # ROI-Guide-Revision). needs_tools=True heisst jetzt immer: nur
-            # werkzeugfaehige Modelle infrage.
+        elif strict_tools or (needs_tools and (task_type != "allgemein" or self._is_actionable(prompt))):
+            # strict_tools kommt von Sub-Agenten-Laeufen (core/agent.py: agent_name
+            # != "jude") und erzwingt die Filterung ungeachtet der Heuristik unten -
+            # ein Mitarbeiter-Dispatch ist nie "Plaudern", jeder solche Lauf braucht
+            # echte Werkzeuge. Ohne das galt ein Dispatch-Text wie "Du hast offene
+            # Revisionen - arbeite sie ab" als "allgemein" und nicht "actionable",
+            # die Filterung wurde uebersprungen, local_dolphin (nicht werkzeugfaehig)
+            # gewann per standard_bonus - der Lauf lieferte eine erfundene Antwort
+            # ohne einen einzigen Werkzeugaufruf (content, 05.09.2026, Runde 1 der
+            # ROI-Guide-Revision). Fuer Tinos eigenen Chat (agent_name == "jude")
+            # bleibt needs_tools weiterhin nur ein weicher Hinweis: er hat immer
+            # das volle Werkzeug-Set geladen, auch fuer "wie gehts dir" - reines
+            # Plaudern soll trotzdem beim entspannten Standardmodell bleiben,
+            # nicht bei jedem Toolset-Ladevorgang auf ein Tools-Modell zwangswechseln.
             tool_capable = [m for m in candidates if "tools" in m.tags]
             candidates = tool_capable or candidates
         if not candidates:
@@ -757,9 +759,14 @@ class ModelRouter:
             return response
 
     def call_with_fallback(self, messages: list[dict], tools: list[dict] | None = None,
-                           allow_uncensored: bool = False, force_model: str | None = None) -> dict:
+                           allow_uncensored: bool = False, force_model: str | None = None,
+                           strict_tools: bool = False) -> dict:
         # Routing an der eigentlichen Nutzeranfrage ausrichten, nicht an Tool-Ergebnissen –
         # so bleibt eine Aktion über den gesamten Werkzeug-Loop beim passenden Modell.
+        # strict_tools kommt von core/agent.py (agent_name != "jude"): ein
+        # Sub-Agenten-Dispatch braucht IMMER echte Werkzeuge, unabhaengig davon, wie
+        # "plauderhaft" der Auftragstext klingt. Tinos eigener Chat setzt es nicht -
+        # er hat immer das volle Toolset geladen, auch fuer reines Plaudern.
         user_messages = [m for m in messages if m.get("role") == "user"]
         prompt = str((user_messages[-1] if user_messages else messages[-1]).get("content", ""))
         complexity, task_type = self.estimate_complexity(prompt), self.task_type(prompt)
@@ -774,9 +781,10 @@ class ModelRouter:
             if tools and "tools" not in selected.tags:
                 logger.warning("Modell %s kann keine Werkzeuge – Vorgabe verworfen.", force_model)
                 selected = self.select_model(prompt, allow_uncensored=allow_uncensored,
-                                             needs_tools=True)
+                                             needs_tools=True, strict_tools=strict_tools)
         else:
-            selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools))
+            selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools),
+                                         strict_tools=strict_tools)
         route_id = uuid.uuid4().hex[:16]
         started = time.monotonic()
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
@@ -796,12 +804,16 @@ class ModelRouter:
                 attempts.append({"model": spec.name, "status": "skipped_provider_gesperrt"})
                 logger.debug("Provider %s: Sperre aktiv, Versuch übersprungen.", spec.provider)
                 continue
-            if not self._cloud_affordable(spec, messages):
+            # Erst zuschneiden, dann rechnen und rufen: die Kostenschaetzung
+            # muss sich auf das beziehen, was wirklich rausgeht, sonst lehnt das
+            # Budget einen Versuch wegen Token ab, die gar nicht gesendet werden.
+            nachrichten = self._zuschneiden(messages, spec)
+            if not self._cloud_affordable(spec, nachrichten):
                 attempts.append({"model": spec.name, "status": "skipped_cost_limit"})
                 continue
             try:
                 attempt_started = time.monotonic()
-                response = self.call_llm(spec, messages, tools, request_id=route_id)
+                response = self.call_llm(spec, nachrichten, tools, request_id=route_id)
                 # Eine erfolgreiche Antwort wird angenommen, ohne sie von einem
                 # zweiten Modell nachbewerten zu lassen (entfernt 05.09.2026):
                 # eine "inadequate"-Note eskalierte zur naechsten Kettenstufe,
@@ -850,11 +862,65 @@ class ModelRouter:
         return dict(row)
 
     def context_budget(self) -> int:
-        """Kleinstes Kontextfenster der lokalen Modelle. Der Verlauf muss in
-        jedes Modell der Fallback-Kette passen – die Cloud-Fenster sind riesig,
-        der Engpass ist immer das lokale Basismodell."""
-        local = [spec.context_length for spec in self.models.values() if spec.provider == "ollama"]
-        return min(local) if local else 16384
+        """Groesstes verfuegbares Kontextfenster – der Verlauf wird erst beim
+        einzelnen Modell zugeschnitten (``_zuschneiden``), nicht vorher.
+
+        Vorher stand hier das KLEINSTE Fenster der lokalen Modelle. Das war
+        richtig, solange alles lokal lief, und wurde falsch, als die Kette in
+        die Cloud ging: gemessen 04.09.2026 arbeitete jeder Mitarbeiterlauf mit
+        8192 * 0,75 = 6144 Token Verlauf, auch auf cloud_openai_terra mit einem
+        Fenster von 1.050.000 – 0,6 % davon. Der Auftrag ist die aelteste
+        Nicht-System-Nachricht und flog dadurch als Erstes heraus; danach
+        reagierte der Agent nur noch auf die letzte Werkzeugquittung. Sichtbare
+        Folgen an einem Tag: 38x ``report_to_tino`` hintereinander im selben
+        Lauf, 38x dieselbe Datei gelesen, 6,00 Mio. Eingabe- gegen 121k
+        Ausgabe-Token.
+        """
+        fenster = [spec.context_length for spec in self.models.values()]
+        return max(fenster) if fenster else 16384
+
+    @staticmethod
+    def _nachrichtenkosten(message: dict) -> int:
+        """Grobe Tokenschaetzung einer Nachricht (~3,6 Zeichen je Token im
+        Deutschen). Spiegelt bewusst die Schaetzung in ``Agent._trim_history``;
+        beide muessen dieselbe Groessenordnung liefern, sonst schneidet mal die
+        eine, mal die andere Seite."""
+        content = message.get("content")
+        if isinstance(content, dict) and "_bildbloecke" in content:
+            return 1800                      # ein Bild kostet ~1,5k Token
+        text = (content if isinstance(content, str)
+                else json.dumps(content, ensure_ascii=False) if content else "")
+        return int(len(text) / 3.6) + 8
+
+    def _zuschneiden(self, messages: list[dict], spec: ModelSpec) -> list[dict]:
+        """Verlauf auf das Fenster GENAU DIESES Modells kuerzen.
+
+        Die Kette reicht von 8k (lokal) bis 1.050.000 (cloud_openai_terra).
+        Einmal vorab auf das kleinste Fenster zu kuerzen verschenkt bei jedem
+        groesseren Modell den Kontext; gar nicht zu kuerzen sprengt das
+        kleinste. Deshalb hier, pro Versuch, gegen das tatsaechliche Fenster.
+        25 % bleiben fuer Antwort und Werkzeugdefinitionen frei.
+        """
+        if not messages:
+            return messages
+        budget = int(spec.context_length * 0.75)
+        system, rest = messages[0], messages[1:]
+        gesamt = self._nachrichtenkosten(system)
+        behalten: list[dict] = []
+        for message in reversed(rest):
+            gesamt += self._nachrichtenkosten(message)
+            if gesamt > budget and behalten:
+                break
+            behalten.append(message)
+        behalten.reverse()
+        # Ein Werkzeug-Ergebnis ohne den zugehoerigen Aufruf verwirrt die Modelle.
+        while behalten and behalten[0].get("role") == "tool":
+            behalten.pop(0)
+        if len(behalten) == len(rest):
+            return messages                  # nichts gekuerzt, Original weitergeben
+        logger.debug("Verlauf fuer %s auf %d von %d Nachrichten gekuerzt (Fenster %d).",
+                     spec.name, len(behalten) + 1, len(messages), spec.context_length)
+        return [system, *behalten]
 
     def status(self) -> dict[str, Any]:
         month = datetime.now(timezone.utc).strftime("%Y-%m")

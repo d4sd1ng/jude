@@ -217,6 +217,12 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                 offen[row["agent"]] = offen.get(row["agent"], 0) + row["anzahl"]
         dienst = SubAgentService(registry, router)
         bekannt = {a["name"] for a in dienst.list()}
+        # Obergrenze gleichzeitiger Laeufe aus diesem Tick: drei parallele
+        # cloud_openai_terra-Aufrufe haben am 05.09.2026 das gesamte OpenAI-
+        # Guthaben in ~3 Minuten verbraucht (Sperre bis Mitternacht). Wer hier
+        # nicht drankommt, wartet einfach bis zum naechsten Tick (5 Min.) -
+        # kein Datenverlust, nur gestaffelt statt aller auf einmal.
+        MAX_GLEICHZEITIG = 2
 
         def _starte(agent_name: str) -> None:
             try:
@@ -232,16 +238,20 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                 except Exception:
                     pass
 
-        gestartet, uebersprungen = [], []
+        gestartet, uebersprungen, wartet = [], [], []
         for agent_name, anzahl in offen.items():
             if agent_name not in bekannt:
                 continue
             if agent_name in laufend:
                 uebersprungen.append(agent_name)
                 continue
+            if len(gestartet) >= MAX_GLEICHZEITIG:
+                wartet.append(agent_name)
+                continue
             threading.Thread(target=_starte, args=(agent_name,), daemon=True).start()
             gestartet.append({"agent": agent_name, "anzahl": anzahl})
-        return {"gestartet": gestartet, "schon_aktiv_uebersprungen": uebersprungen}
+        return {"gestartet": gestartet, "schon_aktiv_uebersprungen": uebersprungen,
+                "wartet_auf_naechsten_tick": wartet}
 
     def rolle_aktualisieren(agent: str, neuer_text: str) -> dict:
         """Rollen-Prompt eines Mitarbeiters ersetzen – nur nach Tinos Bestätigung."""

@@ -1080,7 +1080,7 @@ class SubAgentService:
         "0. Auftritt: hochwertig und ruhig, dunkelgruen und Gold auf mattem Schwarz. "
         "Marktgeschrei, Ausrufezeichen-Ketten, Emoji-Teppiche und Rabattsprache sind "
         "Ausschluss (1-2 dezente Emojis sind erlaubt, auf Xing keine; 3-6 Hashtags aus dem Strategie-Pool sind erlaubt) – wir wirken wie eine teure Manufaktur, nicht wie eine Werbeagentur.\n"
-        "1. Marke: Nurovelle, 'Building intelligent System'. 'Autonova' und 'Politara' "
+        "1. Marke: Nurovelle, 'Building intelligent systems'. 'Autonova' und 'Politara' "
         "duerfen nirgends vorkommen. Von KI zu sprechen ist richtig, aber nie als "
         "Schlagwort ohne einen Ablauf, den der Leser kennt.\n"
         "2. Sprache: durchgehend Deutsch, kein englisches Wort, keine Platzhalter "
@@ -1256,24 +1256,32 @@ class SubAgentService:
                                             "grund": "kein_bild"})
                         continue
                 # HTML-Vorlagen von engineer: die Tagline wird wiederholt aus dem
-                # Gedaechtnis angenaehert statt wortgleich uebernommen (gemessen
-                # 04.09.2026: "BUILDING INTELLIGENT SYSTEM" statt der echten
-                # "Building Intelligent Systems" - Grossschreibung UND das
-                # fehlende 's'). Eindeutiger String-Vergleich, kein Ermessen.
+                # Gedaechtnis angenaehert statt wortgleich uebernommen. Verifizierte
+                # Quelle ist austausch/an-team/vorlagen/nurovelle/launchpost.pdf
+                # (bei 300 dpi geprueft, 05.09.2026) - dort steht "Building
+                # intelligent systems": Grossbuchstabe nur bei "Building", "intelligent"
+                # und "systems" klein, mit 's' am Ende. Die Live-Seite (homepage/index.html)
+                # ist NICHT die massgebliche Quelle (Tinos ausdrueckliche Festlegung) und
+                # weicht ab ("Building Intelligent Systems", faelschlich grossgeschrieben)
+                # - diese Pruefung akzeptierte bis 05.09.2026 genau diese falsche Schreibweise
+                # und hätte die tatsaechlich korrekte zurueckgewiesen. Eindeutiger
+                # String-Vergleich, kein Ermessen.
                 if voll["agent"] == "engineer" and voll["art"] == "dokument":
                     inhalt_pruef = voll.get("inhalt") or ""
-                    falsch = re.search(r"BUILDING INTELLIGENT SYSTEMS?\b", inhalt_pruef)
-                    richtig = "Building Intelligent Systems" in inhalt_pruef
-                    if falsch and not richtig:
-                        grund = (f"Falsche Tagline-Schreibweise gefunden: '{falsch.group(0)}'. "
-                                 "Wortgleich 'Building Intelligent Systems' verwenden (nicht "
-                                 "grossgeschrieben, mit 's' am Ende) - aus homepage/index.html "
-                                 "Zeile ~1542 kopieren, nicht aus dem Gedaechtnis schreiben.")
+                    gefunden = re.search(r"building intelligent systems?\b", inhalt_pruef, re.I)
+                    if gefunden and gefunden.group(0) != "Building intelligent systems":
+                        grund = (f"Falsche Tagline-Schreibweise gefunden: '{gefunden.group(0)}'. "
+                                 "Wortgleich 'Building intelligent systems' verwenden (kleines "
+                                 "'i' bei intelligent, kleines 's' bei systems, mit 's' am Ende) "
+                                 "- aus austausch/an-team/vorlagen/nurovelle/launchpost.pdf "
+                                 "kopieren, nicht aus dem Gedaechtnis schreiben oder von der "
+                                 "Live-Seite uebernehmen.")
                         queue.revision(vorlage["id"], f"Jude: {grund}")
                         self.lehre_merken(agent_name,
-                                          "Die Tagline wird wortgleich aus der echten Quelldatei "
-                                          "kopiert ('Building Intelligent Systems'), nicht "
-                                          "angenaehert oder grossgeschrieben.")
+                                          "Die Tagline wird wortgleich aus der echten Vorlage "
+                                          "kopiert ('Building intelligent systems', aus "
+                                          "launchpost.pdf), nicht angenaehert, grossgeschrieben "
+                                          "oder von der Live-Seite uebernommen.")
                         try:
                             from services.notifications import NotificationService
                             NotificationService().create("revision",

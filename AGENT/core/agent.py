@@ -125,7 +125,8 @@ class Agent:
 
         for _ in range(self.max_tool_steps + 1):
             response = self.router.call_with_fallback(self.conversation_history, tools, allow_uncensored,
-                                                      force_model=self.force_model)
+                                                      force_model=self.force_model,
+                                                      strict_tools=self.agent_name != "jude")
             self.last_model = response.pop("_model", None)
             self.last_route_id = response.pop("_route_id", None)
             calls = response.get("tool_calls") or []
