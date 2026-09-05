@@ -18,36 +18,55 @@ def generate_image(prompt: str, size: str = "1024x1024", marke: bool = True) -> 
     return _images.generate(prompt, size, marke=marke)
 
 
-def _svg_speichern(svg: str, kind: str) -> dict:
-    """SVG-Grafiken (infografik/onepager) genauso ablegen wie generate_image -
-    Zeitstempel-Dateiname unter Jude/images, Pfad zurueckgeben. Kein Rasterizer
-    (cairosvg o.ae.) installiert - SVG bleibt SVG, statt PNG vorzutaeuschen.
-    Fuer Instagram/Story-Formate bleibt generate_image zustaendig; hier geht es
-    um Grafiken, die echten, verlaesslich lesbaren Text brauchen (Wortmarke,
-    Tagline, CTA) - das kann kein Bildgenerator zuverlaessig rendern."""
+def _svg_speichern(svg: str, kind: str, breite: int, hoehe: int) -> dict:
+    """SVG-Grafiken (infografik/onepager) ablegen wie generate_image – und zu
+    PNG rendern.
+
+    Die reine SVG-Ausgabe war mit "kein Rasterizer installiert" begruendet.
+    Das galt fuer die Python-Bibliotheken; Playwrights Chromium liegt aber auf
+    der Maschine und rendert SVG samt der echten Marken-Schriften (siehe
+    services/rasterizer.py). Gemessen 05.09.2026: 1080x1350 in 0,6 s.
+
+    Das SVG bleibt neben dem PNG liegen – darin ist der Text noch editierbar.
+    Abgenommen wird das PNG: es ist das, was Tino in der Vorschau sieht, und
+    was jedes Zielsystem ohne Umweg annimmt.
+    """
     import uuid
     from datetime import datetime, timezone
     from core.paths import IMAGES_DIR
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    name = f"{stamp}_{kind}_{uuid.uuid4().hex[:8]}.svg"
-    path = IMAGES_DIR / name
-    path.write_text(svg, encoding="utf-8")
-    return {"path": str(path), "file": name, "kind": kind}
+    rumpf = f"{stamp}_{kind}_{uuid.uuid4().hex[:8]}"
+    svg_pfad = IMAGES_DIR / f"{rumpf}.svg"
+    svg_pfad.write_text(svg, encoding="utf-8")
+
+    from services.rasterizer import svg_zu_png
+    try:
+        png_pfad = svg_zu_png(svg, breite, hoehe, name=f"{rumpf}.png")
+    except Exception as exc:
+        # Kein stiller Rueckfall: der Mitarbeiter muss erfahren, dass er nur
+        # ein SVG in der Hand haelt, sonst legt er es als "Grafik" vor und die
+        # Vorschau bleibt leer.
+        return {"path": str(svg_pfad), "file": svg_pfad.name, "kind": kind,
+                "svg": str(svg_pfad), "png": None,
+                "hinweis": f"SVG erzeugt, aber nicht zu PNG gerendert: {exc}"}
+    return {"path": str(png_pfad), "file": png_pfad.name, "kind": kind,
+            "png": str(png_pfad), "svg": str(svg_pfad),
+            "hinweis": "PNG als Erzeugnis vorlegen; das SVG daneben bleibt aenderbar."}
 
 
 def grafik_infografik(kicker: str, titel: str, kennzahlen: list, fussnote: str = "",
                       breite: int = 1080, hoehe: int = 1350) -> dict:
     from services.marke import infografik
     svg = infografik(kicker, titel, kennzahlen, fussnote, breite, hoehe)
-    return _svg_speichern(svg, "infografik")
+    return _svg_speichern(svg, "infografik", breite, hoehe)
 
 
 def grafik_onepager(titel: str, untertitel: str, abschnitte: list, abschluss: str = "",
                     breite: int = 1240, hoehe: int = 1754) -> dict:
     from services.marke import onepager
     svg = onepager(titel, untertitel, abschnitte, abschluss, breite, hoehe)
-    return _svg_speichern(svg, "onepager")
+    return _svg_speichern(svg, "onepager", breite, hoehe)
 
 
 def render_3d_scene(blender_python: str, title: str = "szene", width: int = 1024,
