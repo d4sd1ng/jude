@@ -359,8 +359,15 @@ class SubAgentService:
                 raise ValueError("Der Hinweis ist zu duenn. Nenne Quelle, Kernaussage und "
                                  "warum es fuer den Kollegen brauchbar ist.")
             self.remember(kollege, f"[Hinweis von {wer}] {hinweis}")
+            # Kein weitererzaehlbarer Satz in der Rueckgabe: das Feld hiess
+            # "hinweis" und enthielt "Steht in seinem naechsten Lauf im
+            # Systemprompt." – dasselbe Wort wie der Eingabeparameter. Das
+            # Modell las die Quittung als naechsten Hinweis und schickte sie
+            # weiter (gemessen 05.09.2026: social 93x inform_colleague in
+            # einem Tag, content 74x). Quittung ist jetzt ein Endzustand.
             return {"zugestellt": True, "an": ziel.get("person") or ziel["name"],
-                    "hinweis": "Steht in seinem naechsten Lauf im Systemprompt."}
+                    "erledigt": "Zustellung abgeschlossen. Nicht wiederholen, "
+                                "nichts daran weitermelden."}
 
         return Tool(
             name="inform_colleague",
@@ -736,7 +743,16 @@ class SubAgentService:
                 raise ValueError("Die Meldung ist zu duenn – Grund und Kontext nennen.")
             from services.notifications import NotificationService
             NotificationService.create("mitarbeiter", f"{wer} ({spec['name']})", nachricht)
-            return {"gemeldet": True, "hinweis": "Steht in den Meldungen für Tino."}
+            # Dieselbe Falle wie bei inform_colleague, hier zuerst aufgefallen:
+            # die Rueckgabe lautete "Steht in den Meldungen für Tino." – das
+            # Modell meldete diesen Satz als naechste Nachricht weiter, bekam
+            # dieselbe Quittung und meldete wieder. 38 Aufrufe hintereinander
+            # in einem Lauf, 116 Meldungen von einem Mitarbeiter an einem Tag
+            # (gemessen 04./05.09.2026). Quittung ohne Inhalt, der sich
+            # weitererzaehlen laesst.
+            return {"gemeldet": True,
+                    "erledigt": "Meldung zugestellt. Nicht wiederholen, "
+                                "nichts daran weitermelden."}
 
         return Tool(
             name="report_to_tino",
@@ -945,9 +961,40 @@ class SubAgentService:
         # gezielt zurueckweisen, nur der ganze Lauf als 'teilweise' markieren.
         eingereichte_ids: list[str] = []
         original = agent.tools.execute
+        # Schutz gegen den Leerlauf, der die Werkzeugketten auffrisst: derselbe
+        # Aufruf mit denselben Argumenten, unmittelbar hintereinander. Gemessen
+        # 05.09.2026: von 769 Aufrufen an einem Tag waren 6 % erzeugend und
+        # 67 % melden/listen – projektleitung holte 164x 'pruefungsliste' und
+        # traf dabei EINE Entscheidung. Das Werkzeug liefert etwas, das wie neue
+        # Arbeit aussieht, das Modell verarbeitet es und ruft erneut auf.
+        #
+        # Bewusst nur bei UNMITTELBARER Wiederholung: hat der Mitarbeiter
+        # zwischendurch etwas anderes getan (z. B. entschieden), hat sich die
+        # Lage geaendert und dieselbe Abfrage ist berechtigt. Das ist kein
+        # Deckel auf die Zahl der Schritte, sondern macht Leerlauf unmoeglich.
+        letzter: dict = {"schluessel": None, "ergebnis": None, "zaehler": 0}
+
+        def _schluessel(werkzeug, argumente):
+            try:
+                return werkzeug + "|" + json.dumps(argumente, ensure_ascii=False, sort_keys=True)
+            except (TypeError, ValueError):
+                return werkzeug + "|" + repr(argumente)
+
         def mitschreiben(werkzeug, argumente):
             werkzeuge.append(werkzeug)
+            schluessel = _schluessel(werkzeug, argumente)
+            if schluessel == letzter["schluessel"]:
+                letzter["zaehler"] += 1
+                if letzter["zaehler"] >= 2:
+                    return (f"'{werkzeug}' wurde gerade eben mit genau denselben Argumenten "
+                            f"aufgerufen und liefert unveraendert dasselbe. Der Aufruf wurde "
+                            f"nicht erneut ausgefuehrt. Es hat sich seitdem nichts geaendert – "
+                            f"nimm das vorherige Ergebnis und mach den naechsten Schritt deiner "
+                            f"Aufgabe, oder beende den Lauf, wenn nichts mehr zu tun ist.")
+            else:
+                letzter["schluessel"], letzter["zaehler"] = schluessel, 1
             ergebnis = original(werkzeug, argumente)
+            letzter["ergebnis"] = ergebnis
             if self._ist_fehlschlag(ergebnis):
                 fehlschlaege.append(str(ergebnis).strip()[:300])
             if werkzeug == "submit_for_review" and isinstance(ergebnis, dict) and ergebnis.get("id"):
