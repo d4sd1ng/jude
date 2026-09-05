@@ -104,6 +104,27 @@ def provider_sperre_aufheben(provider: str | None = None) -> None:
         _PROVIDER_429.pop(provider, None)
 
 
+def provider_sperren_uebersicht() -> list[dict]:
+    """Sperrstatus je Provider, der schon einmal einen 429/Dauerfehler hatte –
+    fuer eine GUI/API-Ansicht, ohne dass irgendwer den Prozess neu starten muss,
+    nur um nachzusehen, was gerade gesperrt ist. Provider ohne jeden Eintrag
+    waren noch nie gesperrt und tauchen hier nicht auf."""
+    now = time.time()
+    ergebnis = []
+    for provider, eintrag in sorted(_PROVIDER_429.items()):
+        gesperrt = bool(eintrag.get("bis", 0) > now and eintrag.get("zaehler", 0) >= 2)
+        ergebnis.append({
+            "provider": provider,
+            "gesperrt": gesperrt,
+            "bis": (datetime.fromtimestamp(eintrag["bis"], tz=timezone.utc).isoformat()
+                    if gesperrt else None),
+            "grund": ("kein_guthaben_oder_quota" if eintrag.get("tagessperre")
+                      else "rate_limit") if gesperrt else None,
+            "zaehler": eintrag.get("zaehler", 0),
+        })
+    return ergebnis
+
+
 @dataclass(frozen=True)
 class ModelSpec:
     name: str

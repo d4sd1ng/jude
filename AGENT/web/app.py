@@ -220,6 +220,25 @@ def status():
             "memory": memory.training_stats()}
 
 
+@app.get("/api/router/providers")
+def router_providers():
+    """Welche Provider gerade gesperrt sind (429 oder leeres Guthaben) – ohne
+    Neustart einsehbar. Provider, die noch nie gesperrt waren, tauchen nicht auf."""
+    from core.model_router import provider_sperren_uebersicht
+    return {"providers": provider_sperren_uebersicht()}
+
+
+@app.post("/api/router/providers/{provider}/unlock")
+def router_provider_unlock(provider: str):
+    """Sperre eines Providers sofort aufheben, z. B. direkt nachdem Guthaben
+    aufgeladen wurde – bisher gab es dafuer nur einen Neustart oder eine
+    Python-Konsole am laufenden Prozess."""
+    from core.model_router import provider_gesperrt, provider_sperre_aufheben
+    war_gesperrt = provider_gesperrt(provider)
+    provider_sperre_aufheben(provider)
+    return {"provider": provider, "war_gesperrt": war_gesperrt, "jetzt_gesperrt": provider_gesperrt(provider)}
+
+
 @app.get("/api/memory")
 def memory_list(status: str | None = None):
     return {"items": memory.list(status=status), "stats": memory.training_stats()}
