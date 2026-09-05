@@ -807,15 +807,27 @@ class ModelRouter:
             selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools),
                                          strict_tools=strict_tools)
         route_id = uuid.uuid4().hex[:16]
-        started = time.monotonic()
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
-        attempts: list[dict] = []
         with connection() as db:
             db.execute("INSERT INTO route_decisions(id,created_at,task_type,complexity,selected_model,prompt_hash) VALUES(?,?,?,?,?,?)",
                        (route_id, datetime.now(timezone.utc).isoformat(), task_type, complexity, selected.name, prompt_hash))
-        errors: list[str] = []
         chain = self._resolve_fallbacks(selected, allow_uncensored, needs_tools=bool(tools))
+        return self._execute_chain(chain, messages, tools, selected_name=selected.name, route_id=route_id)
 
+    def _execute_chain(self, chain: list[ModelSpec], messages: list[dict], tools: list[dict] | None,
+                       *, selected_name: str, route_id: str) -> dict:
+        """Arbeitet eine bereits aufgebaute Modellkette ab: ueberspringt gesperrte
+        Provider, schneidet den Verlauf pro Modell auf dessen eigenes Fenster zu,
+        prueft die Kostenschaetzung, ruft auf, protokolliert jeden Versuch nach
+        route_decisions (die Einstiegszeile dafuer legt der Aufrufer bereits an,
+        siehe call_with_fallback). Extrahiert aus call_with_fallback, damit ein
+        spaeterer registry-basierter Aufrufer (AIRouter) dieselbe Retry-/Logging-/
+        Kosten-/Zuschneide-Maschinerie nutzt, statt sie zu duplizieren - nur WIE
+        die Kette zustandekommt (Heuristik hier vs. Registry dort) unterscheidet
+        sich, die Ausfuehrung ist fuer beide identisch."""
+        started = time.monotonic()
+        attempts: list[dict] = []
+        errors: list[str] = []
         for position, spec in enumerate(chain):
             # Provider kürzlich mit 429 oder einem dauerhaften Fehler (kein
             # Guthaben, gesperrt) gescheitert? Dann gar nicht erst versuchen –
@@ -853,7 +865,7 @@ class ModelRouter:
                 response["_route_id"] = route_id
                 with connection() as db:
                     db.execute("UPDATE route_decisions SET final_model=?,success=1,escalated=?,latency_ms=?,attempts_json=? WHERE id=?",
-                               (spec.name, int(spec != selected), int((time.monotonic() - started) * 1000),
+                               (spec.name, int(spec.name != selected_name), int((time.monotonic() - started) * 1000),
                                 json.dumps(attempts), route_id))
                 return response
             except Exception as exc:

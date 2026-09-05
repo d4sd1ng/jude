@@ -1,0 +1,60 @@
+# task_type -> {requires_tools, tiers}. tiers ist eine Liste von Modellnamen
+# aus config/models.yaml `models:`, in Eskalationsreihenfolge - dieselbe Idee
+# wie der bestehende router.fallback_chain, nur pro Aufgabentyp statt einer
+# einzigen globalen Kette fuer alle Aufrufer.
+#
+# requires_tools: true heisst, die Filterung auf werkzeugfaehige Modelle ist
+# unbedingt (kein Ermessen mehr) - das ist die deklarative Fassung des
+# strict_tools-Parameters aus core/model_router.py/core/agent.py.
+#
+# jude_chat ist die EINZIGE Ausnahme: Tinos eigener Chat hat immer das volle
+# Werkzeug-Set geladen, auch fuer reines Plaudern - dort bleibt die bestehende
+# weiche Heuristik (_is_actionable/Komplexitaetsschaetzung) aktiv, siehe
+# core/ai_router.py.
+task_types:
+  jude_chat:
+    requires_tools: false
+    tiers: [local_dolphin, cloud_openrouter_dolphin, cloud_openrouter_hermes]
+
+  # Haeufig/geringwertig: Buchhaltung, Scraping, Auflisten, Status-Updates.
+  # Freie Ollama-Cloud-Stufe zuerst (echte $0-Kosten, keine GPU-Konkurrenz mit
+  # anderen laufenden Mitarbeitern), lokales Ollama nur als letzter Ausweg -
+  # gemessen zuverlaessiger und schneller als lokal auf dieser Hardware.
+  routine_dispatch:
+    requires_tools: true
+    tiers:
+      - cloud_ollama_gptoss
+      - cloud_ollama_nemotron_ultra
+      - cloud_ollama_nemotron_super
+      - cloud_ollama_gptoss20
+      - cloud_ollama_gemma
+      - cloud_deepseek_chat
+      - local_qwen_coder
+
+  # Selten/hochwertig: endgueltiger, kundengerichteter Text unter Markenregeln.
+  content_drafting:
+    requires_tools: true
+    tiers:
+      - cloud_ollama_gptoss
+      - cloud_deepseek_chat
+      - cloud_openai_terra
+      - cloud_claude_sonnet
+      - local_qwen_coder
+
+  # Selten/hoechstwertig: Gatekeeper-Entscheidungen, bevor Tino etwas sieht.
+  judgment_review:
+    requires_tools: true
+    tiers:
+      - cloud_openai_terra
+      - cloud_claude_sonnet
+      - cloud_ollama_gptoss
+      - cloud_openai_sol
+      - cloud_claude_fable
+
+  code_engineering:
+    requires_tools: true
+    tiers: [local_qwen_coder, cloud_ollama_gptoss, cloud_deepseek_chat, cloud_openai_terra, cloud_claude_sonnet]
+
+  data_analysis:
+    requires_tools: true
+    tiers: [cloud_ollama_gptoss, cloud_deepseek_chat, cloud_openai_terra, cloud_claude_sonnet]
