@@ -2,8 +2,8 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const pages=$$('section').map(s=>s.dataset.page); const nav=$('#nav');
 pages.forEach((p,i)=>{let b=document.createElement('button');b.textContent=p;b.onclick=()=>show(p);if(!i)b.className='active';nav.append(b)});
 function show(p){$$('section').forEach(s=>s.classList.toggle('active',s.dataset.page===p));[...nav.children].forEach(b=>b.classList.toggle('active',b.textContent===p));if(p==='Märkte')loadICT();if(p==='Werkzeuge')loadImages();
- if(p==='Schreibtisch'){loadAktiv();loadReviews();loadConfirmations();loadNotifications();loadAuftraege()}
- if(p==='System'){loadSystem();loadMemory();loadRouting();loadAgents();loadDocs()}};show(pages[0]);
+ if(p==='Schreibtisch'){loadAktiv();loadReviews();loadConfirmations();loadAuftraege()}
+ if(p==='System'){loadSystem();loadMemory();loadRouting();loadAgents();loadDocs();loadNotifications()}};show(pages[0]);
 function fmt(v){const d=new Date(typeof v==='number'?v*1000:v);return isNaN(d)?String(v??''):d.toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function toast(x){let t=$('#toast');t.textContent=x;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500)}
 async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let d=await r.json().catch(()=>({error:r.statusText}));if(!r.ok||d.error)throw Error(d.error||r.statusText);return d}

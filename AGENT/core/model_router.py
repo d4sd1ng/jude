@@ -648,10 +648,18 @@ class ModelRouter:
             candidates = [m for m in candidates if "lokal" in m.tags]
         if allow_uncensored:
             candidates = [m for m in candidates if "unzensiert" in m.tags]
-        elif needs_tools and (task_type != "allgemein" or self._is_actionable(prompt)):
-            # Werkzeuglastige ODER klar handlungsorientierte Anfragen ("führe aus",
-            # "erstelle", "klone" …) erzwingen ein Tools-fähiges Modell, damit der
-            # Assistent handelt statt nur zu erklären. Reines Plaudern bleibt beim Standardmodell.
+        elif needs_tools:
+            # needs_tools kommt aus bool(tools) beim Aufrufer - Werkzeuge wurden
+            # also tatsaechlich uebergeben, das ist kein Ermessen mehr. Die
+            # fruehere Zusatzbedingung (nur bei task_type != "allgemein" oder
+            # is_actionable(prompt)) liess genau das durch: ein Dispatch-Text
+            # wie "Du hast offene Revisionen - arbeite sie ab" galt als
+            # "allgemein" und nicht "actionable", die Filterung wurde
+            # uebersprungen, local_dolphin (nicht werkzeugfaehig) gewann per
+            # standard_bonus - der Lauf lieferte eine erfundene Antwort ohne
+            # einen einzigen Werkzeugaufruf (content, 05.09.2026, Runde 1 der
+            # ROI-Guide-Revision). needs_tools=True heisst jetzt immer: nur
+            # werkzeugfaehige Modelle infrage.
             tool_capable = [m for m in candidates if "tools" in m.tags]
             candidates = tool_capable or candidates
         if not candidates:
@@ -713,35 +721,6 @@ class ModelRouter:
         approximate_output = min(spec.max_tokens, 4096)
         estimate = (approximate_input * spec.cost_input + approximate_output * spec.cost_output) / 1000
         return estimate <= self.request_cost_limit and self.budget_used + estimate <= self.budget_limit
-
-    @staticmethod
-    def _obviously_inadequate(response: dict) -> bool:
-        text = str(response.get("content", "")).strip().casefold()
-        if response.get("tool_calls"):
-            return False
-        markers = ("ich kann dabei nicht", "i can't help", "als ki kann ich", "keine informationen", "fehler:")
-        return not text or any(marker in text for marker in markers)
-
-    def _local_quality_check(self, prompt: str, response: dict, complexity: int) -> bool:
-        if self._obviously_inadequate(response):
-            return False
-        if complexity < int(self.router_cfg.get("quality_judge_min_complexity", 6)) or response.get("tool_calls"):
-            return True
-        judge = next((model for model in self.models.values() if "routing_judge" in model.tags), None)
-        if not judge:
-            return True
-        request = (
-            "Bewerte, ob die Antwort die Anfrage fachlich ausreichend, vollständig und konkret beantwortet. "
-            "Antworte nur als JSON {\"adequate\":true|false,\"reason\":\"kurz\"}.\n"
-            f"ANFRAGE:\n{prompt[:12000]}\nANTWORT:\n{str(response.get('content', ''))[:18000]}"
-        )
-        try:
-            judged = self.call_llm(judge, [{"role": "user", "content": request}], request_id=None)
-            parsed = json.loads(str(judged.get("content", "")).strip().removeprefix("```json").removesuffix("```").strip())
-            return bool(parsed.get("adequate"))
-        except Exception as exc:
-            logger.warning("Lokale Routing-Qualitätsprüfung fehlgeschlagen: %s", exc)
-            return True
 
     def call_llm(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None,
                  request_id: str | None = None) -> dict:
@@ -808,9 +787,6 @@ class ModelRouter:
         errors: list[str] = []
         chain = self._resolve_fallbacks(selected, allow_uncensored, needs_tools=bool(tools))
 
-        def _has_stronger_tier(index: int) -> bool:
-            return any(self._provider_enabled(chain[j].provider) for j in range(index + 1, len(chain)))
-
         for position, spec in enumerate(chain):
             # Provider kürzlich mit 429 oder einem dauerhaften Fehler (kein
             # Guthaben, gesperrt) gescheitert? Dann gar nicht erst versuchen –
@@ -826,16 +802,18 @@ class ModelRouter:
             try:
                 attempt_started = time.monotonic()
                 response = self.call_llm(spec, messages, tools, request_id=route_id)
-                adequate = True
-                # Günstige Stufen (lokal, Groq, …) werden bei schweren Anfragen geprüft und
-                # eskalieren zur nächsten Stufe – aber nur, solange es eine stärkere gibt.
-                if (not allow_uncensored and "top_tier" not in spec.tags
-                        and _has_stronger_tier(position)):
-                    adequate = self._local_quality_check(prompt, response, complexity)
-                attempts.append({"model": spec.name, "status": "ok" if adequate else "inadequate",
+                # Eine erfolgreiche Antwort wird angenommen, ohne sie von einem
+                # zweiten Modell nachbewerten zu lassen (entfernt 05.09.2026):
+                # eine "inadequate"-Note eskalierte zur naechsten Kettenstufe,
+                # aber wenn davon nur noch gesperrte Provider oder ein schwaecheres
+                # lokales Modell uebrig waren, endete das zuverlaessig in einem
+                # kompletten Fehlschlag statt in der bereits vorliegenden, echten
+                # Antwort - gemessen am ROI-Guide-Lauf 05.09.2026: gpt-5.6-terra
+                # antwortete brauchbar, wurde als "inadequate" verworfen, danach
+                # scheiterten zwei gesperrte Claude-Stufen und ein 45s-Timeout auf
+                # lokal qwen3, obwohl das schon rejizierte Ergebnis vorlag.
+                attempts.append({"model": spec.name, "status": "ok",
                                  "latency_ms": int((time.monotonic() - attempt_started) * 1000)})
-                if not adequate:
-                    continue
                 # Erfolg: Provider freigeben (nicht mehr als gesperrt merken).
                 _provider_429_merken(spec.provider, False)
                 response["_model"] = spec.name
