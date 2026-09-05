@@ -17,7 +17,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Joana",
     "alter": 35,
-    "created_at": "2026-08-11T21:27:32.856848+00:00"
+    "created_at": "2026-08-11T21:27:32.856848+00:00",
+    "task_type": "code_engineering",
+    "use_ai_router": true
   },
   "outreach": {
     "name": "outreach",
@@ -78,7 +80,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Heike",
     "alter": 33,
-    "created_at": "2026-08-11T21:56:40.191605+00:00"
+    "created_at": "2026-08-11T21:56:40.191605+00:00",
+    "task_type": "routine_dispatch",
+    "use_ai_router": true
   },
   "sequencer": {
     "name": "sequencer",
@@ -96,7 +100,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Tom",
     "alter": 47,
-    "created_at": "2026-08-11T22:08:40.394700+00:00"
+    "created_at": "2026-08-11T22:08:40.394700+00:00",
+    "task_type": "routine_dispatch",
+    "use_ai_router": true
   },
   "leadmanager": {
     "name": "leadmanager",
@@ -111,7 +117,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Frieda",
     "alter": 38,
-    "created_at": "2026-08-11T22:15:33.332036+00:00"
+    "created_at": "2026-08-11T22:15:33.332036+00:00",
+    "task_type": "routine_dispatch",
+    "use_ai_router": true
   },
   "content": {
     "name": "content",
@@ -132,7 +140,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Stefan",
     "alter": 41,
-    "created_at": "2026-08-11T22:25:16.417734+00:00"
+    "created_at": "2026-08-11T22:25:16.417734+00:00",
+    "task_type": "routine_dispatch",
+    "use_ai_router": true
   },
   "social": {
     "name": "social",
@@ -152,7 +162,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Mike",
     "alter": 26,
-    "created_at": "2026-08-11T22:34:42.047398+00:00"
+    "created_at": "2026-08-11T22:34:42.047398+00:00",
+    "task_type": "routine_dispatch",
+    "use_ai_router": true
   },
   "redakteur": {
     "name": "redakteur",
@@ -164,7 +176,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Heinz",
     "alter": 49,
-    "created_at": "2026-08-13T20:45:08.725295+00:00"
+    "created_at": "2026-08-13T20:45:08.725295+00:00",
+    "task_type": "content_drafting",
+    "use_ai_router": true
   },
   "projektleitung": {
     "name": "projektleitung",
@@ -183,7 +197,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Renate",
     "alter": 52,
-    "created_at": "2026-08-14T07:32:05.481383+00:00"
+    "created_at": "2026-08-14T07:32:05.481383+00:00",
+    "task_type": "judgment_review",
+    "use_ai_router": true
   },
   "analyst": {
     "name": "analyst",
@@ -198,6 +214,8 @@
       "austausch_ablegen"
     ],
     "model": "cloud_ollama_gptoss",
-    "created_at": "2026-08-15T13:59:40.007748+00:00"
+    "created_at": "2026-08-15T13:59:40.007748+00:00",
+    "task_type": "data_analysis",
+    "use_ai_router": true
   }
 }

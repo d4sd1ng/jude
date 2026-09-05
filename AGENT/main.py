@@ -25,6 +25,7 @@ def build_application() -> tuple[Agent, ToolCreator]:
     registry = ToolRegistry()
     router = ModelRouter()
     router.vorwaermen()
+    router.provider_selbstheilung()
     confirmations = ConfirmationQueue()
     load_all_tools(registry, router=router, confirmations=confirmations)
     creator = ToolCreator(router, registry)
@@ -37,7 +38,7 @@ def build_application() -> tuple[Agent, ToolCreator]:
     from core.ai_router import AIRouter
     from core.task_registry import TaskRegistry
     ai_router = AIRouter(router, TaskRegistry())
-    agent = Agent(router, registry, task_type="jude_chat", ai_router=ai_router)
+    agent = Agent(router, registry, task_type="jude_chat", use_ai_router=True, ai_router=ai_router)
     _seed_profile(agent)
     from services.backup import BackupService
     from services.notion_db import NotionDatabaseService

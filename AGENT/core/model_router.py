@@ -68,9 +68,28 @@ def _provider_429_gesperrt(provider: str) -> bool:
     return bool(eintrag and eintrag.get("bis", 0) > time.time() and eintrag.get("zaehler", 0) >= 2)
 
 
+def _provider_lock_spiegeln(provider: str, eintrag: dict | None) -> None:
+    """Schreibt den In-Memory-Sperrstatus in provider_locks - reine Sichtbarkeit,
+    nie der Pfad, der eine Sperre tatsaechlich durchsetzt (das bleibt
+    _PROVIDER_429/_provider_429_gesperrt, in-memory und pro Prozess)."""
+    with suppress(Exception):
+        with connection() as db:
+            if eintrag is None:
+                db.execute("DELETE FROM provider_locks WHERE provider=?", (provider,))
+                return
+            bis = datetime.fromtimestamp(eintrag["bis"], tz=timezone.utc).isoformat() if eintrag.get("bis") else None
+            grund = "kein Guthaben/Quota" if eintrag.get("tagessperre") else "wiederholte 429"
+            db.execute(
+                "INSERT INTO provider_locks(provider,locked_until,reason,counter,updated_at) VALUES(?,?,?,?,?) "
+                "ON CONFLICT(provider) DO UPDATE SET locked_until=excluded.locked_until,"
+                "reason=excluded.reason,counter=excluded.counter,updated_at=excluded.updated_at",
+                (provider, bis, grund, eintrag.get("zaehler", 0), datetime.now(timezone.utc).isoformat()))
+
+
 def _provider_429_merken(provider: str, war_429: bool, sofort: bool = False) -> None:
     if not war_429:
         _PROVIDER_429.pop(provider, None)
+        _provider_lock_spiegeln(provider, None)
         return
     eintrag = _PROVIDER_429.setdefault(provider, {"zaehler": 0, "bis": 0, "tagessperre": False})
     eintrag["zaehler"] = 2 if sofort else eintrag["zaehler"] + 1
@@ -89,6 +108,7 @@ def _provider_429_merken(provider: str, war_429: bool, sofort: bool = False) -> 
             "Provider %s bis Mitternacht gesperrt (kein Guthaben/Quota). "
             "Nach dem Aufladen: Jude neu starten oder provider_sperre_aufheben(%r).",
             provider, provider)
+    _provider_lock_spiegeln(provider, eintrag)
 
 
 def provider_gesperrt(provider: str) -> bool:
@@ -99,9 +119,13 @@ def provider_gesperrt(provider: str) -> bool:
 def provider_sperre_aufheben(provider: str | None = None) -> None:
     """Sperre eines Providers (oder aller) manuell aufheben – z. B. nach dem Aufladen."""
     if provider is None:
+        betroffene = list(_PROVIDER_429)
         _PROVIDER_429.clear()
+        for name in betroffene:
+            _provider_lock_spiegeln(name, None)
     else:
         _PROVIDER_429.pop(provider, None)
+        _provider_lock_spiegeln(provider, None)
 
 
 def provider_sperren_uebersicht() -> list[dict]:
@@ -544,9 +568,24 @@ class ModelRouter:
             if name not in self.adapters and settings.get("api_key_env"):
                 self.adapters[name] = OpenAICompatAdapter(**settings)
         month = datetime.now(timezone.utc).strftime("%Y-%m")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         with connection() as db:
             row = db.execute("SELECT COALESCE(SUM(cost_usd),0) AS total FROM model_usage WHERE substr(created_at,1,7)=?", (month,)).fetchone()
+            monatsrows = db.execute(
+                "SELECT provider, COALESCE(SUM(cost_usd),0) AS total FROM model_usage "
+                "WHERE substr(created_at,1,7)=? GROUP BY provider", (month,)).fetchall()
+            tagesrows = db.execute(
+                "SELECT provider, COALESCE(SUM(cost_usd),0) AS total FROM model_usage "
+                "WHERE substr(created_at,1,10)=? GROUP BY provider", (today,)).fetchall()
         self.budget_used = float(row["total"])
+        # Optionales, zusaetzliches Netz je Provider (Abschnitt 3 des AI-Router-
+        # Plans) - solange kein Provider in providers:<name>.budget_*_usd einen
+        # Wert setzt, greift ausschliesslich das bestehende globale Monatsbudget
+        # oben. self._provider_day_reset_ts wird bei jedem Aufruf geprueft und
+        # setzt _provider_daily_used bei Mitternacht zurueck, ohne Neustart.
+        self._provider_monthly_used: dict[str, float] = {r["provider"]: float(r["total"]) for r in monatsrows}
+        self._provider_daily_used: dict[str, float] = {r["provider"]: float(r["total"]) for r in tagesrows}
+        self._provider_day_reset_ts = _tagesende_ts()
         self.budget_limit = float(os.getenv(
             "JUDE_CLOUD_BUDGET_USD", self.router_cfg["budget_limit_monthly_usd"]
         ))
@@ -605,6 +644,36 @@ class ModelRouter:
                 time.sleep(intervall_s)
 
         threading.Thread(target=_schleife, name="modell-vorwaermen", daemon=True).start()
+
+    def provider_selbstheilung(self, intervall_s: int = 600) -> None:
+        """Prueft regelmaessig, ob ein wegen leerem Guthaben/Quota gesperrter
+        Provider (_PROVIDER_429-Eintrag mit tagessperre=True) wieder
+        funktioniert, statt auf Mitternacht oder einen manuellen Neustart zu
+        warten (Abschnitt 4.3 des AI-Router-Plans - Zielbild: 'alle vier
+        Provider stundenlang gesperrt' behebt sich selbst). Ein gewoehnlicher
+        429 (Rate-Limit, kurze Sperre) heilt schon von selbst nach
+        _SPERRDAUER_S und wird hier bewusst nicht extra angestossen."""
+        def _schleife() -> None:
+            while True:
+                time.sleep(intervall_s)
+                if not self.paid_models_enabled:
+                    continue
+                for provider, eintrag in list(_PROVIDER_429.items()):
+                    if not eintrag.get("tagessperre"):
+                        continue
+                    kandidaten = [m for m in self.models.values() if m.provider == provider]
+                    if not kandidaten:
+                        continue
+                    spec = min(kandidaten, key=lambda m: m.cost_input + m.cost_output)
+                    try:
+                        self.call_llm(spec, [{"role": "user", "content": "hallo"}])
+                    except Exception as exc:
+                        logger.debug("Selbstheilung fuer %s: weiterhin gesperrt (%s).", provider, exc)
+                        continue
+                    provider_sperre_aufheben(provider)
+                    logger.info("Provider %s antwortet wieder - Sperre selbstaendig aufgehoben.", provider)
+
+        threading.Thread(target=_schleife, name="provider-selbstheilung", daemon=True).start()
 
     # Handlungsabsicht: Verben, die auf eine auszuführende Aktion (Werkzeug) deuten,
     # nicht auf reines Erklären/Plaudern.
@@ -725,7 +794,12 @@ class ModelRouter:
                         result.append(model)
         return result
 
-    def _cloud_affordable(self, spec: ModelSpec, messages: list[dict]) -> bool:
+    def _provider_budgets_zuruecksetzen_falls_noetig(self) -> None:
+        if time.time() >= self._provider_day_reset_ts:
+            self._provider_daily_used = {}
+            self._provider_day_reset_ts = _tagesende_ts()
+
+    def _provider_affordable(self, spec: ModelSpec, messages: list[dict]) -> bool:
         if spec.provider == "ollama":
             return True
         # Ein echtes 0-Kosten-Modell (lokales Ollama UEBER ollama_cloud, alle
@@ -743,7 +817,21 @@ class ModelRouter:
         approximate_input = sum(len(str(item.get("content", ""))) for item in messages) // 4
         approximate_output = min(spec.max_tokens, 4096)
         estimate = (approximate_input * spec.cost_input + approximate_output * spec.cost_output) / 1000
-        return estimate <= self.request_cost_limit and self.budget_used + estimate <= self.budget_limit
+        if estimate > self.request_cost_limit or self.budget_used + estimate > self.budget_limit:
+            return False
+        # Zusaetzliches, optionales Netz je Provider - nur aktiv, wenn
+        # providers:<name> in models.yaml budget_daily_usd/budget_monthly_usd
+        # setzt. Ohne diese Schluessel bleibt das globale Budget oben die
+        # einzige Grenze, exakt wie vor diesem Abschnitt.
+        self._provider_budgets_zuruecksetzen_falls_noetig()
+        provider_cfg = self.config.get("providers", {}).get(spec.provider, {})
+        tageslimit = provider_cfg.get("budget_daily_usd")
+        monatslimit = provider_cfg.get("budget_monthly_usd")
+        if tageslimit is not None and self._provider_daily_used.get(spec.provider, 0.0) + estimate > float(tageslimit):
+            return False
+        if monatslimit is not None and self._provider_monthly_used.get(spec.provider, 0.0) + estimate > float(monatslimit):
+            return False
+        return True
 
     def call_llm(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None,
                  request_id: str | None = None) -> dict:
@@ -765,6 +853,9 @@ class ModelRouter:
             cost = ((uncached * spec.cost_input) + (cached * spec.cost_cached_input)
                     + (cache_write * spec.cost_input * 1.25) + (output_tokens * spec.cost_output)) / 1000 * multiplier
             self.budget_used += cost
+            self._provider_budgets_zuruecksetzen_falls_noetig()
+            self._provider_monthly_used[spec.provider] = self._provider_monthly_used.get(spec.provider, 0.0) + cost
+            self._provider_daily_used[spec.provider] = self._provider_daily_used.get(spec.provider, 0.0) + cost
             # Kontextfuellung des letzten Aufrufs: prompt_eval_count ist die
             # exakte Tokenzahl des gesamten Gespraechs, wie es beim Modell ankam.
             if input_tokens:
@@ -841,7 +932,7 @@ class ModelRouter:
             # muss sich auf das beziehen, was wirklich rausgeht, sonst lehnt das
             # Budget einen Versuch wegen Token ab, die gar nicht gesendet werden.
             nachrichten = self._zuschneiden(messages, spec)
-            if not self._cloud_affordable(spec, nachrichten):
+            if not self._provider_affordable(spec, nachrichten):
                 attempts.append({"model": spec.name, "status": "skipped_cost_limit"})
                 continue
             try:

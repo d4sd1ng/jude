@@ -12,9 +12,14 @@ Werkzeug-Set geladen, auch fuer reines Plaudern - dafuer bleibt die
 bestehende weiche Heuristik in ModelRouter.select_model/call_with_fallback
 unveraendert aktiv (strict_tools=False), statt sie hier zu duplizieren.
 
-Aktuell noch inert: nichts ruft AIRouter.generate() auf (Stage 1 des
-AI-Router-Umbaus, siehe /home/d4sd1ng/.claude/plans/jolly-napping-tulip.md
-Teil 2). Erst ab Stage 2 haengt sich core/agent.py optional daran.
+Stage 5 (jolly-napping-tulip.md Teil 2) ist abgeschlossen: jede Rolle in
+data/sub_agents.json sowie Judes eigener Chat (main.py) haben
+use_ai_router=True und laufen ueber generate() statt ueber die alte,
+pro Anfrage geratene Heuristik. Die Heuristik selbst
+(ModelRouter.select_model) bleibt Code – sie ist jetzt jude_chats private
+Implementierung (siehe oben) und der Fallback, den TaskRegistry-Validierung
+beim Start prueft. Sie erst nach einer stabilen Woche route_decisions je
+Rolle loeschen, nicht vorher (Plan, Abschnitt 5, Stage 5).
 """
 
 from __future__ import annotations
@@ -45,15 +50,13 @@ class AIRouter:
         if not kette:
             raise ValueError(f"Kein aktiviertes, passendes Modell fuer task_type {task_type!r}.")
 
-        # agent_name wird noch nicht mitgeschrieben - route_decisions bekommt die
-        # Spalte erst in Teil-2-Abschnitt 3 des Plans; Parameter schon jetzt in
-        # der Signatur, damit sich Aufrufer nicht spaeter noch einmal aendern.
         route_id = uuid.uuid4().hex[:16]
         from datetime import datetime, timezone
         from services.database import connection
         with connection() as db:
             db.execute(
-                "INSERT INTO route_decisions(id,created_at,task_type,complexity,selected_model,prompt_hash) "
-                "VALUES(?,?,?,?,?,?)",
-                (route_id, datetime.now(timezone.utc).isoformat(), task_type, 0, kette[0].name, ""))
+                "INSERT INTO route_decisions(id,created_at,task_type,complexity,selected_model,"
+                "prompt_hash,agent_name) VALUES(?,?,?,?,?,?,?)",
+                (route_id, datetime.now(timezone.utc).isoformat(), task_type, 0, kette[0].name, "",
+                 agent_name))
         return self.router._execute_chain(kette, messages, tools, selected_name=kette[0].name, route_id=route_id)
