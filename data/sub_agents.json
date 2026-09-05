@@ -34,7 +34,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Bernd",
     "alter": 31,
-    "created_at": "2026-08-11T21:56:40.189890+00:00"
+    "created_at": "2026-08-11T21:56:40.189890+00:00",
+    "task_type": "routine_dispatch",
+    "use_ai_router": true
   },
   "scraper": {
     "name": "scraper",
@@ -53,7 +55,9 @@
     "model": "cloud_ollama_gptoss",
     "person": "Rasmus",
     "alter": 29,
-    "created_at": "2026-08-11T21:56:40.191193+00:00"
+    "created_at": "2026-08-11T21:56:40.191193+00:00",
+    "task_type": "routine_dispatch",
+    "use_ai_router": true
   },
   "designer": {
     "name": "designer",
