@@ -122,9 +122,13 @@ class SubAgentService:
                    "kann nicht hergestellt werden", "keine verbindung",
                    "verbindung zu", "timeout", "konnte nicht abgerufen")
 
-    def __init__(self, registry, router):
+    def __init__(self, registry, router, ai_router=None):
         self.registry = registry
         self.router = router
+        # AI-Router-Umbau, Stage 2: optional, None solange nichts es setzt -
+        # bestehende SubAgentService(registry, router)-Aufrufe (Skripte, Tests,
+        # Tools) bleiben unveraendert gueltig.
+        self.ai_router = ai_router
         self.path = DATA_DIR / "sub_agents.json"
 
     # ------------------------------------------------------------ Speicher
@@ -943,7 +947,10 @@ class SubAgentService:
             prompt += ("\n\nWas du bisher festgehalten hast (nicht doppelt bearbeiten):\n" + recent)
         return Agent(self.router, sub, system_prompt=prompt,
                      max_tool_steps=self.TOOL_SCHRITTE if werkzeugfaehig else 0,
-                     force_model=modell, agent_name=spec["name"])
+                     force_model=modell, agent_name=spec["name"],
+                     task_type=spec.get("task_type", "routine_dispatch"),
+                     use_ai_router=bool(spec.get("use_ai_router", False)),
+                     ai_router=self.ai_router)
 
     def run(self, name: str, task: str) -> dict:
         spec = self.get(name)

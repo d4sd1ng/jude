@@ -23,11 +23,19 @@ class Agent:
 
     def __init__(self, model_router: ModelRouter, tool_registry: ToolRegistry, max_tool_steps: int = 8,
                  system_prompt: str | None = None, force_model: str | None = None,
-                 agent_name: str | None = None):
+                 agent_name: str | None = None, task_type: str | None = None,
+                 use_ai_router: bool = False, ai_router=None):
         self.router = model_router
         self.tools = tool_registry
         self.max_tool_steps = max_tool_steps
         self.force_model = force_model
+        # AI-Router-Umbau, Stage 2 (jolly-napping-tulip.md Teil 2): pro Rolle
+        # abschaltbarer Nebenpfad ueber die deklarative TaskRegistry statt der
+        # bestehenden Heuristik. Ohne task_type/use_ai_router bleibt alles wie
+        # bisher - inert per Vorgabe, keine Rolle ist automatisch betroffen.
+        self.task_type = task_type
+        self.use_ai_router = use_ai_router
+        self.ai_router = ai_router
         # "jude" markiert Judes eigenes Gespräch mit Tino (Cockpit-Chat/Sprache) –
         # nur dessen Verlauf wird nach einem Neustart wiederhergestellt. Sub-Agenten
         # bekommen ihren Namen, damit ihre Läufe in derselben Tabelle nicht mit
@@ -124,9 +132,13 @@ class Agent:
         tools = self.tools.get_tools_openai() or None
 
         for _ in range(self.max_tool_steps + 1):
-            response = self.router.call_with_fallback(self.conversation_history, tools, allow_uncensored,
-                                                      force_model=self.force_model,
-                                                      strict_tools=self.agent_name != "jude")
+            if self.use_ai_router and self.task_type and self.ai_router is not None:
+                response = self.ai_router.generate(self.task_type, self.conversation_history, tools,
+                                                   agent_name=self.agent_name, allow_uncensored=allow_uncensored)
+            else:
+                response = self.router.call_with_fallback(self.conversation_history, tools, allow_uncensored,
+                                                          force_model=self.force_model,
+                                                          strict_tools=self.agent_name != "jude")
             self.last_model = response.pop("_model", None)
             self.last_route_id = response.pop("_route_id", None)
             calls = response.get("tool_calls") or []

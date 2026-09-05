@@ -29,7 +29,15 @@ def build_application() -> tuple[Agent, ToolCreator]:
     load_all_tools(registry, router=router, confirmations=confirmations)
     creator = ToolCreator(router, registry)
     registry.register(creator.as_tool())
-    agent = Agent(router, registry)
+    # AI-Router-Umbau, Stage 2: einmal aufgebaut, an Jude selbst und das Team
+    # weitergereicht - use_ai_router steht ueberall auf False (Standard in
+    # Agent.__init__/data/sub_agents.json), bis eine Rolle in einer spaeteren
+    # Stufe gezielt umgeschaltet wird. Bau schlaegt fehl, wenn task_registry.yaml
+    # ein unbekanntes Modell nennt (siehe TaskRegistry.validate).
+    from core.ai_router import AIRouter
+    from core.task_registry import TaskRegistry
+    ai_router = AIRouter(router, TaskRegistry())
+    agent = Agent(router, registry, task_type="jude_chat", ai_router=ai_router)
     _seed_profile(agent)
     from services.backup import BackupService
     from services.notion_db import NotionDatabaseService
@@ -38,7 +46,7 @@ def build_application() -> tuple[Agent, ToolCreator]:
     from services.team import SubAgentService
     from tools.skills import (register_backup, register_documents, register_notion,
                               register_scheduler, register_team)
-    agent.team = SubAgentService(registry, router)
+    agent.team = SubAgentService(registry, router, ai_router=ai_router)
     register_team(registry, agent.team)
     agent.scheduler = SchedulerService(agent)
     register_scheduler(registry, agent.scheduler)
