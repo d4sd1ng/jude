@@ -282,17 +282,23 @@ async def austausch_upload(file: UploadFile = File(...)):
 
 @app.get("/api/austausch/datei")
 def austausch_datei(pfad: str):
-    """Datei aus dem Austausch für die Vorschau ausliefern – NUR von dort.
+    """Datei aus dem Austausch ODER aus den erzeugten Bildern fuer die
+    Vorschau ausliefern – NUR von dort. Ohne den harten Pfad-Zaun waere das
+    ein Lese-Zugang auf die ganze Platte.
 
-    Die Abnahme-Vorschau rendert Bilder und Landingpages direkt; ohne den
-    harten Pfad-Zaun wäre das ein Lese-Zugang auf die ganze Platte."""
+    IMAGES_DIR war bis 06.09.2026 nicht in den erlaubten Wurzeln: jedes von
+    generate_image erzeugte Bild liegt dort (nicht in austausch/), weshalb
+    JEDE Grafik-Vorschau in der Abnahme mit 403 scheiterte, obwohl die Datei
+    real existierte - gemessen am Pipeline-Piloten (social, 05.09.2026):
+    Renate stufte 'Visual Consistency: bestanden' korrekt ein, Tino sah in
+    der Abnahme trotzdem keine Grafik."""
     from pathlib import Path
     from tools.austausch import AUSTAUSCH_DIR
-    basis = AUSTAUSCH_DIR.resolve()
+    wurzeln = (AUSTAUSCH_DIR.resolve(), IMAGES_DIR.resolve())
     roh = pfad.strip()
-    ziel = (Path(roh) if roh.startswith("/") else basis.parent / roh).resolve()
-    if not (basis in ziel.parents) or not ziel.is_file():
-        raise HTTPException(403, "Nur Dateien im Austausch-Ordner.")
+    ziel = (Path(roh) if roh.startswith("/") else AUSTAUSCH_DIR.resolve().parent / roh).resolve()
+    if not any(w in ziel.parents for w in wurzeln) or not ziel.is_file():
+        raise HTTPException(403, "Nur Dateien im Austausch-Ordner oder den erzeugten Bildern.")
     return FileResponse(ziel)
 
 
