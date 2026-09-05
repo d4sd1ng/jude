@@ -15,41 +15,6 @@
     "last_run": "2026-09-04T01:00:23.964948+00:00",
     "created_at": "2026-08-13T17:15:48.341933+00:00"
   },
-  "7dae4a462179": {
-    "id": "7dae4a462179",
-    "name": "Auftragswächter",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 60
-    },
-    "prompt": null,
-    "tool": "auftragswaechter",
-    "tool_args": {},
-    "speak": false,
-    "enabled": true,
-    "last_run": "2026-09-04T06:24:16.254373+00:00",
-    "created_at": "2026-08-16T07:42:41.796930+00:00"
-  },
-  "ae01dd280b2e": {
-    "id": "ae01dd280b2e",
-    "name": "Tagesjob: beobachter",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "beobachter",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": true,
-    "last_run": "2026-09-04T06:27:13.833772+00:00",
-    "created_at": "2026-09-03T11:22:56.653475+00:00"
-  },
   "2a1619296477": {
     "id": "2a1619296477",
     "name": "Tagesjob: projektleitung",
@@ -65,7 +30,7 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
+    "enabled": false,
     "last_run": "2026-09-04T07:16:48.872295+00:00",
     "created_at": "2026-09-03T11:22:56.653861+00:00"
   },
@@ -84,8 +49,8 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
-    "last_run": "2026-09-04T06:41:15.598406+00:00",
+    "enabled": false,
+    "last_run": "2026-09-04T07:28:25.174790+00:00",
     "created_at": "2026-09-03T11:22:56.654188+00:00"
   },
   "c28d448e8355": {
@@ -103,7 +68,7 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
+    "enabled": false,
     "last_run": "2026-09-04T06:34:01.299123+00:00",
     "created_at": "2026-09-03T11:22:56.654514+00:00"
   },
@@ -122,8 +87,8 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
-    "last_run": "2026-09-04T07:14:55.439863+00:00",
+    "enabled": false,
+    "last_run": "2026-09-04T07:52:46.761257+00:00",
     "created_at": "2026-09-03T11:22:56.654833+00:00"
   },
   "fbf633648da2": {
@@ -141,7 +106,7 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
+    "enabled": false,
     "last_run": "2026-09-04T07:08:02.549248+00:00",
     "created_at": "2026-09-03T11:22:56.655162+00:00"
   },
@@ -179,7 +144,7 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
+    "enabled": false,
     "last_run": "2026-09-04T07:17:22.188671+00:00",
     "created_at": "2026-09-03T11:22:56.655793+00:00"
   },
@@ -198,7 +163,7 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
+    "enabled": false,
     "last_run": "2026-09-04T06:46:29.436522+00:00",
     "created_at": "2026-09-03T11:22:56.656108+00:00"
   },
@@ -217,7 +182,7 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
+    "enabled": false,
     "last_run": "2026-09-04T06:53:58.006958+00:00",
     "created_at": "2026-09-03T11:22:56.656458+00:00"
   },
@@ -236,7 +201,7 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
+    "enabled": false,
     "last_run": "2026-09-04T07:00:18.036760+00:00",
     "created_at": "2026-09-03T11:22:56.656640+00:00"
   },
@@ -255,7 +220,7 @@
       "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
     },
     "speak": false,
-    "enabled": true,
+    "enabled": false,
     "last_run": "2026-09-04T07:05:15.218808+00:00",
     "created_at": "2026-09-03T11:22:56.656827+00:00"
   }

@@ -359,8 +359,15 @@ class SubAgentService:
                 raise ValueError("Der Hinweis ist zu duenn. Nenne Quelle, Kernaussage und "
                                  "warum es fuer den Kollegen brauchbar ist.")
             self.remember(kollege, f"[Hinweis von {wer}] {hinweis}")
+            # Kein weitererzaehlbarer Satz in der Rueckgabe: das Feld hiess
+            # "hinweis" und enthielt "Steht in seinem naechsten Lauf im
+            # Systemprompt." – dasselbe Wort wie der Eingabeparameter. Das
+            # Modell las die Quittung als naechsten Hinweis und schickte sie
+            # weiter (gemessen 05.09.2026: social 93x inform_colleague in
+            # einem Tag, content 74x). Quittung ist jetzt ein Endzustand.
             return {"zugestellt": True, "an": ziel.get("person") or ziel["name"],
-                    "hinweis": "Steht in seinem naechsten Lauf im Systemprompt."}
+                    "erledigt": "Zustellung abgeschlossen. Nicht wiederholen, "
+                                "nichts daran weitermelden."}
 
         return Tool(
             name="inform_colleague",
@@ -505,7 +512,10 @@ class SubAgentService:
         treffer = []
         for pfad in str(quelle).split(","):
             pfad = pfad.strip().strip('"').strip("'")
-            if not re.search(r"\.(png|jpe?g|webp|gif)(\?|$)", pfad, re.I):
+            # .svg dazu (04.09.2026) - grafik_infografik/grafik_onepager legen
+            # echte SVG-Dateien mit verlaesslich lesbarem Text ab (Wortmarke,
+            # Kennzahlen), kein von einem Bildgenerator gerendertes Pixelbild.
+            if not re.search(r"\.(png|jpe?g|webp|gif|svg)(\?|$)", pfad, re.I):
                 continue
             voll = Path(pfad) if Path(pfad).is_absolute() else JUDE_DIR / pfad
             if voll.is_file():
@@ -733,7 +743,16 @@ class SubAgentService:
                 raise ValueError("Die Meldung ist zu duenn – Grund und Kontext nennen.")
             from services.notifications import NotificationService
             NotificationService.create("mitarbeiter", f"{wer} ({spec['name']})", nachricht)
-            return {"gemeldet": True, "hinweis": "Steht in den Meldungen für Tino."}
+            # Dieselbe Falle wie bei inform_colleague, hier zuerst aufgefallen:
+            # die Rueckgabe lautete "Steht in den Meldungen für Tino." – das
+            # Modell meldete diesen Satz als naechste Nachricht weiter, bekam
+            # dieselbe Quittung und meldete wieder. 38 Aufrufe hintereinander
+            # in einem Lauf, 116 Meldungen von einem Mitarbeiter an einem Tag
+            # (gemessen 04./05.09.2026). Quittung ohne Inhalt, der sich
+            # weitererzaehlen laesst.
+            return {"gemeldet": True,
+                    "erledigt": "Meldung zugestellt. Nicht wiederholen, "
+                                "nichts daran weitermelden."}
 
         return Tool(
             name="report_to_tino",
@@ -942,9 +961,40 @@ class SubAgentService:
         # gezielt zurueckweisen, nur der ganze Lauf als 'teilweise' markieren.
         eingereichte_ids: list[str] = []
         original = agent.tools.execute
+        # Schutz gegen den Leerlauf, der die Werkzeugketten auffrisst: derselbe
+        # Aufruf mit denselben Argumenten, unmittelbar hintereinander. Gemessen
+        # 05.09.2026: von 769 Aufrufen an einem Tag waren 6 % erzeugend und
+        # 67 % melden/listen – projektleitung holte 164x 'pruefungsliste' und
+        # traf dabei EINE Entscheidung. Das Werkzeug liefert etwas, das wie neue
+        # Arbeit aussieht, das Modell verarbeitet es und ruft erneut auf.
+        #
+        # Bewusst nur bei UNMITTELBARER Wiederholung: hat der Mitarbeiter
+        # zwischendurch etwas anderes getan (z. B. entschieden), hat sich die
+        # Lage geaendert und dieselbe Abfrage ist berechtigt. Das ist kein
+        # Deckel auf die Zahl der Schritte, sondern macht Leerlauf unmoeglich.
+        letzter: dict = {"schluessel": None, "ergebnis": None, "zaehler": 0}
+
+        def _schluessel(werkzeug, argumente):
+            try:
+                return werkzeug + "|" + json.dumps(argumente, ensure_ascii=False, sort_keys=True)
+            except (TypeError, ValueError):
+                return werkzeug + "|" + repr(argumente)
+
         def mitschreiben(werkzeug, argumente):
             werkzeuge.append(werkzeug)
+            schluessel = _schluessel(werkzeug, argumente)
+            if schluessel == letzter["schluessel"]:
+                letzter["zaehler"] += 1
+                if letzter["zaehler"] >= 2:
+                    return (f"'{werkzeug}' wurde gerade eben mit genau denselben Argumenten "
+                            f"aufgerufen und liefert unveraendert dasselbe. Der Aufruf wurde "
+                            f"nicht erneut ausgefuehrt. Es hat sich seitdem nichts geaendert – "
+                            f"nimm das vorherige Ergebnis und mach den naechsten Schritt deiner "
+                            f"Aufgabe, oder beende den Lauf, wenn nichts mehr zu tun ist.")
+            else:
+                letzter["schluessel"], letzter["zaehler"] = schluessel, 1
             ergebnis = original(werkzeug, argumente)
+            letzter["ergebnis"] = ergebnis
             if self._ist_fehlschlag(ergebnis):
                 fehlschlaege.append(str(ergebnis).strip()[:300])
             if werkzeug == "submit_for_review" and isinstance(ergebnis, dict) and ergebnis.get("id"):
@@ -1077,7 +1127,7 @@ class SubAgentService:
         "0. Auftritt: hochwertig und ruhig, dunkelgruen und Gold auf mattem Schwarz. "
         "Marktgeschrei, Ausrufezeichen-Ketten, Emoji-Teppiche und Rabattsprache sind "
         "Ausschluss (1-2 dezente Emojis sind erlaubt, auf Xing keine; 3-6 Hashtags aus dem Strategie-Pool sind erlaubt) – wir wirken wie eine teure Manufaktur, nicht wie eine Werbeagentur.\n"
-        "1. Marke: Nurovelle, 'Building intelligent System'. 'Autonova' und 'Politara' "
+        "1. Marke: Nurovelle, 'Building intelligent systems'. 'Autonova' und 'Politara' "
         "duerfen nirgends vorkommen. Von KI zu sprechen ist richtig, aber nie als "
         "Schlagwort ohne einen Ablauf, den der Leser kennt.\n"
         "2. Sprache: durchgehend Deutsch, kein englisches Wort, keine Platzhalter "
@@ -1229,7 +1279,7 @@ class SubAgentService:
                     # kamen so durch. Jetzt zaehlt nur eine Datei auf der Platte.
                     hat_bild = bool(self._bilddateien(quelle_bild))
                     if not hat_bild:
-                        genannt = re.search(r"\.(png|jpe?g|webp|gif)(\?|$|,)", quelle_bild, re.I)
+                        genannt = re.search(r"\.(png|jpe?g|webp|gif|svg)(\?|$|,)", quelle_bild, re.I)
                         grund = ("Keine Bilddatei vorgelegt: 'grafik' braucht ein mit generate_image "
                                  "erzeugtes Bild samt Dateipfad in quelle, keine Text-Beschreibung des "
                                  "geplanten Motivs.")
@@ -1251,6 +1301,43 @@ class SubAgentService:
                             pass
                         entschieden.append({"id": vorlage["id"], "urteil": "revision",
                                             "grund": "kein_bild"})
+                        continue
+                # HTML-Vorlagen von engineer: die Tagline wird wiederholt aus dem
+                # Gedaechtnis angenaehert statt wortgleich uebernommen. Verifizierte
+                # Quelle ist austausch/an-team/vorlagen/nurovelle/launchpost.pdf
+                # (bei 300 dpi geprueft, 05.09.2026) - dort steht "Building
+                # intelligent systems": Grossbuchstabe nur bei "Building", "intelligent"
+                # und "systems" klein, mit 's' am Ende. Die Live-Seite (homepage/index.html)
+                # ist NICHT die massgebliche Quelle (Tinos ausdrueckliche Festlegung) und
+                # weicht ab ("Building Intelligent Systems", faelschlich grossgeschrieben)
+                # - diese Pruefung akzeptierte bis 05.09.2026 genau diese falsche Schreibweise
+                # und hätte die tatsaechlich korrekte zurueckgewiesen. Eindeutiger
+                # String-Vergleich, kein Ermessen.
+                if voll["agent"] == "engineer" and voll["art"] == "dokument":
+                    inhalt_pruef = voll.get("inhalt") or ""
+                    gefunden = re.search(r"building intelligent systems?\b", inhalt_pruef, re.I)
+                    if gefunden and gefunden.group(0) != "Building intelligent systems":
+                        grund = (f"Falsche Tagline-Schreibweise gefunden: '{gefunden.group(0)}'. "
+                                 "Wortgleich 'Building intelligent systems' verwenden (kleines "
+                                 "'i' bei intelligent, kleines 's' bei systems, mit 's' am Ende) "
+                                 "- aus austausch/an-team/vorlagen/nurovelle/launchpost.pdf "
+                                 "kopieren, nicht aus dem Gedaechtnis schreiben oder von der "
+                                 "Live-Seite uebernehmen.")
+                        queue.revision(vorlage["id"], f"Jude: {grund}")
+                        self.lehre_merken(agent_name,
+                                          "Die Tagline wird wortgleich aus der echten Vorlage "
+                                          "kopiert ('Building intelligent systems', aus "
+                                          "launchpost.pdf), nicht angenaehert, grossgeschrieben "
+                                          "oder von der Live-Seite uebernommen.")
+                        try:
+                            from services.notifications import NotificationService
+                            NotificationService().create("revision",
+                                                         f"Revision (Tagline): {voll['titel'][:70]}",
+                                                         grund[:200])
+                        except Exception:
+                            pass
+                        entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                            "grund": "tagline_falsch"})
                         continue
                 # Deterministisch, wie der Wortfilter: eine 'email' unter einer
                 # Mindestlaenge ist keine E-Mail, nur die CTA-Zeile ohne Anrede/Text

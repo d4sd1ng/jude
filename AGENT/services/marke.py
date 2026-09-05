@@ -41,7 +41,7 @@ HELL_GEDECKT = "#b9c3bd"
 SCHRIFT_TITEL = "'Exo 2', 'Trebuchet MS', sans-serif"
 SCHRIFT_TEXT = "Inter, 'DejaVu Sans', sans-serif"
 
-CLAIM = "Building intelligent System"
+CLAIM = "Building intelligent systems"
 
 # An JEDEN generate_image-Aufruf angehaengt, nicht nur dem Mitarbeiter als
 # Anweisung mitgegeben: ein Prompt ohne diese Zeilen erzeugte zuverlaessig

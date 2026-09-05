@@ -19,12 +19,6 @@ models:
     # VRAM, sonst kostet jede Anfrage nach 5 Minuten Pause 7,5 s Ladezeit.
     # 4,34 GB von 8 GB.
     keep_alive: -1
-    # routing_judge war hier fehlerhaft vergeben: die "schnelle Guete-Pruefung"
-    # lief damit ausgerechnet ueber das Modell mit 206.000ms Durchschnittslatenz
-    # (siehe Kommentar oben) und OHNE Fallback-Kette (_local_quality_check ruft
-    # call_llm direkt auf) - jede nicht-top-tier Antwort wartete dadurch bis zu
-    # eine Minute auf eine "kurze" Pruefung. Verschoben zu cloud_openai_luna
-    # (schnell, guenstig, dafuer getaggt), gemessen 03.09.2026.
     tags: [lokal, privat, schnell, tools, code, test, medien]
     priority: 10
 
@@ -54,7 +48,7 @@ models:
     max_tokens: 8192
     context_length: 1050000
     reasoning_effort: low
-    tags: [cloud, schnell, kostenguenstig, extraktion, routing, routing_judge, tools]
+    tags: [cloud, schnell, kostenguenstig, extraktion, routing, tools]
     priority: 7
 
   cloud_openai_terra:
@@ -251,7 +245,7 @@ models:
     priority: 8
 
 router:
-  budget_limit_monthly_usd: 10.0
+  budget_limit_monthly_usd: 20.0
   # War true, als lokal die einzige kostenlose Stufe war. Gemessen 02.09.2026:
   # qwen3:8b passt auf dieser 8GB-Polaris-GPU selbst bei 8192 Kontext nur zu
   # 71% ins VRAM, der Rest laeuft auf CPU – 2,5 bis 5 Minuten JE Schritt. Ein
@@ -262,10 +256,11 @@ router:
   local_first: false
   standard_model: local_dolphin
   complexity_threshold_high: 7
-  quality_judge_min_complexity: 6
   request_cost_limit_usd: 1.0
   # Eskalationsleiter: jede Stufe ist STÄRKER als die darunter. Jude bleibt so lange
-  # wie möglich kostenlos und steigt nur auf, wenn die Antwort fachlich nicht reicht.
+  # wie möglich kostenlos und steigt nur auf, wenn eine Stufe tatsächlich fehlschlägt
+  # (Fehler, gesperrt, ueber dem Kostenlimit) – nicht mehr aufgrund einer nachtraeglichen
+  # Guete-Bewertung der Antwort (entfernt 05.09.2026, siehe model_router.py).
   #   frei:      gpt-oss-120b über Ollama Cloud  ->  dolphin3/qwen3 (lokal, Reserve)
   #   günstig:   DeepSeek chat (nur mit Key)
   #   stark:     gpt-5.6-terra (mittleres Reasoning)  ->  claude-sonnet-5

@@ -25,7 +25,8 @@ class FakeRouter:
     def context_budget(self):
         return 16384
 
-    def call_with_fallback(self, messages, tools=None, allow_uncensored=False, force_model=None):
+    def call_with_fallback(self, messages, tools=None, allow_uncensored=False, force_model=None,
+                           strict_tools=False):
         self.calls += 1
         if self.calls == 1:
             return {"role": "assistant", "content": "", "_model": "fake", "tool_calls": [{
@@ -52,7 +53,8 @@ class CoreTests(unittest.TestCase):
 
     def test_agent_accepts_ollama_json_tool_call(self):
         class JsonRouter(FakeRouter):
-            def call_with_fallback(self, messages, tools=None, allow_uncensored=False, force_model=None):
+            def call_with_fallback(self, messages, tools=None, allow_uncensored=False, force_model=None,
+                           strict_tools=False):
                 self.calls += 1
                 if self.calls == 1:
                     return {"role": "assistant", "content": '{"name":"echo","arguments":{"text":"JSON"}}', "_model": "fake"}

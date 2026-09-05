@@ -152,50 +152,6 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         from services.auftraege import Auftragsbuch
         return Auftragsbuch().abbrechen(auftrag_id)
 
-    def auftragswaechter() -> dict:
-        """Für den Scheduler: überfällige Aufträge nachfassen und Tino melden."""
-        from services.auftraege import Auftragsbuch
-        from services.team import SubAgentService
-        buch = Auftragsbuch()
-        faellige = buch.ueberfaellig()
-        ergebnisse = []
-        dienst = SubAgentService(registry, router)
-        for a in faellige:  # kein Deckel mehr - jeder Ueberfaellige wird nachgefasst (04.09.2026)
-            try:
-                buch.status_setzen(a["id"], "in_arbeit")
-                lauf = dienst.run(a["agent"],
-                                  f"ÜBERFÄLLIGER AUFTRAG [{a['id']}]: {a['titel']}\n{a['beschreibung']}\n"
-                                  f"Erledige ihn JETZT und lege das Ergebnis mit submit_for_review "
-                                  f"vor (auftrag_id='{a['id']}').")
-                ergebnisse.append({"id": a["id"], "lauf": lauf.get("status")})
-            except Exception as exc:
-                ergebnisse.append({"id": a["id"], "fehler": str(exc)[:200]})
-        if faellige:
-            try:
-                from services.notifications import NotificationService
-                NotificationService().create(
-                    "auftraege", f"{len(faellige)} Aufträge überfällig",
-                    ", ".join(a["titel"] for a in faellige[:5]))
-            except Exception:
-                pass
-        # Offene Revisionen laufen bisher nur beim TÄGLICHEN Job des jeweiligen
-        # Mitarbeiters wieder an – eine mittags zurückgewiesene Vorlage blieb
-        # bis zum naechsten Morgen liegen. Der stuendliche Waechter fasst sie
-        # jetzt genauso nach wie ueberfaellige Auftraege.
-        from services.review import ReviewQueue
-        offene_revisionen = ReviewQueue().agenten_mit_offenen_revisionen()
-        revisions_ergebnisse = []
-        for eintrag in offene_revisionen:  # kein Deckel mehr (04.09.2026)
-            name = eintrag["agent"]
-            try:
-                lauf = dienst.run(name, "Du hast offene Revisionen (siehe oben im Systemprompt) – "
-                                  "arbeite sie jetzt ab, bevor du etwas anderes tust.")
-                revisions_ergebnisse.append({"agent": name, "lauf": lauf.get("status")})
-            except Exception as exc:
-                revisions_ergebnisse.append({"agent": name, "fehler": str(exc)[:200]})
-        return {"ueberfaellig": len(faellige), "nachgefasst": ergebnisse,
-                "revisionen_offen": len(offene_revisionen), "revisionen_nachgefasst": revisions_ergebnisse}
-
     def team_tagesrunde() -> dict:
         """Für den Scheduler: JEDEN Mitarbeiter einmal täglich laufen lassen –
         nicht nur die, die schon einen offenen Auftrag haben. Vorher lief das
@@ -231,6 +187,71 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         except Exception:
             pass
         return {"gelaufen": len(ergebnisse), "ergebnisse": ergebnisse}
+
+    def revisionen_nacharbeiten() -> dict:
+        """Jeder Mitarbeiter mit einer offenen Revision (Vorlage oder zurückgewiesene
+        Aktion), der gerade nichts tut, bekommt sie direkt zur Bearbeitung – statt
+        tagelang liegenzubleiben, bis zufällig ein anderer Auftrag ihn ohnehin
+        laufen lässt. Anders als team_tagesrunde läuft hier NICHT jeder Mitarbeiter
+        mit, nur wer wirklich etwas offen hat und gerade frei ist.
+
+        Läuft parallel statt nacheinander: jeder Kandidat startet in einem
+        eigenen Thread, statt einen einzigen Scheduler-Worker-Slot für die
+        gesamte Kette zu blockieren – sonst wartet z. B. content auf sechs
+        fremde Revisionen vor ihm in der Schlange, obwohl zwei weitere
+        Worker-Slots die ganze Zeit frei wären."""
+        import threading
+        from services.review import ReviewQueue
+        from services.team import SubAgentService
+        from services.database import connection
+        with connection() as db:
+            laufend = {r["agent"] for r in db.execute(
+                "SELECT DISTINCT agent FROM agent_runs WHERE status='laufend'")}
+        offen: dict[str, int] = {}
+        for row in ReviewQueue().agenten_mit_offenen_revisionen():
+            offen[row["agent"]] = offen.get(row["agent"], 0) + row["anzahl"]
+        with connection() as db:
+            for row in db.execute(
+                    "SELECT agent, COUNT(*) AS anzahl FROM confirmations "
+                    "WHERE status='revision' AND agent!='' GROUP BY agent"):
+                offen[row["agent"]] = offen.get(row["agent"], 0) + row["anzahl"]
+        dienst = SubAgentService(registry, router)
+        bekannt = {a["name"] for a in dienst.list()}
+        # Obergrenze gleichzeitiger Laeufe aus diesem Tick: drei parallele
+        # cloud_openai_terra-Aufrufe haben am 05.09.2026 das gesamte OpenAI-
+        # Guthaben in ~3 Minuten verbraucht (Sperre bis Mitternacht). Wer hier
+        # nicht drankommt, wartet einfach bis zum naechsten Tick (5 Min.) -
+        # kein Datenverlust, nur gestaffelt statt aller auf einmal.
+        MAX_GLEICHZEITIG = 2
+
+        def _starte(agent_name: str) -> None:
+            try:
+                dienst.run(agent_name,
+                          "Du hast offene Revisionen – Vorlagen oder zurückgewiesene Aktionen, "
+                          "die auf deine Überarbeitung warten (siehe oben im Systemprompt). "
+                          "Arbeite sie ab, bevor du etwas Neues beginnst.")
+            except Exception as exc:
+                try:
+                    from services.notifications import NotificationService
+                    NotificationService().create(
+                        "scheduled_error", f"Revisionsnacharbeit {agent_name} fehlgeschlagen", str(exc)[:300])
+                except Exception:
+                    pass
+
+        gestartet, uebersprungen, wartet = [], [], []
+        for agent_name, anzahl in offen.items():
+            if agent_name not in bekannt:
+                continue
+            if agent_name in laufend:
+                uebersprungen.append(agent_name)
+                continue
+            if len(gestartet) >= MAX_GLEICHZEITIG:
+                wartet.append(agent_name)
+                continue
+            threading.Thread(target=_starte, args=(agent_name,), daemon=True).start()
+            gestartet.append({"agent": agent_name, "anzahl": anzahl})
+        return {"gestartet": gestartet, "schon_aktiv_uebersprungen": uebersprungen,
+                "wartet_auf_naechsten_tick": wartet}
 
     def rolle_aktualisieren(agent: str, neuer_text: str) -> dict:
         """Rollen-Prompt eines Mitarbeiters ersetzen – nur nach Tinos Bestätigung."""
@@ -272,9 +293,6 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                            "Einen Auftrag abbrechen – nur wenn Tino es sagt.",
                            auftrag_abbrechen,
                            _schema({"auftrag_id": {"type": "string"}}, ["auftrag_id"])))
-    registry.register(Tool("auftragswaechter",
-                           "Überfällige Aufträge nachfassen (nutzt der Scheduler stündlich; manuell aufrufbar).",
-                           auftragswaechter, _schema({})))
     registry.register(Tool("team_tagesrunde",
                            "Jeden Mitarbeiter einmal laufen lassen, nicht nur die mit offenem Auftrag "
                            "(nutzt der Scheduler täglich; manuell aufrufbar).",
@@ -290,3 +308,8 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
     registry.register(Tool("chefpruefung_nachholen",
                            "Hängende Chefprüfungen sofort durchführen, damit fertige Vorlagen bei Tino ankommen.",
                            chefpruefung_nachholen, _schema({})))
+    registry.register(Tool("revisionen_nacharbeiten",
+                           "Jeden Mitarbeiter mit offener Revision (Vorlage oder zurückgewiesene Aktion), "
+                           "der gerade nichts tut, direkt daran arbeiten lassen – nur diese, nicht das "
+                           "ganze Team (nutzt der Scheduler periodisch; manuell aufrufbar).",
+                           revisionen_nacharbeiten, _schema({})))
