@@ -9,6 +9,8 @@ jetzt erkennbar ist.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from services.review import ReviewQueue
@@ -296,3 +298,62 @@ def test_duenner_hinweis_wird_abgewiesen(tmp_path, monkeypatch):
     werkzeug = dienst._hinweis_tool({"name": "beobachter", "person": "Silke"})
     with pytest.raises(ValueError, match="zu duenn"):
         werkzeug.func("social", "interessant")
+
+
+# --------------------------------------- Pipeline-JSON-Gate (Phase 1, 05.09.2026)
+
+def test_pipeline_json_gate_weist_fliesstext_zurueck(tmp_path, monkeypatch):
+    """Trend Scout (scraper) legt Fliesstext statt der geforderten Rangliste
+    vor - die neue Pipeline-JSON-Pruefung weist das zurueck, noch bevor ein
+    Sprachmodell-Urteil noetig waere, genau wie WORTFILTER/MARKENFILTER."""
+    monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    queue = ReviewQueue()
+    vorlage = queue.vorlegen("scraper", "recherche", "Trend-Rangliste",
+                             "Hier ist meine Rangliste der Top-Themen diese Woche...")
+    dienst = SubAgentService.__new__(SubAgentService)
+
+    ergebnis = dienst._chefpruefung("scraper")
+
+    assert [e["grund"] for e in ergebnis] == ["pipeline_json"]
+    assert queue.zeigen(vorlage["id"])["status"] == "revision"
+    anmerkung = queue.offene_revisionen("scraper")[0]["anmerkung"]
+    assert anmerkung.startswith("Jude: Kein gueltiges strukturiertes JSON")
+
+
+def test_pipeline_json_gate_meldet_fehlendes_feld(tmp_path, monkeypatch):
+    """Ein Research Brief ohne 'sources' ist kein Research Brief - die
+    Rueckweisung nennt das fehlende Feld konkret, wie die Tagline-Meldung."""
+    monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    queue = ReviewQueue()
+    unvollstaendig = json.dumps({
+        "topic": "KI-Agenten im Mittelstand", "summary": "...",
+        "facts": ["Fakt 1"], "unknowns": [], "confidence": 70,
+    })
+    queue.vorlegen("analyst", "recherche", "Research Brief", unvollstaendig)
+    dienst = SubAgentService.__new__(SubAgentService)
+
+    ergebnis = dienst._chefpruefung("analyst")
+
+    assert [e["grund"] for e in ergebnis] == ["pipeline_json"]
+    anmerkung = queue.offene_revisionen("analyst")[0]["anmerkung"]
+    assert "sources" in anmerkung
+
+
+def test_pipeline_json_gate_laesst_gueltige_rangliste_durch(tmp_path, monkeypatch):
+    """Eine schemakonforme Rangliste besteht das neue Gate und bleibt auf
+    'pruefung' stehen - dieselbe Rolle wie bei jedem Erzeugnis, das die
+    deterministischen Gates besteht und auf Projektleitung wartet."""
+    monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    queue = ReviewQueue()
+    gueltig = json.dumps([{
+        "topic": "OpenAI Modell-Update", "viralitaet": 80, "aktualitaet": 90,
+        "relevanz": 70, "business": 60, "source": "openai.com/blog",
+        "publication_date": "2026-09-04",
+    }])
+    vorlage = queue.vorlegen("scraper", "recherche", "Trend-Rangliste", gueltig)
+    dienst = SubAgentService.__new__(SubAgentService)
+
+    ergebnis = dienst._chefpruefung("scraper")
+
+    assert ergebnis == []
+    assert queue.zeigen(vorlage["id"])["status"] == "pruefung"

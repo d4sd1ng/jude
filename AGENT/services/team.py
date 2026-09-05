@@ -59,7 +59,11 @@ class SubAgentService:
     #: Wer ihn direkt beauftragen darf. Fuer Text braucht es keinen Umweg ueber
     #: Jude – er prueft ohnehin, was am Ende fertig vorgelegt wird. Bernd traegt
     #: nur Adressen ein, Heike macht Bilder, Joana schreibt Code.
-    TEXTER = {"social", "content", "sequencer", "scraper", "leadmanager"}
+    #: scraper (05.09.2026, Pipeline-Umstellung Phase 1) ist bewusst NICHT mehr
+    #: dabei: seine neue Rolle als Trend Scout darf laut eigener Rollenbeschreibung
+    #: nie selbst Copy schreiben oder in Auftrag geben (write_copy) - das war die
+    #: einzige Stelle, an der er es trotzdem konnte.
+    TEXTER = {"social", "content", "sequencer", "leadmanager"}
     #: Das Werkzeug, das die eigene Rolle als Quelle vorschreibt (aus ihrem
     #: QUELLE-Abschnitt) – Pflicht, bevor "nichts zu tun" als erledigt zaehlt.
     #: Gemessen 02.09.2026: eine neutrale Auftragsformulierung allein reichte
@@ -90,7 +94,11 @@ class SubAgentService:
     SCHREIB_PFLICHT = {
         "engineer": ("coding_write",),
         "sequencer": ("write_copy",),
-        "scraper": ("write_copy",),
+        # scraper (05.09.2026, Pipeline-Umstellung Phase 1): write_copy ist ihm
+        # jetzt verboten (Trend Scout, siehe TEXTER oben) - sein tatsaechliches
+        # Schreib-Werkzeug ist ingest_document, mit dem er jede neue Meldung
+        # ablegt, bevor er die Rangliste vorlegt.
+        "scraper": ("ingest_document",),
         "content": ("write_copy", "generate_image"),
         "social": ("write_copy", "generate_image"),
         "designer": ("notion_update",),
@@ -1143,6 +1151,102 @@ class SubAgentService:
         "7. Der Text ist vollstaendig und koennte so rausgehen."
     )
 
+    # Strukturierte JSON-Ausgabe der Pipeline-Rollen (Trend Scout/Research/
+    # Scriptwriter, Pipeline-Umstellung Phase 1, 05.09.2026): "input" und
+    # "output" sind jetzt benannte Vertraege statt Fliesstext-Uebergabe - ein
+    # Vorschlag in Prosa ("Hier ist mein Ergebnis...") ist fuer die naechste
+    # Stufe der Kette nicht maschinell auswertbar. PIPELINE_SCHEMAS beschreibt
+    # je Rolle die Pflichtfelder; _pipeline_schema_fehler prueft ein vorgelegtes
+    # 'inhalt' deterministisch dagegen, genau wie WORTFILTER/MARKENFILTER oben.
+    #
+    # HINWEIS zu redakteur: die Kette hier gilt fuer alle drei Rollen, aber der
+    # Redakteur legt nichts mit submit_for_review vor (siehe AUSNAHME VON DER
+    # ABNAHME-PFLICHT in _build_agent und den Aufrufer weiter unten:
+    # "geprueft = ([] wenn spec['name'] == REDAKTEUR sonst _chefpruefung(...))")
+    # - _chefpruefung laeuft fuer ihn also nie. Das redakteur-Schema ist damit
+    # unter der heutigen Architektur unerreichbar; es steht trotzdem hier, weil
+    # er inhaltlich derselbe Rollentyp ist und sein Ergebnis (an den Auftraggeber
+    # zurueckgegeben, nicht selbst vorgelegt) demselben Format folgen soll.
+    #: 0-100, ganzzahlig - fuer die *_score-Felder unten.
+    _SCORE = "score"
+    PIPELINE_SCHEMAS = {
+        "scraper": {
+            "kind": "array",
+            "felder": {
+                "topic": str, "viralitaet": _SCORE, "aktualitaet": _SCORE,
+                "relevanz": _SCORE, "business": _SCORE, "source": str,
+                "publication_date": str,
+            },
+        },
+        "analyst": {
+            "kind": "objekt",
+            "felder": {
+                "topic": str, "summary": str, "facts": list, "sources": list,
+                "unknowns": list, "confidence": _SCORE,
+            },
+        },
+        "redakteur": {
+            "kind": "objekt",
+            "felder": {
+                "hook_a": str, "hook_b": str, "hook_c": str, "script": str,
+                "cta": str,
+            },
+        },
+    }
+
+    #: Kurzbeschreibung je Rolle fuer die Rueckweisung - dieselbe Praezision
+    #: wie die Tagline-Meldung: nicht nur "ungueltig", sondern was genau
+    #: gebraucht wird.
+    PIPELINE_SCHEMA_TEXT = {
+        "scraper": ("ein JSON-Array, jedes Element ein Objekt mit genau: topic, "
+                    "viralitaet (0-100), aktualitaet (0-100), relevanz (0-100), "
+                    "business (0-100), source, publication_date"),
+        "analyst": ("ein JSON-Objekt mit genau: topic, summary, facts (Liste), "
+                    "sources (Liste), unknowns (Liste), confidence (0-100)"),
+        "redakteur": ("ein JSON-Objekt mit genau: hook_a, hook_b, hook_c, script, cta"),
+    }
+
+    @classmethod
+    def _pipeline_feld_fehler(cls, objekt, felder: dict) -> str | None:
+        if not isinstance(objekt, dict):
+            return "ist kein JSON-Objekt"
+        for feld, art in felder.items():
+            if feld not in objekt:
+                return f"fehlendes Feld '{feld}'"
+            wert = objekt[feld]
+            if art == cls._SCORE:
+                if not isinstance(wert, int) or isinstance(wert, bool) or not (0 <= wert <= 100):
+                    return f"Feld '{feld}' muss eine ganze Zahl von 0 bis 100 sein, nicht {wert!r}"
+            elif art is str:
+                if not isinstance(wert, str) or not wert.strip():
+                    return f"Feld '{feld}' muss nicht-leerer Text sein"
+            elif art is list:
+                if not isinstance(wert, list):
+                    return f"Feld '{feld}' muss eine Liste sein"
+        return None
+
+    @classmethod
+    def _pipeline_schema_fehler(cls, agent: str, inhalt: str) -> str | None:
+        """``None`` wenn ``inhalt`` fuer ``agent`` gueltiges Pipeline-JSON ist,
+        sonst ein knapper, konkreter Grund - nach demselben Prinzip wie der
+        Tagline-Gate: genau benennen, was fehlt, nicht nur "ungueltig"."""
+        schema = cls.PIPELINE_SCHEMAS.get(agent)
+        if not schema:
+            return None
+        try:
+            daten = json.loads(inhalt)
+        except (TypeError, ValueError) as exc:
+            return f"kein gueltiges JSON ({exc})"
+        if schema["kind"] == "array":
+            if not isinstance(daten, list) or not daten:
+                return "erwartet ein nicht-leeres JSON-Array, kein Objekt/Text"
+            for i, eintrag in enumerate(daten):
+                fehler = cls._pipeline_feld_fehler(eintrag, schema["felder"])
+                if fehler:
+                    return f"Eintrag {i + 1}: {fehler}"
+            return None
+        return cls._pipeline_feld_fehler(daten, schema["felder"])
+
     def _chefpruefung(self, agent_name: str) -> list[dict]:
         """Jude sieht als Vorgesetzter alles an, bevor es Tino erreicht.
 
@@ -1198,6 +1302,42 @@ class SubAgentService:
                     entschieden.append({"id": vorlage["id"], "urteil": "revision",
                                         "grund": "markenname"})
                     continue
+                # Strukturierte JSON-Ausgabe (Pipeline-Umstellung Phase 1,
+                # 05.09.2026): Trend Scout/Research/Scriptwriter tauschen
+                # untereinander benannte Datenformate aus, keine Prosa - siehe
+                # PIPELINE_SCHEMAS oben. Deterministisch, wie MARKENFILTER davor:
+                # ein Vorschlag in Fliesstext ("Hier ist meine Recherche...")
+                # ist fuer die naechste Stufe nicht auswertbar und wird genauso
+                # zurueckgewiesen wie ein Markenname. LAEUFT VOR dem Platzhalter-
+                # Filter unten, nicht danach: ein echtes JSON-Array wie
+                # '["Fakt 1", "Fakt 2"]' erfuellt selbst das Muster fuer einen
+                # nicht ausgefuellten Klammer-Platzhalter (gemessen beim Bau
+                # dieses Gates, 05.09.2026 - eine gueltige 'facts'-Liste im
+                # Research Brief loeste faelschlich den Platzhalter-Filter aus).
+                # Deshalb entscheidet dieses Gate zuerst, und schemakonformes
+                # JSON ueberspringt den Platzhalter-Filter gleich mit (siehe dort).
+                if voll["agent"] in self.PIPELINE_SCHEMAS:
+                    schema_fehler = self._pipeline_schema_fehler(voll["agent"], lesbar)
+                    if schema_fehler:
+                        grund = (f"Kein gueltiges strukturiertes JSON: {schema_fehler}. "
+                                 f"Erwartet wird {self.PIPELINE_SCHEMA_TEXT.get(voll['agent'], '')} "
+                                 f"- kein Fliesstext, keine Vorrede, nur das JSON selbst.")
+                        queue.revision(vorlage["id"], f"Jude: {grund}")
+                        self.lehre_merken(agent_name,
+                                          "Das Ergebnis wird als strukturiertes JSON nach dem "
+                                          "vorgegebenen Format vorgelegt, nicht als Fliesstext oder "
+                                          "Vorschlag in Prosa - die naechste Stufe der Kette liest "
+                                          "es maschinell weiter.")
+                        try:
+                            from services.notifications import NotificationService
+                            NotificationService().create("revision",
+                                                         f"Revision (JSON-Format): {voll['titel'][:70]}",
+                                                         grund[:200])
+                        except Exception:
+                            pass
+                        entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                            "grund": "pipeline_json"})
+                        continue
                 # Deterministisch, wie der Wortfilter: eckige Klammern oder doppelte
                 # geschweifte Klammern mit Text drin sind so gut wie nie Absicht,
                 # sondern ein nicht ausgefuellter Platzhalter, der als fertig
@@ -1205,9 +1345,13 @@ class SubAgentService:
                 # aktualisierte Inhalt...]" als fertige Revision vor, 03.09.2026 -
                 # ihre eigene Rolle verbietet das ausdruecklich, hielt sie aber nicht
                 # auf; CHEF_MASSSTAB Punkt 2 nennt "{{name}}" als Beispiel). Markdown-
-                # Links "[Text](url)" sind ausgenommen.
-                platzhalter = [m.group(0) for m in re.finditer(r"\[[^\[\]\n]{2,80}\]|\{\{[^{}\n]{1,60}\}\}", lesbar)
-                              if not lesbar[m.end():m.end() + 1] == "("]
+                # Links "[Text](url)" sind ausgenommen. Pipeline-JSON-Rollen sind
+                # ausgenommen: ihr Inhalt ist per Definition ein JSON-Array/-Objekt
+                # mit eckigen/geschweiften Klammern, das obige Gate hat es bereits
+                # gegen sein eigenes Schema geprueft, bevor wir hier ankommen.
+                platzhalter = ([] if voll["agent"] in self.PIPELINE_SCHEMAS else
+                               [m.group(0) for m in re.finditer(r"\[[^\[\]\n]{2,80}\]|\{\{[^{}\n]{1,60}\}\}", lesbar)
+                                if not lesbar[m.end():m.end() + 1] == "("])
                 if platzhalter:
                     grund = ("Unausgefüllte Platzhalter in eckigen Klammern: "
                              + "; ".join(platzhalter[:5])
