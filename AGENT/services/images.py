@@ -78,7 +78,13 @@ class ImageService:
         response = requests.post(
             f"{_API_BASE}/generations",
             headers={"Authorization": f"Bearer {self._require_key()}"},
-            json={"model": self.model, "prompt": gesendeter_prompt, "size": size, "n": 1},
+            # "quality" fehlte hier komplett - die API fiel auf ihren eigenen
+            # Standard zurueck (nicht "high"). Jedes bisher erzeugte Nurovelle-
+            # Bild (06.09.2026, Tino: "not finished and really cheap") lief
+            # ueber genau diesen Aufruf ohne das Feld - unabhaengig von Motiv
+            # oder Prompt-Text guenstiger/flacher gerendert als noetig.
+            json={"model": self.model, "prompt": gesendeter_prompt, "size": size, "n": 1,
+                  "quality": os.getenv("JUDE_IMAGE_QUALITY", "high")},
             timeout=self.timeout,
         )
         response.raise_for_status()
