@@ -894,7 +894,18 @@ class SubAgentService:
             prompt += ("\n\nDEINE OFFENEN AUFTRÄGE – erledige sie in dieser Reihenfolge "
                        "und lege jedes Ergebnis mit submit_for_review vor; gib dabei "
                        "auftrag_id aus der eckigen Klammer an:\n" + zeilen)
-        # Offene Revisionen haben Vorrang vor neuer Arbeit.
+        # Offene Revisionen: eigener Altbestand, NICHT automatisch Vorrang vor
+        # der jetzt gestellten Aufgabe. "ZUERST ERLEDIGEN" stand hier fruher -
+        # das Modell nahm es woertlich und ordnete eine explizit gestellte NEUE
+        # Aufgabe einem alten, aehnlich klingenden Revisions-Eintrag unter,
+        # arbeitete den alten Eintrag statt der neuen Aufgabe ab (social,
+        # Pipeline-Pilot 05.09.2026: eine 2 Tage alte, andere Revision zu
+        # "Angebotsuebergabe im Handwerk" wurde mit der frisch gestellten
+        # Aufgabe zum Thema "KI-Agenten mit Computerbedienung" verwechselt,
+        # weil beide aehnliche Automatisierungs-Ablaeufe beschreiben). Jetzt
+        # ausdruecklich als eigener, getrennter Altbestand markiert: nur
+        # abarbeiten, wenn die aktuelle Aufgabe unten NICHT bereits etwas
+        # anderes verlangt - und auf keinen Fall mit ihr vermischen.
         from services.review import ReviewQueue
         revisionen = ReviewQueue().offene_revisionen(spec["name"])
         if revisionen:
@@ -905,7 +916,13 @@ class SubAgentService:
                     indented = r['inhalt'][:1500].replace('\n', '\n  ')
                     zeile += f"\n  BISHERIGER INHALT (gezielt verbessern, nicht neu erfinden):\n  {indented}"
                 zeilen.append(zeile)
-            prompt += ("\n\nZUERST ERLEDIGEN – Tino hat Überarbeitungen angefordert:\n"
+            prompt += ("\n\nGETRENNTER ALTBESTAND – frueher zurueckgewiesene Vorlagen, die noch "
+                       "auf Ueberarbeitung warten. WICHTIG: das ist NICHT automatisch deine "
+                       "jetzige Aufgabe. Verlangt die unten gestellte Aufgabe etwas anderes "
+                       "oder ein anderes Thema, bearbeite ZUERST die gestellte Aufgabe vollstaendig "
+                       "und wirklich nur sie - verwechsle sie nicht mit einem der folgenden Eintraege, "
+                       "auch wenn ein Thema aehnlich klingt. Erst wenn die gestellte Aufgabe erledigt "
+                       "ist oder keine eigene Aufgabe vorliegt, arbeite diese Liste ab:\n"
                        + "\n".join(zeilen) +
                        "\nArbeite jede Anmerkung ein und lege das Ergebnis erneut mit "
                        "submit_for_review vor – dabei die ID aus der eckigen Klammer "
