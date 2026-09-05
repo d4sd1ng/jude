@@ -18,8 +18,14 @@ task_types:
 
   # Haeufig/geringwertig: Buchhaltung, Scraping, Auflisten, Status-Updates.
   # Freie Ollama-Cloud-Stufe zuerst (echte $0-Kosten, keine GPU-Konkurrenz mit
-  # anderen laufenden Mitarbeitern), lokales Ollama nur als letzter Ausweg -
-  # gemessen zuverlaessiger und schneller als lokal auf dieser Hardware.
+  # anderen laufenden Mitarbeitern). cloud_openai_terra VOR local_qwen_coder,
+  # nicht danach: lokal ist zwar auch kostenlos, aber gemessen wiederholt
+  # unzuverlaessig genau beim "wurde zurueckgewiesen, ueberarbeite und lege
+  # erneut vor"-Ablauf (scraper, Pipeline-Pilot, 05.09.2026 - zwei Laeufe in
+  # Folge auf local_qwen_coder liefen in eine submit_for_review+read_project_file-
+  # Schleife bis zum Schritt-Deckel, ohne die Revision je abzuschliessen).
+  # Ein bezahlter, aber zuverlaessiger Versuch ist besser als ein kostenloser,
+  # der strukturell haengen bleibt.
   routine_dispatch:
     requires_tools: true
     tiers:
@@ -29,6 +35,7 @@ task_types:
       - cloud_ollama_gptoss20
       - cloud_ollama_gemma
       - cloud_deepseek_chat
+      - cloud_openai_terra
       - local_qwen_coder
 
   # Selten/hochwertig: endgueltiger, kundengerichteter Text unter Markenregeln.
