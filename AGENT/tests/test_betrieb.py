@@ -130,6 +130,24 @@ def test_revision_geht_an_den_verfasser_zurueck():
     assert not any(e["id"] == vorlage["id"] for e in queue.liste("offen"))
 
 
+def test_ueberarbeitung_aktualisiert_quelle():
+    """06.09.2026: eine Ueberarbeitung mit neuer Datei (z.B. ein neu erzeugtes
+    Bild) muss die alte 'quelle' ersetzen, nicht stumm behalten - sonst prueft
+    jede nachfolgende Instanz (Mensch oder die automatische Bildpruefung in
+    services/team.py) weiter die alte, oft schon zurueckgewiesene Datei."""
+    queue = ReviewQueue()
+    vorlage = queue.vorlegen("designer", "grafik", "Motiv", "Text...", quelle="/images/erste.png")
+    queue.revision(vorlage["id"], "Falsches Motiv.")
+
+    danach = queue.erledigt(vorlage["id"], quelle="/images/zweite.png")
+    assert danach["quelle"] == "/images/zweite.png"
+
+    # Eine reine Text-Ueberarbeitung ohne neue Datei darf die vorhandene
+    # Quelle nicht loeschen.
+    weiter = queue.erledigt(vorlage["id"], inhalt="Nur Text geaendert.")
+    assert weiter["quelle"] == "/images/zweite.png"
+
+
 def test_ueberarbeitung_legt_keine_zweite_vorlage_an(tmp_path, monkeypatch):
     """Ohne das blieb die beanstandete Fassung fuer immer auf 'revision' und
     wurde dem Mitarbeiter bei jedem weiteren Lauf erneut vorgelegt."""

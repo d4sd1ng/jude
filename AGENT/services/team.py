@@ -626,7 +626,7 @@ class SubAgentService:
                     ziel = gleiche["id"]
             self._laenge_pruefen(art, inhalt, neu=not ziel)
             if ziel:
-                ergebnis = queue.erledigt(ziel, inhalt or None, titel or None)
+                ergebnis = queue.erledigt(ziel, inhalt or None, titel or None, quelle or None)
             else:
                 ergebnis = queue.vorlegen(spec["name"], art, titel, inhalt, quelle, spec.get("person"))
             if str(auftrag_id).strip():

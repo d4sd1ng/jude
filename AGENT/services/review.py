@@ -191,12 +191,22 @@ class ReviewQueue:
         return result
 
     def erledigt(self, review_id: str, inhalt: str | None = None,
-                 titel: str | None = None) -> dict:
+                 titel: str | None = None, quelle: str | None = None) -> dict:
         """Der Mitarbeiter hat die Revision eingearbeitet.
 
         Zurück auf ``pruefung``, nicht direkt zu Tino: auch die zweite Fassung
         sieht Jude zuerst. Es entsteht keine neue Zeile – dieselbe wandert eine
         Runde weiter, damit nachvollziehbar bleibt, wie oft etwas zurückkam.
+
+        ``quelle`` fehlte hier bis 06.09.2026 komplett - eine Ueberarbeitung
+        konnte ``inhalt``/``titel`` aendern, aber nie die Quelle/Datei, egal
+        was der Mitarbeiter tatsaechlich neu erzeugt hatte. Eine zweite oder
+        dritte Bildfassung (neuer Dateipfad von generate_image) landete damit
+        nie in der Vorlage - sie zeigte weiter auf die erste, oft bereits
+        zurueckgewiesene Datei. Das faellt nicht nur optisch auf: die
+        automatische Bildpruefung (services/team.py, ``_chefpruefung``) liest
+        genau dieses Feld, um zu pruefen, ob ein Bild vorliegt - sie pruefte
+        damit staendig die falsche, alte Datei.
         """
         with connection() as db:
             zeile = db.execute("SELECT id, status, runde, anmerkung FROM reviews WHERE id=?",
@@ -211,10 +221,12 @@ class ReviewQueue:
                 "THEN verlauf || '— Runde ' || runde || ': ' || anmerkung || char(10) "
                 "ELSE verlauf END, "
                 "status='pruefung', runde=runde+1, anmerkung='', "
-                "inhalt=COALESCE(?,inhalt), titel=COALESCE(?,titel), entschieden_am=NULL "
+                "inhalt=COALESCE(?,inhalt), titel=COALESCE(?,titel), "
+                "quelle=COALESCE(?,quelle), entschieden_am=NULL "
                 "WHERE id=?",
                 (str(inhalt)[:12000] if inhalt else None,
-                 str(titel)[:300] if titel else None, review_id))
+                 str(titel)[:300] if titel else None,
+                 str(quelle)[:500] if quelle else None, review_id))
         return self.zeigen(review_id)
 
     def _entscheiden(self, review_id: str, status: str, anmerkung: str) -> dict:
