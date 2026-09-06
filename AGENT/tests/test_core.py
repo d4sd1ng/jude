@@ -1,5 +1,7 @@
+import tempfile
 import unittest
 import uuid
+from pathlib import Path
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -15,6 +17,8 @@ from core.model_router import (
 from core.tool_creator import ToolCreator
 from core.tool_registry import Tool, ToolRegistry
 from services.database import connection
+import tools.datei_lesen as datei_lesen
+from core.paths import _sieht_aus_wie_ai_data_root
 from tools.datei_lesen import read_project_file
 
 
@@ -74,6 +78,45 @@ class CoreTests(unittest.TestCase):
     def test_file_tool_blocks_parent_escape(self):
         with self.assertRaises(ValueError):
             read_project_file("../../etc/passwd")
+
+    def test_ambiguous_project_file_hard_fails_without_silent_wrong_content(self):
+        """06.09.2026: wenn das Homepage-Repo nicht auffindbar ist, darf
+        project_overview.md/task_contract.md/decision_log.md/todo.md NIE
+        lautlos aus Jude's eigenem project_files/ bedient werden - diese
+        Namen existieren dort mit voellig anderem (Jude-eigenem) Inhalt.
+        Ein klarer Fehler ist hier das sichere Verhalten, kein Fallback."""
+        with patch.object(datei_lesen, "_homepage_repo_wurzel", return_value=None):
+            with self.assertRaises(ValueError):
+                read_project_file("project_overview.md")
+
+    def test_ai_data_root_rejects_stale_mountpoint_stub(self):
+        """06.09.2026: nach einem Wechsel des Einhaengepunkts blieb der alte
+        Pfad als leerer, fremder root:root-Verzeichnisstumpf liegen - is_dir()
+        allein haette ihn faelschlich als gueltige AI-Data-Wurzel akzeptiert,
+        jeder Schreibzugriff darunter waere dann mit PermissionError weit weg
+        von dieser Stelle gescheitert. Der Marker-Check muss so etwas ablehnen,
+        aber die echte Struktur (Projects/Jude/AGENT/core/paths.py) akzeptieren."""
+        with tempfile.TemporaryDirectory() as tmp:
+            leerer_stumpf = Path(tmp) / "leerer-stumpf"
+            leerer_stumpf.mkdir()
+            (leerer_stumpf / "Projects").mkdir()  # existiert, aber ohne Jude darunter
+            self.assertFalse(_sieht_aus_wie_ai_data_root(leerer_stumpf))
+
+            echte_struktur = Path(tmp) / "echte-wurzel"
+            (echte_struktur / "Projects" / "Jude" / "AGENT" / "core").mkdir(parents=True)
+            (echte_struktur / "Projects" / "Jude" / "AGENT" / "core" / "paths.py").write_text("x")
+            self.assertTrue(_sieht_aus_wie_ai_data_root(echte_struktur))
+
+    def test_homepage_repo_root_falls_back_to_sibling_of_jude(self):
+        """Kein hartkodierter Mount-Pfad soll noetig sein: das Homepage-Repo
+        liegt immer neben Jude selbst unter .../Projects/, unabhaengig vom
+        Einhaengepunkt davor - genau das muss ohne JUDE_HOMEPAGE_REPO und
+        ohne den historischen /media/d4sd1ng/AI-Data-Pfad gefunden werden."""
+        with patch.dict("os.environ", {"JUDE_HOMEPAGE_REPO": ""}, clear=False):
+            gefunden = datei_lesen._homepage_repo_wurzel()
+        self.assertIsNotNone(gefunden)
+        self.assertEqual(gefunden.name, "homepage_repo")
+        self.assertEqual(gefunden.parent, datei_lesen.PROJECT_ROOT.parent)
 
     def test_router_loads_project_relative_config(self):
         router = ModelRouter()
