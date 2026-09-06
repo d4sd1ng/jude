@@ -128,7 +128,20 @@ function confirmPayloadHtml(p){
 }
 function confirmHtmlBtn(payload){const vals=Object.values(payload||{});const html=vals.find(v=>typeof v==='string'&&(v.trimStart().toLowerCase().startsWith('<!doctype')||v.trimStart().startsWith('<html')||v.includes('<body')));if(!html)return '';const id='htmlprev_'+Math.random().toString(36).slice(2);window._htmlPreviews=window._htmlPreviews||{};window._htmlPreviews[id]=html;return ` <button onclick="openHtmlPreview('${id}')">Im Browser öffnen</button>`}
 window.openHtmlPreview=function(id){const html=window._htmlPreviews&&window._htmlPreviews[id];if(!html)return;const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener')};
-async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class="card agentcard"><span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3>${confirmPayloadHtml(c.payload)}<div class=agentrun><button onclick="decide('${c.id}','approve')">Bestätigen</button> <input id="can_${c.id}" placeholder="Grund – nötig zum Ablehnen"><button onclick="decideReject('${c.id}')" style="background:#64748b">Ablehnen</button>${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>'}catch(e){toast(e.message)}}
+// Eine notion_write-Bestätigung wie 'Bild-URL: /pfad/bild.png' zeigte bisher nur
+// den rohen Payload als Text - man musste dem Pfad blind vertrauen, um zu
+// bestätigen oder abzulehnen (06.09.2026: genau das führte dazu, dass ein
+// falsches Bild fast unbesehen an einen Beitrag angehängt worden wäre). Sucht
+// rekursiv nach dem ersten Bildpfad im Payload, exakt wie es die Abnahme-Liste
+// schon für 'quelle' tut.
+function _findeBildpfad(wert){
+  if(typeof wert==='string') return /\.(png|jpe?g|webp|gif)$/i.test(wert.trim())?wert.trim():null;
+  if(wert&&typeof wert==='object'){for(const v of Object.values(wert)){const t=_findeBildpfad(v);if(t)return t}}
+  return null;
+}
+function confirmImageHtml(payload){const bild=_findeBildpfad(payload);return bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}
+async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class="card agentcard">${confirmImageHtml(c.payload)}<span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3>${confirmPayloadHtml(c.payload)}<div class=agentrun><button onclick="decide('${c.id}','approve')">Bestätigen</button> <input id="can_${c.id}" placeholder="Grund – nötig zum Ablehnen"><button onclick="decideReject('${c.id}')" style="background:#64748b">Ablehnen</button>${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>';
+$('#confirmations').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
 window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};
 window.decideReject=async(id)=>{const a=($('#can_'+id)?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.');loadConfirmations()}catch(e){toast(e.message)}};
 $('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){try{let d=await api('/api/agents/aktiv');$('#aktiv').innerHTML=d.map(a=>{
