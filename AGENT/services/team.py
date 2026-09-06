@@ -21,10 +21,9 @@ import logging
 from core.paths import DATA_DIR
 from services.database import connection
 from services.marke import BRAND_BRIEF
+from services.team_registry import AgentRegistry
 
 logger = logging.getLogger(__name__)
-
-_NAME_RE = re.compile(r"^[A-Za-zÄÖÜäöüß0-9 _-]{2,40}$")
 
 
 class SubAgentService:
@@ -129,66 +128,63 @@ class SubAgentService:
         # bestehende SubAgentService(registry, router)-Aufrufe (Skripte, Tests,
         # Tools) bleiben unveraendert gueltig.
         self.ai_router = ai_router
-        self.path = DATA_DIR / "sub_agents.json"
+        # Teil 3, Stage C (jolly-napping-tulip.md): Agenten-Stammdaten-CRUD
+        # nach services/team_registry.py ausgelagert. Diese Klasse bleibt die
+        # Fassade, an die jeder bestehende Aufrufer (tools/chef.py, web/routes,
+        # Tests) unveraendert weiter andockt - siehe die Delegationen unten.
+        self._agenten = AgentRegistry(registry)
+
+    def _agenten_sicherstellen(self) -> AgentRegistry:
+        # Die Testsuite baut SubAgentService teils ueber __new__ auf und
+        # ueberspringt __init__ bewusst (siehe tests/test_betrieb.py::_dienst),
+        # um einzelne Tool-Closures ohne vollen App-Aufbau zu pruefen - danach
+        # wird nur .path gesetzt. Ohne dieses Nachruesten waere das eine
+        # Verhaltensaenderung fuer einen real genutzten, aelteren Testpfad,
+        # keine reine Verschiebung mehr.
+        if "_agenten" not in self.__dict__:
+            self._agenten = AgentRegistry(getattr(self, "registry", None))
+        return self._agenten
+
+    @property
+    def path(self):
+        return self._agenten_sicherstellen().path
+
+    @path.setter
+    def path(self, value) -> None:
+        # Tests leiten das auf ein tmp_path um, um von der echten
+        # sub_agents.json isoliert zu bleiben - muss deshalb ein echter
+        # Setter sein, keine reine Lesefassade.
+        self._agenten_sicherstellen().path = value
 
     # ------------------------------------------------------------ Speicher
 
     def _load(self) -> dict:
-        try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        return self._agenten_sicherstellen()._load()
 
     def _save(self, data: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._agenten_sicherstellen()._save(data)
 
     @staticmethod
     def _key(name: str) -> str:
-        return name.strip().casefold()
+        return AgentRegistry._key(name)
 
     # ---------------------------------------------------------------- API
 
     def available_skills(self) -> list[str]:
-        return sorted(self.registry.tools)
+        return self._agenten_sicherstellen().available_skills()
 
     def list(self) -> list[dict]:
-        return sorted(self._load().values(), key=lambda a: a["name"].casefold())
+        return self._agenten_sicherstellen().list()
 
     def get(self, name: str) -> dict | None:
-        return self._load().get(self._key(name))
+        return self._agenten_sicherstellen().get(name)
 
     def create(self, name: str, role: str, skills: list[str], model: str | None = None,
                person: str | None = None, alter: int | None = None) -> dict:
-        name = str(name).strip()
-        role = str(role).strip()
-        if not _NAME_RE.match(name):
-            raise ValueError("Name: 2–40 Zeichen, Buchstaben/Zahlen/Leerzeichen/-/_")
-        if len(role) < 5:
-            raise ValueError("Bitte eine Rollenbeschreibung angeben.")
-        skills = list(dict.fromkeys(skills or []))
-        unknown = [s for s in skills if s not in self.registry.tools]
-        if unknown:
-            raise ValueError("Unbekannte Skills: " + ", ".join(unknown))
-        data = self._load()
-        # Name und Alter geben dem Mitarbeiter eine Identitaet: der Agent stellt
-        # sich damit vor und Tino kann ihn ansprechen wie einen Kollegen.
-        vorhanden = data.get(self._key(name), {})
-        spec = {"name": name, "role": role, "skills": skills, "model": model,
-                "person": (person or vorhanden.get("person") or "").strip() or None,
-                "alter": int(alter) if alter is not None else vorhanden.get("alter"),
-                "created_at": vorhanden.get("created_at") or datetime.now(timezone.utc).isoformat()}
-        data[self._key(name)] = spec
-        self._save(data)
-        return spec
+        return self._agenten_sicherstellen().create(name, role, skills, model, person, alter)
 
     def delete(self, name: str) -> dict:
-        data = self._load()
-        if self._key(name) not in data:
-            raise KeyError(f"Kein Sub-Agent namens {name}.")
-        removed = data.pop(self._key(name))
-        self._save(data)
-        return {"name": removed["name"], "status": "entfernt"}
+        return self._agenten_sicherstellen().delete(name)
 
     # ------------------------------------------------------- Eigenes Gedächtnis
 
