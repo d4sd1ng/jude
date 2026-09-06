@@ -1546,11 +1546,7 @@ class SubAgentService:
                     # Dupliktat: dieselbe E-Mail wortgleich fuer mehrere Kontakte
                     # vorgelegt statt pro Kontakt personalisiert (Tom legte denselben
                     # generischen Text 12x identisch vor, 04.09.2026).
-                    with connection() as db:
-                        doppel = db.execute(
-                            "SELECT COUNT(*) FROM reviews WHERE agent=? AND art='email' "
-                            "AND id!=? AND inhalt=? AND status IN ('offen','abgenommen','pruefung')",
-                            (voll["agent"], vorlage["id"], voll.get("inhalt") or "")).fetchone()[0]
+                    doppel = queue.anzahl_wortgleich(voll["agent"], "email", vorlage["id"], voll.get("inhalt") or "")
                     if doppel:
                         grund = (f"Wortgleiche E-Mail liegt bereits {doppel}x vor - jede E-Mail "
                                  "braucht eigenen, auf den jeweiligen Empfaenger zugeschnittenen "

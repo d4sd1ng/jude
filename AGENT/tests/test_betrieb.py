@@ -130,6 +130,23 @@ def test_revision_geht_an_den_verfasser_zurueck():
     assert not any(e["id"] == vorlage["id"] for e in queue.liste("offen"))
 
 
+def test_anzahl_wortgleich_zaehlt_dieselbe_email_ohne_sich_selbst():
+    """06.09.2026: aus services/team.py::_chefpruefung herausgezogene Dubletten-
+    Erkennung (vorher rohe SQL dort) - dieselbe Zaehlung, jetzt in ReviewQueue."""
+    queue = ReviewQueue()
+    text = "Sehr geehrte Damen und Herren, ..."
+    a = queue.vorlegen("outreach", "email", "Angebot A", text, person="Tom")
+    b = queue.vorlegen("outreach", "email", "Angebot B", text, person="Tom")
+    # sich selbst zaehlt nie mit
+    assert queue.anzahl_wortgleich("outreach", "email", a["id"], text) == 1
+    assert queue.anzahl_wortgleich("outreach", "email", b["id"], text) == 1
+    # ein anderer Text zaehlt nicht
+    assert queue.anzahl_wortgleich("outreach", "email", a["id"], "etwas ganz anderes") == 0
+    # abgelehnte (revision) Vorlagen zaehlen mit dem Standard-Status-Set nicht mit
+    queue.revision(b["id"], "zu unpersoenlich")
+    assert queue.anzahl_wortgleich("outreach", "email", a["id"], text) == 0
+
+
 def test_ueberarbeitung_aktualisiert_quelle():
     """06.09.2026: eine Ueberarbeitung mit neuer Datei (z.B. ein neu erzeugtes
     Bild) muss die alte 'quelle' ersetzen, nicht stumm behalten - sonst prueft

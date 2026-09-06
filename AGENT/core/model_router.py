@@ -21,6 +21,7 @@ from typing import Any
 import requests
 import yaml
 from services.database import connection
+from services.routing_data import ModelUsageRepository, RouteDecisionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -574,22 +575,16 @@ class ModelRouter:
                 self.adapters[name] = OpenAICompatAdapter(**settings)
         month = datetime.now(timezone.utc).strftime("%Y-%m")
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        with connection() as db:
-            row = db.execute("SELECT COALESCE(SUM(cost_usd),0) AS total FROM model_usage WHERE substr(created_at,1,7)=?", (month,)).fetchone()
-            monatsrows = db.execute(
-                "SELECT provider, COALESCE(SUM(cost_usd),0) AS total FROM model_usage "
-                "WHERE substr(created_at,1,7)=? GROUP BY provider", (month,)).fetchall()
-            tagesrows = db.execute(
-                "SELECT provider, COALESCE(SUM(cost_usd),0) AS total FROM model_usage "
-                "WHERE substr(created_at,1,10)=? GROUP BY provider", (today,)).fetchall()
-        self.budget_used = float(row["total"])
+        self._route_repo = RouteDecisionRepository()
+        self._usage_repo = ModelUsageRepository()
+        self.budget_used = self._usage_repo.monthly_total(month)
         # Optionales, zusaetzliches Netz je Provider (Abschnitt 3 des AI-Router-
         # Plans) - solange kein Provider in providers:<name>.budget_*_usd einen
         # Wert setzt, greift ausschliesslich das bestehende globale Monatsbudget
         # oben. self._provider_day_reset_ts wird bei jedem Aufruf geprueft und
         # setzt _provider_daily_used bei Mitternacht zurueck, ohne Neustart.
-        self._provider_monthly_used: dict[str, float] = {r["provider"]: float(r["total"]) for r in monatsrows}
-        self._provider_daily_used: dict[str, float] = {r["provider"]: float(r["total"]) for r in tagesrows}
+        self._provider_monthly_used: dict[str, float] = self._usage_repo.provider_monthly_totals(month)
+        self._provider_daily_used: dict[str, float] = self._usage_repo.provider_daily_totals(today)
         self._provider_day_reset_ts = _tagesende_ts()
         self.budget_limit = float(os.getenv(
             "JUDE_CLOUD_BUDGET_USD", self.router_cfg["budget_limit_monthly_usd"]
@@ -720,13 +715,8 @@ class ModelRouter:
         return "allgemein"
 
     def _learned_adjustment(self, model: ModelSpec, task_type: str) -> float:
-        with connection() as db:
-            row = db.execute(
-                "SELECT COUNT(*) AS n,AVG(user_feedback) AS score FROM route_decisions "
-                "WHERE task_type=? AND final_model=? AND user_feedback IS NOT NULL",
-                (task_type, model.name),
-            ).fetchone()
-        return float(row["score"] or 0) * 4 if int(row["n"]) >= 3 else 0.0
+        stats = self._route_repo.feedback_stats(task_type, model.name)
+        return float(stats["score"] or 0) * 4 if int(stats["n"]) >= 3 else 0.0
 
     def _provider_enabled(self, provider: str) -> bool:
         if provider == "ollama":
@@ -866,13 +856,10 @@ class ModelRouter:
             if input_tokens:
                 self.last_context = {"model": spec.name, "input_tokens": input_tokens,
                                      "context_length": spec.context_length}
-            with connection() as db:
-                db.execute("INSERT INTO model_usage(created_at,provider,model,input_tokens,output_tokens,cached_input_tokens,"
-                           "cache_write_tokens,reasoning_tokens,service_tier,tariff,cost_multiplier,request_id,cost_usd) "
-                           "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (datetime.now(timezone.utc).isoformat(), spec.provider, spec.model_name, input_tokens, output_tokens,
-                            cached, cache_write, reasoning, str(usage.get("service_tier", "standard")),
-                            str(usage.get("tariff", "standard")), multiplier, request_id, cost))
+            self._usage_repo.insert(
+                datetime.now(timezone.utc).isoformat(), spec.provider, spec.model_name, input_tokens, output_tokens,
+                cached, cache_write, reasoning, str(usage.get("service_tier", "standard")),
+                str(usage.get("tariff", "standard")), multiplier, request_id, cost)
             return response
 
     def call_with_fallback(self, messages: list[dict], tools: list[dict] | None = None,
@@ -904,9 +891,8 @@ class ModelRouter:
                                          strict_tools=strict_tools)
         route_id = uuid.uuid4().hex[:16]
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
-        with connection() as db:
-            db.execute("INSERT INTO route_decisions(id,created_at,task_type,complexity,selected_model,prompt_hash) VALUES(?,?,?,?,?,?)",
-                       (route_id, datetime.now(timezone.utc).isoformat(), task_type, complexity, selected.name, prompt_hash))
+        self._route_repo.insert(route_id, datetime.now(timezone.utc).isoformat(), task_type, complexity,
+                                selected.name, prompt_hash)
         chain = self._resolve_fallbacks(selected, allow_uncensored, needs_tools=bool(tools))
         return self._execute_chain(chain, messages, tools, selected_name=selected.name, route_id=route_id)
 
@@ -959,10 +945,8 @@ class ModelRouter:
                 _provider_429_merken(spec.provider, False)
                 response["_model"] = spec.name
                 response["_route_id"] = route_id
-                with connection() as db:
-                    db.execute("UPDATE route_decisions SET final_model=?,success=1,escalated=?,latency_ms=?,attempts_json=? WHERE id=?",
-                               (spec.name, int(spec.name != selected_name), int((time.monotonic() - started) * 1000),
-                                json.dumps(attempts), route_id))
+                self._route_repo.mark_success(route_id, spec.name, int(spec.name != selected_name),
+                                              int((time.monotonic() - started) * 1000), json.dumps(attempts))
                 return response
             except Exception as exc:
                 # War es eine 429-Antwort oder ein dauerhafter Fehler (kein
@@ -974,21 +958,18 @@ class ModelRouter:
                 errors.append(f"{spec.name}: {exc}")
                 attempts.append({"model": spec.name, "status": "error", "error": str(exc)[:500]})
                 logger.warning("Modell %s fehlgeschlagen: %s", spec.name, exc)
-        with connection() as db:
-            db.execute("UPDATE route_decisions SET latency_ms=?,attempts_json=?,error=? WHERE id=?",
-                       (int((time.monotonic() - started) * 1000), json.dumps(attempts), " | ".join(errors), route_id))
+        self._route_repo.mark_failure(route_id, int((time.monotonic() - started) * 1000),
+                                      json.dumps(attempts), " | ".join(errors))
         raise RuntimeError("Alle Modellaufrufe fehlgeschlagen: " + " | ".join(errors))
 
     def feedback(self, route_id: str, value: int) -> dict:
         if value not in {-1, 1}:
             raise ValueError("Feedback muss -1 oder 1 sein.")
-        with connection() as db:
-            db.execute("UPDATE route_decisions SET user_feedback=?,feedback_at=? WHERE id=?",
-                       (value, datetime.now(timezone.utc).isoformat(), route_id))
-            row = db.execute("SELECT id,task_type,final_model,user_feedback FROM route_decisions WHERE id=?", (route_id,)).fetchone()
+        self._route_repo.record_feedback(route_id, value, datetime.now(timezone.utc).isoformat())
+        row = self._route_repo.get(route_id)
         if not row:
             raise KeyError("Routing-Entscheidung nicht gefunden.")
-        return dict(row)
+        return row
 
     def context_budget(self) -> int:
         """Groesstes verfuegbares Kontextfenster – der Verlauf wird erst beim
@@ -1053,31 +1034,10 @@ class ModelRouter:
 
     def status(self) -> dict[str, Any]:
         month = datetime.now(timezone.utc).strftime("%Y-%m")
-        with connection() as db:
-            totals = db.execute(
-                "SELECT COALESCE(SUM(input_tokens),0) AS input_tokens,COALESCE(SUM(output_tokens),0) AS output_tokens,"
-                "COALESCE(SUM(cached_input_tokens),0) AS cached_input_tokens,"
-                "COALESCE(SUM(cache_write_tokens),0) AS cache_write_tokens,"
-                "COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens,COALESCE(SUM(cost_usd),0) AS cost_usd "
-                "FROM model_usage WHERE substr(created_at,1,7)=?", (month,)
-            ).fetchone()
-            decisions = db.execute(
-                "SELECT COUNT(*) AS total,COALESCE(SUM(escalated),0) AS escalated,"
-                "SUM(CASE WHEN user_feedback=1 THEN 1 ELSE 0 END) AS positive_feedback,"
-                "SUM(CASE WHEN user_feedback=-1 THEN 1 ELSE 0 END) AS negative_feedback "
-                "FROM route_decisions WHERE substr(created_at,1,7)=?", (month,)
-            ).fetchone()
-            recent = db.execute(
-                "SELECT id,created_at,task_type,complexity,selected_model,final_model,success,escalated,"
-                "latency_ms,user_feedback,error FROM route_decisions ORDER BY created_at DESC LIMIT 25"
-            ).fetchall()
-            by_model = db.execute(
-                "SELECT provider,model,SUM(input_tokens) AS input_tokens,SUM(output_tokens) AS output_tokens,"
-                "SUM(cached_input_tokens) AS cached_input_tokens,SUM(reasoning_tokens) AS reasoning_tokens,"
-                "SUM(cost_usd) AS cost_usd,COUNT(*) AS calls,GROUP_CONCAT(DISTINCT tariff) AS tariffs "
-                "FROM model_usage "
-                "WHERE substr(created_at,1,7)=? GROUP BY provider,model ORDER BY cost_usd DESC", (month,)
-            ).fetchall()
+        totals = self._usage_repo.monthly_usage_summary(month)
+        decisions = self._route_repo.monthly_summary(month)
+        recent = self._route_repo.recent(25)
+        by_model = self._usage_repo.by_model_monthly(month)
         return {
             "paid_models_enabled": self.paid_models_enabled,
             "budget_used_usd": round(self.budget_used, 6),

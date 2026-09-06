@@ -52,11 +52,6 @@ class AIRouter:
 
         route_id = uuid.uuid4().hex[:16]
         from datetime import datetime, timezone
-        from services.database import connection
-        with connection() as db:
-            db.execute(
-                "INSERT INTO route_decisions(id,created_at,task_type,complexity,selected_model,"
-                "prompt_hash,agent_name) VALUES(?,?,?,?,?,?,?)",
-                (route_id, datetime.now(timezone.utc).isoformat(), task_type, 0, kette[0].name, "",
-                 agent_name))
+        self.router._route_repo.insert_with_agent(
+            route_id, datetime.now(timezone.utc).isoformat(), task_type, 0, kette[0].name, "", agent_name)
         return self.router._execute_chain(kette, messages, tools, selected_name=kette[0].name, route_id=route_id)

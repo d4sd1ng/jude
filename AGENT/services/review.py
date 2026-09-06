@@ -134,6 +134,20 @@ class ReviewQueue:
                 (agent, str(art).strip().lower(), titel)).fetchone()
         return dict(row) if row else None
 
+    def anzahl_wortgleich(self, agent: str, art: str, ausser_id: str, inhalt: str,
+                         status_liste: tuple[str, ...] = ("offen", "abgenommen", "pruefung")) -> int:
+        """Wie oft liegt genau dieser Text schon von diesem Mitarbeiter vor,
+        ausser der gerade geprueften Zeile selbst? Zieht ``_chefpruefung``s
+        Dubletten-Erkennung (services/team.py) aus roher SQL hierher - dieselbe
+        Verkapselung, die diese Klasse fuer 'reviews' sonst schon durchgaengig
+        hat."""
+        platzhalter = ",".join("?" for _ in status_liste)
+        with connection() as db:
+            return db.execute(
+                f"SELECT COUNT(*) FROM reviews WHERE agent=? AND art=? "
+                f"AND id!=? AND inhalt=? AND status IN ({platzhalter})",
+                (agent, art, ausser_id, inhalt, *status_liste)).fetchone()[0]
+
     def agenten_mit_offenen_revisionen(self) -> list[dict]:
         """Für den Auftragswächter: wer hat liegengebliebene Revisionen?
 

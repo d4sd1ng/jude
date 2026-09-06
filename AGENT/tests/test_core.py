@@ -303,6 +303,60 @@ def register(registry):
         self.assertEqual((row["provider"], row["input_tokens"], row["output_tokens"]), ("openai", 1000, 500))
         self.assertGreater(row["cost_usd"], 0)
 
+    def test_route_decision_repository_round_trip(self):
+        """06.09.2026: SQL fuer route_decisions aus core/model_router.py und
+        core/ai_router.py in services/routing_data.py zusammengezogen (11
+        Stellen -> eine Klasse) - dieser Test deckt die neuen Methoden direkt
+        ab, nicht nur ueber ModelRouter."""
+        from services.routing_data import RouteDecisionRepository
+        repo = RouteDecisionRepository()
+        route_id = uuid.uuid4().hex[:16]
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            repo.insert(route_id, now, "allgemein", 3, "local_dolphin", "hash123")
+            self.assertEqual(repo.get(route_id),
+                             {"id": route_id, "task_type": "allgemein", "final_model": None, "user_feedback": None})
+            repo.mark_success(route_id, "local_dolphin", 0, 42, "[]")
+            row = repo.get(route_id)
+            self.assertEqual(row["final_model"], "local_dolphin")
+            repo.record_feedback(route_id, 1, now)
+            self.assertEqual(repo.get(route_id)["user_feedback"], 1)
+            self.assertIn(route_id, {r["id"] for r in repo.recent(limit=200)})
+        finally:
+            with connection() as db:
+                db.execute("DELETE FROM route_decisions WHERE id=?", (route_id,))
+
+    def test_route_decision_repository_agent_name_and_negative_feedback(self):
+        from services.routing_data import RouteDecisionRepository
+        repo = RouteDecisionRepository()
+        route_id = uuid.uuid4().hex[:16]
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            repo.insert_with_agent(route_id, now, "routine_dispatch", 1, "local_dolphin", "hash-neg", "scraper")
+            self.assertEqual(repo.get(route_id)["task_type"], "routine_dispatch")
+            repo.record_feedback(route_id, -1, now)
+            self.assertIn("hash-neg", repo.negative_feedback_prompt_hashes())
+        finally:
+            with connection() as db:
+                db.execute("DELETE FROM route_decisions WHERE id=?", (route_id,))
+
+    def test_model_usage_repository_round_trip(self):
+        from services.routing_data import ModelUsageRepository
+        repo = ModelUsageRepository()
+        now = datetime.now(timezone.utc)
+        month = now.strftime("%Y-%m")
+        before = repo.monthly_total(month)
+        repo.insert(now.isoformat(), "testprovider", "test-model", 100, 50, 0, 0, 0,
+                   "standard", "standard", 1.0, None, 0.0123)
+        try:
+            self.assertAlmostEqual(repo.monthly_total(month), before + 0.0123, places=6)
+            self.assertIn("testprovider", repo.provider_monthly_totals(month))
+            by_model = repo.by_model_monthly(month)
+            self.assertTrue(any(r["provider"] == "testprovider" and r["model"] == "test-model" for r in by_model))
+        finally:
+            with connection() as db:
+                db.execute("DELETE FROM model_usage WHERE provider=? AND model=?", ("testprovider", "test-model"))
+
 
 if __name__ == "__main__":
     unittest.main()
