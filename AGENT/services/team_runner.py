@@ -36,6 +36,15 @@ class AgentRunner:
         spec = svc.get(name)
         if spec is None:
             raise KeyError(f"Kein Sub-Agent namens {name}.")
+        # Einziger Durchlasspunkt fuer JEDEN Aufruf, egal ob manuell ueber die
+        # UI, per auftrag_erteilen, team_tagesrunde oder revisionen_nacharbeiten
+        # (alle landen hier) - deshalb hier geprueft, nicht an jeder einzelnen
+        # Aufrufstelle einzeln. Kein Abbruch eines schon laufenden Laufs (dafuer
+        # gibt es keinen sauberen Mechanismus bei Thread-basierter Ausfuehrung) -
+        # nur die Sperre, dass danach kein NEUER Lauf mehr startet.
+        if spec.get("pausiert"):
+            raise ValueError(f"{spec['name']} ist pausiert - erst wieder starten, "
+                             f"bevor ein neuer Auftrag angenommen wird.")
         task = str(task).strip()
         if not task:
             raise ValueError("Es wurde keine Aufgabe angegeben.")
@@ -243,7 +252,7 @@ class AgentRunner:
         ergebnis = []
         for spec in self.svc.list():
             name = spec["name"]
-            eintrag = {"agent": name, "person": spec.get("person")}
+            eintrag = {"agent": name, "person": spec.get("person"), "pausiert": bool(spec.get("pausiert"))}
             if name in aktiv:
                 eintrag.update(status="aktiv", seit=aktiv[name]["created_at"], task=aktiv[name]["task"])
             elif name in letzte:

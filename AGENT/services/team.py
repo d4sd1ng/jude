@@ -176,6 +176,9 @@ class SubAgentService:
     def delete(self, name: str) -> dict:
         return self._agenten_sicherstellen().delete(name)
 
+    def set_pausiert(self, name: str, pausiert: bool) -> dict:
+        return self._agenten_sicherstellen().set_pausiert(name, pausiert)
+
     # ------------------------------------------------------- Eigenes Gedächtnis
 
     def _rueckmeldung_sicherstellen(self) -> FeedbackStore:

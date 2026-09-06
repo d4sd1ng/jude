@@ -30,6 +30,18 @@ async def agents_run(name: str, payload: dict):
     return await asyncio.to_thread(team.run, name, str(payload.get("task", "")))
 
 
+@router.post("/api/agents/{name}/stop")
+def agents_stop(name: str):
+    """Kein Abbruch eines laufenden Laufs (siehe team_runner.py) - nur eine
+    Sperre gegen jeden neuen. Ein bereits laufender Auftrag arbeitet zu Ende."""
+    return team.set_pausiert(name, True)
+
+
+@router.post("/api/agents/{name}/start")
+def agents_start(name: str):
+    return team.set_pausiert(name, False)
+
+
 @router.get("/api/agents/aktiv")
 def agents_aktiv():
     """Wer gerade arbeitet, wer nicht, und wann zuletzt – für die Live-Anzeige

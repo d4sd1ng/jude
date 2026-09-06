@@ -457,9 +457,16 @@ nav button.active{background:#2e6b40;color:#f2efe6;border:0}
 #auftraege .titlerow h3{margin:0}
 @media(max-width:1100px){#auftraege{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){#auftraege{grid-template-columns:1fr}}
-#aktiv{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 16px}
-#aktiv .row{border-bottom:1px solid var(--line);padding:6px 0;display:flex;flex-direction:column;gap:2px;font-size:13px}
+#aktiv{display:flex;flex-direction:column;gap:2px}
+#aktiv .row{border-bottom:1px solid var(--line);padding:8px 0;display:flex;flex-direction:column;gap:6px;font-size:13px}
 #aktiv .row small{color:var(--muted)}
+#aktiv .workerhead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+#aktiv .workeractions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+#aktiv .workeractions button{padding:4px 10px;font-size:12px}
+#aktiv .workerdispatch{display:flex;gap:8px;flex-wrap:wrap}
+#aktiv .workerdispatch input{flex:1;min-width:160px;padding:6px 9px;font-size:13px}
+#aktiv .workerdispatch select{padding:6px 9px;font-size:13px}
+#aktiv .workerdispatch button{padding:6px 12px;font-size:12px;font-weight:650}
 @media(max-width:900px){#aktiv{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:520px){#aktiv{grid-template-columns:1fr}}
 

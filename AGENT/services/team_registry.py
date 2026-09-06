@@ -83,3 +83,19 @@ class AgentRegistry:
         removed = data.pop(self._key(name))
         self._save(data)
         return {"name": removed["name"], "status": "entfernt"}
+
+    def set_pausiert(self, name: str, pausiert: bool) -> dict:
+        """Pausiert/entpausiert einen Mitarbeiter - kein Abbruch eines laufenden
+        Laufs (Threads lassen sich nicht sauber toeten), nur eine Sperre gegen
+        JEDEN neuen Lauf, egal ob manuell, per auftrag_erteilen oder ueber
+        team_tagesrunde/revisionen_nacharbeiten. Eigene Methode statt ueber
+        ``create()``: die validiert Pflichtfelder und wuerde bei jedem Aufruf
+        z.B. das Modell zuruecksetzen, wenn es nicht mitgegeben wird.
+        """
+        data = self._load()
+        key = self._key(name)
+        if key not in data:
+            raise KeyError(f"Kein Sub-Agent namens {name}.")
+        data[key]["pausiert"] = bool(pausiert)
+        self._save(data)
+        return {"name": data[key]["name"], "pausiert": data[key]["pausiert"]}

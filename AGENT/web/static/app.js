@@ -144,14 +144,31 @@ async function loadConfirmations(){try{let d=await api('/api/confirmations');$('
 $('#confirmations').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
 window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};
 window.decideReject=async(id)=>{const a=($('#can_'+id)?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.');loadConfirmations()}catch(e){toast(e.message)}};
-$('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){try{let d=await api('/api/agents/aktiv');$('#aktiv').innerHTML=d.map(a=>{
+const WORKER_FORMATE=['post','email','newsletter','sequenz','dokument','recherche','grafik','sonstiges'];
+function workerStatusHTML(a){
   if(a.status==='aktiv'){let sek=Math.max(0,Math.round((Date.now()-new Date(a.seit))/1000));let dauer=sek<60?sek+'s':Math.round(sek/60)+'min';
     const generisch=(a.task||'').startsWith('Erledige deine heutige Aufgabe')||(a.task||'').startsWith('Du hast offene Revisionen');
     const taskteil=generisch?'':` · ${esc((a.task||'').slice(0,70))}`;
-    return `<div class=row><span>🟢 <b>${esc(a.agent)}</b> ${esc(a.person||'')}${taskteil}</span><small>läuft seit ${dauer}</small></div>`}
-  if(a.status==='idle'){return `<div class=row><span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small>zuletzt ${esc(a.letzter_status)} · ${fmt(a.letzter_lauf_am)}</small></div>`}
-  return `<div class=row><span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small class=muted>noch nie gelaufen</small></div>`
-}).join('')||'<p class="muted small">Kein Team angelegt.</p>'}catch(e){toast(e.message)}}
+    return `<span>🟢 <b>${esc(a.agent)}</b> ${esc(a.person||'')}${taskteil}</span><small>läuft seit ${dauer}</small>`}
+  if(a.status==='idle')return `<span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small>zuletzt ${esc(a.letzter_status)} · ${fmt(a.letzter_lauf_am)}</small>`;
+  return `<span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small class=muted>noch nie gelaufen</small>`;
+}
+function workerRowHTML(a){
+  const pausiert=!!a.pausiert;
+  const toggle=pausiert
+    ?`<span class="badge">pausiert</span><button onclick="startWorker('${esc(a.agent)}',this)">▶ Start</button>`
+    :`<button onclick="stopWorker('${esc(a.agent)}',this)" style="background:#64748b">⏸ Stop</button>`;
+  const dispatch=pausiert?'':`<div class=workerdispatch>
+    <input placeholder="Thema" data-topic="${esc(a.agent)}">
+    <select data-format="${esc(a.agent)}">${WORKER_FORMATE.map(f=>`<option value="${f}">${f}</option>`).join('')}</select>
+    <button onclick="dispatchTopic('${esc(a.agent)}',this)">Beauftragen</button>
+  </div>`;
+  return `<div class="row workerrow"><div class=workerhead>${workerStatusHTML(a)}<div class=workeractions>${toggle}</div></div>${dispatch}</div>`;
+}
+$('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){try{let d=await api('/api/agents/aktiv');$('#aktiv').innerHTML=d.map(workerRowHTML).join('')||'<p class="muted small">Kein Team angelegt.</p>'}catch(e){toast(e.message)}}
+window.stopWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/stop`,{method:'POST'});toast(`${name}: pausiert – nimmt keinen neuen Auftrag mehr an, bis wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
+window.startWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/start`,{method:'POST'});toast(`${name}: wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
+window.dispatchTopic=async(name,btn)=>{const row=btn.closest('.workerrow');const topic=row.querySelector(`[data-topic="${CSS.escape(name)}"]`).value.trim();const format=row.querySelector(`[data-format="${CSS.escape(name)}"]`).value;if(!topic)return toast('Thema eingeben');btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/run`,{method:'POST',body:JSON.stringify({task:`Thema: ${topic}. Erstelle dazu: ${format}.`})});toast(`${name} beauftragt.`);loadAktiv()}catch(e){toast(e.message)}finally{btn.disabled=false}};
 setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active'))loadAktiv()},8000);
 $('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.slice(0,5).map(n=>`<div class=row><span>${esc(n.message||'')}</span><span><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></span></div>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
 window.markNotificationRead=async id=>{try{await api(`/api/notifications/${id}/read`,{method:'POST'});loadNotifications()}catch(e){toast(e.message)}};
