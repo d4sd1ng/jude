@@ -195,6 +195,26 @@ class ProviderAdapter(ABC):
         """Rufe den Provider auf und liefere eine normalisierte Assistentenantwort."""
 
 
+def _antwort_pruefen(response: requests.Response) -> None:
+    """Wirft mit dem Fehlertext aus dem Rumpf, nicht nur dem Statuscode.
+
+    Vier der fuenf Adapter loesten das bereits einzeln (siehe die
+    Kommentare bei OpenAIAdapter/AnthropicAdapter: ein bloßes
+    ``raise_for_status()`` zeigt nur "400 Bad Request", der eigentliche
+    Grund - "insufficient_quota", "credit balance too low" - steht im
+    Rumpf. Ohne ihn erkennt ``_ist_dauerhafter_fehler()`` unten nie eine
+    echte Dauersperre und der Provider wird alle 15 Minuten sinnlos erneut
+    versucht. GoogleAdapter hatte diese Korrektur bisher NICHT erhalten
+    (bloßes ``response.raise_for_status()``) - vereinheitlicht mit dieser
+    Funktion, damit ein neuer Adapter dieselbe Faustregel nicht erneut
+    einzeln lernen muss."""
+    if response.ok:
+        return
+    raise requests.HTTPError(
+        f"{response.status_code} {response.reason} für {response.url}: {response.text[:400]}",
+        response=response)
+
+
 def _werkzeug_text(content: Any) -> str:
     """Textform eines Werkzeug-Ergebnisses.
 
@@ -256,10 +276,7 @@ class OllamaAdapter(ProviderAdapter):
         for _ in range(self.retries + 1):
             try:
                 response = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=self.timeout)
-                if response.status_code >= 400:
-                    # Ollama begruendet Ablehnungen im Rumpf; ohne diesen Text war
-                    # aus "400 Bad Request" nicht erkennbar, was am Verlauf stoert.
-                    raise ValueError(f"HTTP {response.status_code}: {response.text[:400]}")
+                _antwort_pruefen(response)
                 data = response.json()
                 message = data.get("message", {})
                 message["usage"] = {
@@ -310,12 +327,7 @@ class OpenAIAdapter(ProviderAdapter):
             self.url, json=payload,
             headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"}, timeout=self.timeout,
         )
-        if not response.ok:
-            # Der bare raise_for_status() zeigt nur "400 Bad Request for url: …" –
-            # der eigentliche Grund (z. B. "insufficient_quota") steht im Body und
-            # ging bisher verloren, wodurch die Dauerhaft-Fehler-Erkennung nie griff.
-            raise requests.HTTPError(f"{response.status_code} {response.reason} für {self.url}: "
-                                     f"{response.text[:400]}", response=response)
+        _antwort_pruefen(response)
         data = response.json()
         text_parts, calls = [], []
         for item in data.get("output", []):
@@ -380,9 +392,7 @@ class OpenAICompatAdapter(ProviderAdapter):
             headers={"Authorization": f"Bearer {os.environ[self.api_key_env]}", **self.extra_headers},
             timeout=self.timeout,
         )
-        if response.status_code >= 400:
-            # Ohne den Rumpf ist "400 Bad Request" nicht diagnostizierbar.
-            raise ValueError(f"HTTP {response.status_code}: {response.text[:400]}")
+        _antwort_pruefen(response)
         data = response.json()
         message = data.get("choices", [{}])[0].get("message", {})
         result: dict[str, Any] = {"role": "assistant", "content": message.get("content") or ""}
@@ -456,12 +466,7 @@ class AnthropicAdapter(ProviderAdapter):
             "x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }, timeout=self.timeout)
-        if not response.ok:
-            # Body statt bare raise_for_status(): "Your credit balance is too low"
-            # steckt nur dort, nicht in der generischen "400 Bad Request"-Meldung –
-            # ohne den Text griff die Dauerhaft-Fehler-Sperre nie.
-            raise requests.HTTPError(f"{response.status_code} {response.reason} für {self.url}: "
-                                     f"{response.text[:400]}", response=response)
+        _antwort_pruefen(response)
         data = response.json()
         text = "".join(block.get("text", "") for block in data["content"] if block["type"] == "text")
         calls = [{"id": b["id"], "type": "function", "function": {"name": b["name"], "arguments": b["input"]}}
@@ -518,7 +523,7 @@ class GoogleAdapter(ProviderAdapter):
             payload["tools"] = [{"functionDeclarations": [{"name": item["function"]["name"],
                 "description": item["function"]["description"], "parameters": item["function"]["parameters"]} for item in tools]}]
         response = requests.post(url, json=payload, timeout=self.timeout)
-        response.raise_for_status()
+        _antwort_pruefen(response)
         data = response.json()
         parts = data["candidates"][0]["content"].get("parts", [])
         result: dict[str, Any] = {"role": "assistant", "content": "".join(item.get("text", "") for item in parts)}

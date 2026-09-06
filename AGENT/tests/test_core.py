@@ -5,6 +5,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+import requests
+
 from core.agent import Agent
 from core.model_router import (
     AnthropicAdapter,
@@ -185,6 +187,22 @@ def register(registry):
         self.assertEqual(result["usage"]["output_tokens"], 2)
         self.assertEqual(result["usage"]["cached_input_tokens"], 0)
         self.assertIn("systemInstruction", post.call_args.kwargs["json"])
+
+    def test_google_adapter_surfaces_error_body_not_just_status_code(self):
+        """06.09.2026: GoogleAdapter rief bislang bloß response.raise_for_status()
+        auf, anders als die anderen vier Adapter (die extra dafuer gebaut wurden,
+        den Fehlertext aus dem Rumpf zu ziehen - siehe deren Kommentare). Ohne den
+        Rumpf ('insufficient_quota' o.ae.) erkennt _ist_dauerhafter_fehler() eine
+        echte Dauersperre nie, der Provider wird alle 15 Minuten sinnlos erneut
+        versucht statt bis Mitternacht gesperrt."""
+        spec = ModelSpec("g", "google", "gemini-test", 0, 0, 0, 1, 100, 1000, [])
+        fake = unittest.mock.Mock(ok=False, status_code=429, reason="Too Many Requests",
+                                  text='{"error":{"message":"insufficient_quota"}}', url="https://google.test/x")
+        with patch.dict("os.environ", {"GOOGLE_API_KEY": "secret"}), patch(
+                "core.model_router.requests.post", return_value=fake):
+            with self.assertRaises(requests.HTTPError) as ctx:
+                GoogleAdapter("https://google.test").call(spec, [{"role": "user", "content": "hi"}])
+        self.assertIn("insufficient_quota", str(ctx.exception))
 
     def test_openai_adapter_uses_responses_api_and_detailed_usage(self):
         spec = ModelSpec("o", "openai", "gpt-test", 0, 0, 0, 1, 100, 1000, [], reasoning_effort="low")
