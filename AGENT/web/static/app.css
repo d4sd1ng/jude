@@ -451,22 +451,41 @@ nav button.active{background:#2e6b40;color:#f2efe6;border:0}
 .review-thumb{width:100%;max-height:100px;object-fit:cover;border-radius:6px;margin-bottom:6px;background:#dbe2e8;display:block}
 #reviews .card{padding:10px}
 #reviews .card pre.auszug{max-height:80px;font-size:12px}
-#auftraege{grid-template-columns:repeat(5,1fr);row-gap:28px}
-#auftraege .card{padding:10px}
-#auftraege .titlerow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;cursor:pointer}
-#auftraege .titlerow h3{margin:0}
-@media(max-width:1100px){#auftraege{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:640px){#auftraege{grid-template-columns:1fr}}
-#aktiv{display:flex;flex-direction:column;gap:2px}
-#aktiv .row{border-bottom:1px solid var(--line);padding:8px 0;display:flex;flex-direction:column;gap:6px;font-size:13px}
-#aktiv .row small{color:var(--muted)}
-#aktiv .workerhead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
-#aktiv .workeractions{display:flex;align-items:center;gap:8px;flex-shrink:0}
-#aktiv .workeractions button{padding:4px 10px;font-size:12px}
-#aktiv .workerdispatch{display:flex;gap:8px;flex-wrap:wrap}
-#aktiv .workerdispatch input{flex:1;min-width:160px;padding:6px 9px;font-size:13px}
-#aktiv .workerdispatch select{padding:6px 9px;font-size:13px}
-#aktiv .workerdispatch button{padding:6px 12px;font-size:12px;font-weight:650}
+/* Echte Tabelle statt Kartenraster oder ueber die volle Breite gespreizter
+   Flex-Zeilen - bei 5 fixen Spalten + 28px Zeilenabstand wirkte jede Zeile
+   riesig; justify-content:space-between riss Titel und "Details" auf einem
+   ultrabreiten Bildschirm auseinander. Eine Tabelle mit festen Spalten haelt
+   zusammengehoerige Werte tatsaechlich zusammen. */
+.auftragliste{overflow-x:auto;max-width:760px}
+.auftragtable{width:auto;min-width:520px;border-collapse:collapse;font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink)}
+.auftragtable th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
+  padding:0 8px 6px;border-bottom:1px solid var(--line);font-weight:600}
+.auftragtable td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.auftragtable th:nth-child(1),.auftragtable td:nth-child(1){width:110px}
+.auftragtable th:nth-child(2),.auftragtable td:nth-child(2){width:90px}
+.auftragtable th:nth-child(3),.auftragtable td:nth-child(3){width:80px}
+.auftragtable th:nth-child(4),.auftragtable td:nth-child(4){width:260px}
+.auftragtable th:nth-child(5),.auftragtable td:nth-child(5){width:60px;text-align:right}
+.auftragtable .au-titel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:Inter,ui-sans-serif,sans-serif}
+.auftragtable .au-faellig{font-variant-numeric:tabular-nums}
+.auftragtable .badge{font-size:11px;padding:2px 7px}
+.auftragtable .au-toggle{padding:3px 8px;font-size:11px}
+.auftragtable tr.au-desc td{background:var(--panel);color:var(--ink);white-space:normal;font-family:Inter,ui-sans-serif,sans-serif;font-size:13px}
+@media(max-width:640px){.auftragliste{max-width:100%}.auftragtable th:nth-child(3),.auftragtable td:nth-child(3){display:none}}
+
+#aktiv{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.workercard{display:flex;flex-direction:column;gap:8px}
+.workercard .workerhead{display:flex;align-items:center;gap:8px}
+.workercard .workerhead h3{margin:0;font-size:13px}
+.workercard .workeractions{display:flex;gap:8px;margin-top:2px}
+.workercard .workeractions button:disabled{opacity:.55;cursor:default}
+
+.dispatchform{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.dispatchform select,.dispatchform input{padding:8px 10px;font-size:13px}
+.dispatchform input{flex:1;min-width:180px}
+.dispatchform select{min-width:0}
+.dispatchform button{padding:5px 10px;font-size:12px;font-weight:650}
+@media(max-width:640px){#aktiv{grid-template-columns:1fr}}
 @media(max-width:900px){#aktiv{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:520px){#aktiv{grid-template-columns:1fr}}
 

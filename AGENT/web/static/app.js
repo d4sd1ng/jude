@@ -145,30 +145,42 @@ $('#confirmations').querySelectorAll('img.review-thumb[data-src]').forEach(async
 window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};
 window.decideReject=async(id)=>{const a=($('#can_'+id)?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.');loadConfirmations()}catch(e){toast(e.message)}};
 const WORKER_FORMATE=['post','email','newsletter','sequenz','dokument','recherche','grafik','sonstiges'];
-function workerStatusHTML(a){
+let _aktivCache=[];
+function workerStatusLine(a){
   if(a.status==='aktiv'){let sek=Math.max(0,Math.round((Date.now()-new Date(a.seit))/1000));let dauer=sek<60?sek+'s':Math.round(sek/60)+'min';
     const generisch=(a.task||'').startsWith('Erledige deine heutige Aufgabe')||(a.task||'').startsWith('Du hast offene Revisionen');
     const taskteil=generisch?'':` · ${esc((a.task||'').slice(0,70))}`;
-    return `<span>🟢 <b>${esc(a.agent)}</b> ${esc(a.person||'')}${taskteil}</span><small>läuft seit ${dauer}</small>`}
-  if(a.status==='idle')return `<span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small>zuletzt ${esc(a.letzter_status)} · ${fmt(a.letzter_lauf_am)}</small>`;
-  return `<span>⚪ <b>${esc(a.agent)}</b> ${esc(a.person||'')}</span><small class=muted>noch nie gelaufen</small>`;
+    return `🟢 läuft seit ${dauer}${taskteil}`}
+  if(a.status==='idle')return `⚪ zuletzt ${esc(a.letzter_status)} · ${fmt(a.letzter_lauf_am)}`;
+  return `⚪ noch nie gelaufen`;
 }
-function workerRowHTML(a){
-  const pausiert=!!a.pausiert;
-  const toggle=pausiert
-    ?`<span class="badge">pausiert</span><button onclick="startWorker('${esc(a.agent)}',this)">▶ Start</button>`
-    :`<button onclick="stopWorker('${esc(a.agent)}',this)" style="background:#64748b">⏸ Stop</button>`;
-  const dispatch=pausiert?'':`<div class=workerdispatch>
-    <input placeholder="Thema" data-topic="${esc(a.agent)}">
-    <select data-format="${esc(a.agent)}">${WORKER_FORMATE.map(f=>`<option value="${f}">${f}</option>`).join('')}</select>
-    <button onclick="dispatchTopic('${esc(a.agent)}',this)">Beauftragen</button>
-  </div>`;
-  return `<div class="row workerrow"><div class=workerhead>${workerStatusHTML(a)}<div class=workeractions>${toggle}</div></div>${dispatch}</div>`;
+function workerCardHTML(a){
+  const buttons=`<button class=ghost onclick="startWorker('${esc(a.agent)}',this)">▶ Start</button>
+    <button class=ghost onclick="stopWorker('${esc(a.agent)}',this)">⏸ Stop</button>`;
+  return `<article class="card workercard">
+    <div class=workerhead><h3>${esc(a.person||a.agent)} <span class=small>· ${esc(a.agent)}</span></h3></div>
+    <small>${workerStatusLine(a)}${a.pausiert?' · <span class=badge>pausiert</span>':''}</small>
+    <div class=workeractions>${buttons}</div>
+  </article>`;
 }
-$('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){try{let d=await api('/api/agents/aktiv');$('#aktiv').innerHTML=d.map(workerRowHTML).join('')||'<p class="muted small">Kein Team angelegt.</p>'}catch(e){toast(e.message)}}
+function dispatchSelectHTML(){
+  const opts=_aktivCache.map(a=>`<option value="${esc(a.agent)}"${a.pausiert?' disabled':''}>${esc(a.person||a.agent)} · ${esc(a.agent)}${a.pausiert?' (pausiert)':''}</option>`).join('');
+  return `<option value="">Mitarbeiter wählen…</option>${opts}`;
+}
+$('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){try{let d=await api('/api/agents/aktiv');_aktivCache=d;
+  $('#aktiv').innerHTML=d.map(workerCardHTML).join('')||'<p class="muted small">Kein Team angelegt.</p>';
+  const sel=$('#dispatchAgent');if(sel){const prev=sel.value;sel.innerHTML=dispatchSelectHTML();if([...sel.options].some(o=>o.value===prev))sel.value=prev}
+}catch(e){toast(e.message)}}
 window.stopWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/stop`,{method:'POST'});toast(`${name}: pausiert – nimmt keinen neuen Auftrag mehr an, bis wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
 window.startWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/start`,{method:'POST'});toast(`${name}: wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
-window.dispatchTopic=async(name,btn)=>{const row=btn.closest('.workerrow');const topic=row.querySelector(`[data-topic="${CSS.escape(name)}"]`).value.trim();const format=row.querySelector(`[data-format="${CSS.escape(name)}"]`).value;if(!topic)return toast('Thema eingeben');btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/run`,{method:'POST',body:JSON.stringify({task:`Thema: ${topic}. Erstelle dazu: ${format}.`})});toast(`${name} beauftragt.`);loadAktiv()}catch(e){toast(e.message)}finally{btn.disabled=false}};
+$('#dispatchForm')&&($('#dispatchForm').onsubmit=async e=>{e.preventDefault();
+  const name=$('#dispatchAgent').value;const topic=$('#dispatchTopic').value.trim();const format=$('#dispatchFormat').value;
+  if(!name)return toast('Mitarbeiter wählen');
+  if(!topic)return toast('Thema eingeben');
+  const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;
+  try{await api(`/api/agents/${encodeURIComponent(name)}/run`,{method:'POST',body:JSON.stringify({task:`Thema: ${topic}. Erstelle dazu: ${format}.`})});
+    toast(`${name} beauftragt.`);$('#dispatchTopic').value='';loadAktiv()}
+  catch(x){toast(x.message)}finally{btn.disabled=false}});
 setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active'))loadAktiv()},8000);
 $('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.slice(0,5).map(n=>`<div class=row><span>${esc(n.message||'')}</span><span><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></span></div>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
 window.markNotificationRead=async id=>{try{await api(`/api/notifications/${id}/read`,{method:'POST'});loadNotifications()}catch(e){toast(e.message)}};
@@ -254,8 +266,13 @@ window.overlayDecide=async(id,was)=>{const a=($('#ovAn')?.value||'').trim();if(w
  try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');overlayHide();loadReviews()}catch(e){toast(e.message)}};
 /* ---- Aufträge ---- */
 $('#loadAuftraege').onclick=()=>loadAuftraege();
+window.toggleAuftrag=(idx,btn)=>{const row=document.getElementById('au-desc-'+idx);row.hidden=!row.hidden;btn.textContent=row.hidden?'Details':'Weniger'};
 async function loadAuftraege(){try{const d=await api('/api/auftraege');const offen=d.filter(a=>!['abgenommen','abgebrochen'].includes(a.status));
- $('#auftraege').innerHTML=offen.map(a=>`<article class=card><span class=eyebrow>${esc(a.agent)} · ${esc(a.status)}${a.faellig_am?' · fällig '+esc(a.faellig_am.slice(0,10)):''}</span><details><summary class="small titlerow"><h3>${esc(a.titel)}</h3><span class=muted>Details</span></summary><p class=small>${esc(a.beschreibung||'')}</p></details></article>`).join('')||'<p>Keine offenen Aufträge.</p>'}catch(e){toast(e.message)}}
+  if(!offen.length){$('#auftraege').innerHTML='<p>Keine offenen Aufträge.</p>';return}
+  const rows=offen.map((a,i)=>`<tr><td>${esc(a.person||a.agent)}</td><td><span class=badge>${esc(a.status)}</span></td><td class=au-faellig>${a.faellig_am?esc(a.faellig_am.slice(0,10)):'–'}</td><td class=au-titel title="${esc(a.titel)}">${esc(a.titel)}</td><td><button class="ghost au-toggle" onclick="toggleAuftrag(${i},this)">Details</button></td></tr>
+    <tr class=au-desc id="au-desc-${i}" hidden><td colspan=5>${esc(a.beschreibung||'Keine Beschreibung.')}</td></tr>`).join('');
+  $('#auftraege').innerHTML=`<table class=auftragtable><thead><tr><th>Mitarbeiter</th><th>Status</th><th>Fällig</th><th>Titel</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}catch(e){toast(e.message)}}
 window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');loadReviews()}catch(e){toast(e.message)}};
 function tickReview(z){z=z||{};let n=z.offen||0,r=z.revision||0,p=z.pruefung||0,e=$('#tickReview');
  if(e)e.textContent=[n?`${n} offen`:'',p?`${p} bei Jude`:'',r?`${r} in Revision`:''].filter(Boolean).join(' · ')||'nichts offen'}
