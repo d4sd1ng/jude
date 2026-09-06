@@ -70,6 +70,41 @@ def test_confirmation_executor_may_use_database_without_lock():
     assert queue.list() == []
 
 
+def test_notion_write_confirmations_with_different_pages_stay_separate():
+    """Vorher kollabierte jede zweite notion_write-Anfrage desselben Agenten in
+    die zuletzt offene Zeile, weil der Revisions-Abgleich nur 'path' kannte
+    und notion_write keins hat (Payload ist name/page_id/fields) - eine echte
+    Regression, gemessen 06.09.2026: eine einzige designer/notion_write-Zeile
+    stand bei Runde 6, obwohl es in der gesamten Historie nur diese eine Zeile
+    gibt. Fuenf frueher tatsaechlich unterschiedliche Bild-URL-Schreibvorgaenge
+    wurden dabei stillschweigend ueberschrieben, bevor Tino sie je sah."""
+    queue = ConfirmationQueue()
+    r1 = queue.request("notion_write", "Bild A", {"name": "social_posts", "page_id": "TEST-PAGE-A",
+                       "fields": {"Bild-URL": "/x/a.png"}}, agent="test_qa_agent")
+    r2 = queue.request("notion_write", "Bild B", {"name": "social_posts", "page_id": "TEST-PAGE-B",
+                       "fields": {"Bild-URL": "/x/b.png"}}, agent="test_qa_agent")
+    assert r1["id"] != r2["id"]
+    ids = {row["id"] for row in queue.list()}
+    assert {r1["id"], r2["id"]} <= ids
+    queue.decide(r1["id"], False, None)
+    queue.decide(r2["id"], False, None)
+
+
+def test_notion_write_revision_of_same_page_still_collapses():
+    """Eine wirkliche Ueberarbeitung derselben Notion-Seite soll weiterhin die
+    bestehende Zeile wiederverwenden statt eine neue anzulegen - sonst haeuft
+    sich pro Revisionsrunde wieder eine weitere Zeile an (der urspruengliche
+    Zweck des Abgleichs, siehe services/confirmations.py)."""
+    queue = ConfirmationQueue()
+    r1 = queue.request("notion_write", "Bild C v1", {"name": "social_posts", "page_id": "TEST-PAGE-C",
+                       "fields": {"Bild-URL": "/x/c1.png"}}, agent="test_qa_agent")
+    queue.revision(r1["id"], "falscher Pfad")
+    r2 = queue.request("notion_write", "Bild C v2", {"name": "social_posts", "page_id": "TEST-PAGE-C",
+                       "fields": {"Bild-URL": "/x/c2.png"}}, agent="test_qa_agent")
+    assert r1["id"] == r2["id"]
+    queue.decide(r2["id"], False, None)
+
+
 def test_notification_lifecycle():
     created = NotificationService.create("test", "Titel", "Text", {"x": 1})
     assert NotificationService.list()[0]["payload"] == {"x": 1}

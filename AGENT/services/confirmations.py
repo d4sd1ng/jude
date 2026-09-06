@@ -10,6 +10,30 @@ from services.database import audit, connection
 Executor = Callable[[str, dict], str]
 
 
+def _identitaet(action_type: str, payload: dict):
+    """Woran zwei Bestaetigungsanfragen erkennbar sind, dieselbe Aktion zu
+    meinen (fuer den Revisions-Abgleich in ``request`` unten) - je Aktionstyp
+    verschieden, weil die Payload-Form verschieden ist. ``None`` heisst: kein
+    bekannter Schluessel, also NIE mit einer bestehenden Zeile zusammenlegen.
+
+    War frueher ein einziger Pfad-Vergleich mit einem blinden Auffangfall
+    ("kein 'path'? dann die neueste offene Zeile nehmen") - der traf fuer
+    notion_write (Payload hat 'name'/'page_id'/'fields', kein 'path') und
+    praktisch jeden anderen Aktionstyp ohne Dateipfad IMMER zu, egal ob es
+    wirklich dieselbe Aktion war. Gemessen 06.09.2026: eine einzige
+    designer/notion_write-Zeile stand bei Runde 6, obwohl es in der ganzen
+    Historie nur diese eine Zeile gibt - fuenf fruehere, tatsaechlich
+    unterschiedliche Bild-URL-Schreibvorgaenge wurden dabei stillschweigend
+    ueberschrieben, bevor Tino sie je zu sehen bekam.
+    """
+    if action_type == "notion_write":
+        return ("notion_write", payload.get("name"), payload.get("page_id"))
+    pfad = payload.get("path")
+    if pfad is not None:
+        return ("path", pfad)
+    return None
+
+
 class ConfirmationQueue:
     ALLOWED_ACTIONS = {"mail_send", "mail_delete", "git_merge", "file_delete", "external_write", "calendar_create",
                        "home_switch", "home_action", "mail_archive", "code_write", "code_commit",
@@ -38,14 +62,13 @@ class ConfirmationQueue:
                     "SELECT id, payload_json FROM confirmations WHERE agent=? AND action_type=? "
                     "AND status IN ('revision','pending') ORDER BY created_at DESC", (agent, action_type),
                 ).fetchall()
-            pfad = payload.get("path")
+            schluessel = _identitaet(action_type, payload)
             treffer = None
-            for row in laufend:
-                if pfad is not None and json.loads(row["payload_json"]).get("path") == pfad:
-                    treffer = row["id"]
-                    break
-            if treffer is None and pfad is None and laufend:
-                treffer = laufend[0]["id"]
+            if schluessel is not None:
+                for row in laufend:
+                    if _identitaet(action_type, json.loads(row["payload_json"])) == schluessel:
+                        treffer = row["id"]
+                        break
             if treffer is not None:
                 with connection() as db:
                     db.execute(
