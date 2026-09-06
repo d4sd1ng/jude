@@ -64,6 +64,7 @@ def test_teilerfolg_bleibt_sichtbar():
 
 def test_stoerungen_kommen_nicht_ins_gedaechtnis(tmp_path, monkeypatch):
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     dienst = SubAgentService.__new__(SubAgentService)
     with pytest.raises(ValueError, match="Stoerungen"):
         dienst.remember("outreach", "Fehler beim Zugriff auf die Notion-Datenbank 'kontakte'.")
@@ -73,6 +74,7 @@ def test_stoerungen_kommen_nicht_ins_gedaechtnis(tmp_path, monkeypatch):
 
 def test_ergebnisse_kommen_ins_gedaechtnis(tmp_path, monkeypatch):
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     dienst = SubAgentService.__new__(SubAgentService)
     dienst.remember("outreach", "Malis Pflegedienst Marburg: info@malis-marburg.de aus dem Impressum.")
     assert len(dienst.notes("outreach")) == 1
@@ -267,6 +269,7 @@ def test_gleiche_beanstandung_wird_nicht_gesammelt(tmp_path, monkeypatch):
     """Derselbe Einwand darf nicht hundertmal im Prompt stehen – er wird
     zusammengefasst und mitgezaehlt, damit sein Gewicht sichtbar bleibt."""
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     dienst = SubAgentService.__new__(SubAgentService)
     for _ in range(3):
         dienst.lehre_merken("social", "Kein Werbedeutsch: 'Lösung' und 'optimieren'.")
@@ -280,6 +283,7 @@ def test_gleiche_beanstandung_wird_nicht_gesammelt(tmp_path, monkeypatch):
 
 def test_lehren_bleiben_beim_verfasser(tmp_path, monkeypatch):
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     dienst = SubAgentService.__new__(SubAgentService)
     dienst.lehre_merken("social", "Kein Hashtag-Teppich.")
     assert dienst.lehren("content") == []
@@ -287,6 +291,7 @@ def test_lehren_bleiben_beim_verfasser(tmp_path, monkeypatch):
 
 def test_belanglose_beanstandung_wird_verworfen(tmp_path, monkeypatch):
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     dienst = SubAgentService.__new__(SubAgentService)
     assert dienst.lehre_merken("social", "nein")["gemerkt"] is False
     assert dienst.lehren("social") == []
@@ -295,7 +300,13 @@ def test_belanglose_beanstandung_wird_verworfen(tmp_path, monkeypatch):
 # ------------------------------------------------------- Hinweis an Kollegen
 
 def _dienst(tmp_path, monkeypatch, agenten: dict):
+    # 06.09.2026: notes/lehren/lob leiten ihren Pfad seit dem Team-Refactoring
+    # ueber services.team_feedback.DATA_DIR ab (eigenes Modul, eigener
+    # Namensraum), nicht mehr ueber services.team.DATA_DIR - beide muessen
+    # umgeleitet werden, sonst laufen diese Tests unbemerkt gegen die echten
+    # data/sub_agent_*-Ordner statt gegen tmp_path.
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     dienst = SubAgentService.__new__(SubAgentService)
     dienst.path = tmp_path / "sub_agents.json"
     dienst._save(agenten)
@@ -342,6 +353,7 @@ def test_pipeline_json_gate_weist_fliesstext_zurueck(tmp_path, monkeypatch):
     vor - die neue Pipeline-JSON-Pruefung weist das zurueck, noch bevor ein
     Sprachmodell-Urteil noetig waere, genau wie WORTFILTER/MARKENFILTER."""
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     queue = ReviewQueue()
     vorlage = queue.vorlegen("scraper", "recherche", "Trend-Rangliste",
                              "Hier ist meine Rangliste der Top-Themen diese Woche...")
@@ -359,6 +371,7 @@ def test_pipeline_json_gate_meldet_fehlendes_feld(tmp_path, monkeypatch):
     """Ein Research Brief ohne 'sources' ist kein Research Brief - die
     Rueckweisung nennt das fehlende Feld konkret, wie die Tagline-Meldung."""
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     queue = ReviewQueue()
     unvollstaendig = json.dumps({
         "topic": "KI-Agenten im Mittelstand", "summary": "...",
@@ -379,6 +392,7 @@ def test_pipeline_json_gate_laesst_gueltige_rangliste_durch(tmp_path, monkeypatc
     'pruefung' stehen - dieselbe Rolle wie bei jedem Erzeugnis, das die
     deterministischen Gates besteht und auf Projektleitung wartet."""
     monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
     queue = ReviewQueue()
     gueltig = json.dumps([{
         "topic": "OpenAI Modell-Update", "viralitaet": 80, "aktualitaet": 90,

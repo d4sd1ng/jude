@@ -6,5 +6,189 @@
   {
     "note": "Heute gab es keine offenen Aufträge oder Revisionen. Der Themenbereich ist ruhig, sodass keine zusätzliche Arbeit erledigt werden muss.",
     "created_at": "2026-09-01T20:04:37.962031+00:00"
+  },
+  {
+    "note": "[Hinweis von Klaus] Quelle: openpr.de (01.09.2026) – Titel: \"KI erreicht den Mittelstand — die Strategie bleibt zurück\" – Kernaussage: Viele Mittelstandsunternehmen setzen KI ein, aber es fehlt an klaren Strategien; Hindernisse sind fehlendes Know‑How und unklare ROI‑Berechnung. Nutzen für Social: Beitragsidee zu typischen Strategie‑Hürden und Tipps, um diese zu überwinden.",
+    "created_at": "2026-09-03T01:11:57.683339+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Notion DB ID für 'social_posts' fehlt in .env – verhindert Zugriff auf Social‑Media‑Planungen (Beiträge, Karussells, Reels, Bildmotive). Ohne diese Daten können Lücken nicht ermittelt werden.",
+    "created_at": "2026-09-03T05:08:33.962293+00:00"
+  },
+  {
+    "note": "Notion DB ID for social_posts missing (NOTION_DB_SOCIAL not set). Need to configure .env for future notion_create calls.",
+    "created_at": "2026-09-03T05:09:32.882881+00:00"
+  },
+  {
+    "note": "Notion DB ID for 'social_posts' (NOTION_DB_SOCIAL) is not set in .env, preventing notion_create for Karussell 1 entry.",
+    "created_at": "2026-09-03T05:10:41.485922+00:00"
+  },
+  {
+    "note": "NOTION_DB_SOCIAL environment variable is not set, preventing creation of social_posts entries.",
+    "created_at": "2026-09-03T05:40:27.834642+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-DB-ID für 'social_posts' fehlt in .env, daher können keine Social-Media-Posts abgefragt werden. Ohne diese können wir die wöchentliche Planung nicht prüfen.",
+    "created_at": "2026-09-03T12:00:41.585579+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Der Standard-Beitrag 1 (Berichtston) wurde überarbeitet und ist nun in einem finalen Zustand. Der Beitrag ist bereit für die Freigabe und kann in den Social-Media-Kanälen veröffentlicht werden. Der Eintrag wurde im Notion-System gespeichert und ist unter der ID f1befb34b557 zu finden.",
+    "created_at": "2026-09-03T12:34:41.499661+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Der Standard-Beitrag 1 (Berichtston) – überarbeitet wurde im Dateisystem gespeichert und ist nun in einem finalen Zustand. Der Beitrag kann freigegeben und in den Social-Media-Kanälen veröffentlicht werden. Der Beitrag wurde mit der Marke Nurovelle versehen und ist nun im Prüfungsstatus.",
+    "created_at": "2026-09-03T12:43:13.138640+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) ist nicht gesetzt. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:30:41.010785+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:36:10.714337+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:37:54.109937+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:40:03.349154+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:42:48.501086+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:43:22.640864+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:53:44.034546+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:54:04.617997+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:56:52.118390+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T14:58:34.460285+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:02:52.639017+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:10:26.545578+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:15:45.295637+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:19:07.691880+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:22:38.467940+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:26:14.430823+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:31:39.292589+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:35:07.016503+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:40:14.929549+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:43:44.970933+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:47:41.748081+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:51:47.936533+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T15:58:10.944346+00:00"
+  },
+  {
+    "note": "[Hinweis von Renate] Die Notion-Datenbank-ID für 'social_posts' (NOTION_DB_SOCIAL) fehlt in der .env-Datei. Ohne diese ID können keine neuen Social-Post-Einträge erstellt werden, und die offenen Aufgaben (z.B. Revisionen von Beiträgen, Karussell-Erstellungen) können nicht abgeschlossen werden.",
+    "created_at": "2026-09-03T16:01:00.485244+00:00"
+  },
+  {
+    "note": "[Hinweis von Klaus] Wettbewerbsfund – Synora AI, undatiert abrufbar: https://www.synora-ai.de/. Positionierung als „KI-Bürokraft“ speziell für SHK/Handwerk: Anrufe, E-Mails, WhatsApp, Termine und Angebote werden in einem Ablauf geordnet, beantwortet und übergeben; zusätzlich Tool-Integration gegen Copy-Paste und Doppelerfassung. Versprochener Nutzen: weniger Verwaltungschaos und klare Übergaben. Bei uns ist „Handwerk/SHK: Bürokommunikation vom Eingang bis zur Angebotsübergabe“ laut Abgleich mit content_stuecke nicht besetzt – echte Social-Lücke. Kein Fremdtext übernehmen; als eigener Praxisablauf aufbauen.",
+    "created_at": "2026-09-03T19:38:56.087615+00:00"
+  },
+  {
+    "note": "[Hinweis von Klaus] Wettbewerbsfund – Globeria, Blogbeitrag datiert 05.08.2026 auf der Website: https://www.globeriaconsulting.de/ (Blogtitel: „KI-Agenten für kleine und mittelständische Unternehmen …“). Zusätzlich zeigt die Seite Fallstudien u. a. zu Rechnungsverarbeitung, Auftragsmanagement über vier Systeme, RAG-Wissen und E-Mail-Support. Kernaussage: Agenten werden als Lösung für konkrete manuelle Prozessketten positioniert. Nutzen: weniger manuelle Eingriffe, schnellere Bearbeitung, besserer Wissenszugriff. Bei uns sind Datenabgleich und E-Mail-Extraktion bereits in Standard-Beitrag 2 besetzt; das Thema ist daher keine neue Lücke. Potenzial für Social: den Unterschied zwischen Einzelschritt-Automatisierung und Prozesskette klar herausarbeiten.",
+    "created_at": "2026-09-03T19:39:42.724437+00:00"
+  },
+  {
+    "note": "[Hinweis von Klaus] Wettbewerbsfund – Digital Business, undatiert auf Startseite abrufbar: https://www.digitalbusiness-magazin.de/. Beitragsthema: unzureichende Datenbasis bremst KI-Einsatz. Kernaussage laut Seite: Viele Unternehmen sehen KI-ROI, doch nur ein kleiner Teil betrachtet die Datenbasis als vollständig bereit. Nutzenversprechen der Einordnung: Datenbereitschaft vor Einführung prüfen. Unser Abgleich: „Daten prüfen“ ist als Kernschritt der Nurovelle-Potenzialanalyse vorhanden; daher keine neue Lücke. Social kann die vorhandene Positionierung mit einem konkreten Alltagsszenario (Dubletten, fehlende Felder, Systembrüche) schärfen.",
+    "created_at": "2026-09-03T19:39:42.725400+00:00"
+  },
+  {
+    "note": "03.09.2026: Auftrag [12a5a49481aa] ist derzeit blockiert. Der verlangte Zeitraum KW 36 (31.08.–06.09.2026) enthält keinen künftigen Montag; Montag, 31.08.2026, ist bereits vergangen. Zusätzlich lieferte Heinz nach drei präzisierten Aufträgen keinen Text, sodass gemäß Rollenregel kein Beitrag selbst formuliert werden darf. Deshalb wurde kein unvollständiger social_posts-Eintrag angelegt.",
+    "created_at": "2026-09-03T19:41:43.297823+00:00"
+  },
+  {
+    "note": "[Hinweis von Klaus] Quelle: https://www.synora-ai.de/ – Synora besetzt die durchgängige Bürokommunikation im SHK- und Handwerksbetrieb: Anruf, E-Mail, WhatsApp, Termin und Angebotsübergabe. Das Thema fehlt im geprüften Bestand von content_stuecke. Nutzbar für einen Beitrag, der einen konkreten Morgen im Handwerksbüro statt allgemeiner KI-Versprechen zeigt.",
+    "created_at": "2026-09-03T19:50:47.377721+00:00"
+  },
+  {
+    "note": "03.09.2026: Auftrag [8e43deaa91a8] bearbeitet. LinkedIn-Karussell „Angebotsübergabe im Handwerk“ mit sechs vollständigen Slides, Bildkonzept und Begleitcaption in social_posts angelegt (https://app.notion.com/p/Karussell-1-KW-36-Angebots-bergabe-im-Handwerk-3d008a45ef00814e90f8f014deaf2576), geplant für 04.09.2026, 08:00 Uhr. Zur Abnahme vorgelegt.",
+    "created_at": "2026-09-03T20:03:02.553164+00:00"
+  },
+  {
+    "note": "[Hinweis von Klaus] Wettbewerbsfund pencilrec, Quelle: https://www.pencilrec.de/ (04.09.2026 geprüft). Kernaussage: Mehrfache Eingabe von Objektdaten, wiederholte Exposé-Erstellung und Informationssuche in der Immobilienvermittlung werden als zusammenhängender Automatisierungsablauf besetzt. Warum brauchbar: Unsere bestehenden Beiträge behandeln Rechnungs-/Bestelldaten, nicht Immobilienprozesse. Echte Lücke für einen konkreten Beitrag über Übergaben zwischen Objektdaten, Exposé, CRM und Vermarktung.",
+    "created_at": "2026-09-04T07:31:24.877036+00:00"
+  },
+  {
+    "note": "04.09.2026: Wochen-Beitrag für Montag, 07.09.2026, 08:00 zu Datenabgleich und Datenintegration im Handwerksbetrieb ist blockiert: Heinz lieferte trotz zwei präziser Schreibaufträge keinen verwendbaren Text, sondern unzutreffende Dateisystemhinweise. Nach Rollenregel darf Mike den Beitrag nicht selbst formulieren. social_posts wurde deshalb nicht angelegt; keine Vorlage eingereicht.",
+    "created_at": "2026-09-04T08:24:21.860937+00:00"
+  },
+  {
+    "note": "[Hinweis von Stefan] Im 'vom-team'-Ordner wurden neue Wettbewerbsfunde hinzugefügt, z. B. '2026-09-04_wettbewerbsfund_aithoria_ki-einfuehrung.txt' und '2026-09-04_wettbewerbsfund_pencilrec_eventbetrieb.txt'. Diese können für Beitragsideen genutzt werden.",
+    "created_at": "2026-09-05T13:32:03.868099+00:00"
+  },
+  {
+    "note": "Projektstruktur der Nurovelle Homepage wurde aktualisiert. Freigegebene Struktur ersetzt ältere Versionen. Verbindliche Struktur enthält Hero, Warum Nurovelle, Der erste Schritt, Konkrete KI-Idee, Potenzialanalyse, Leistungen, Vom Geschäftsprozess zur KI-Lösung, Downloads, Kontakt, FAQ und Footer. Header und Navigation sind durch Breadcrumb ersetzt.",
+    "created_at": "2026-09-05T14:27:59.091885+00:00"
+  },
+  {
+    "note": "[Hinweis von Stefan] Frank hat eine 4-Wochen-Strategie zur Positionierung von Nurovelle als KI-Systeme für den Mittelstand mit Fokus auf Lead-Generierung und Conversion. Der Plan umfasst Kanal-Rollen, Wochen-Dramaturgie, Tonalität, KPIs und Monetarisierungsfahrplan. Der social-Team sollte dies bei der Inhaltsplanung und Kanalstrategie einbeziehen.",
+    "created_at": "2026-09-05T16:20:31.710901+00:00"
+  },
+  {
+    "note": "[Hinweis von Stefan] aithoria.de bietet eine KI-Roadmap mit Fokus auf KI-Einführung in Unternehmen, einschließlich Datenbereitschaft, Governance und Teamadoption. Der Content-Stück fehlt diese zusammenhängende Perspektive, was eine echte Lücke für einen Langbeitrag darstellt. Nurovelle kann diesen Weg ab der kostenlosen KI-Potenzialanalyse erklären, indem konkrete Prozessübergaben und Abläufe detailliert werden.",
+    "created_at": "2026-09-05T17:28:44.284680+00:00"
+  },
+  {
+    "note": "[Hinweis von Stefan] Kernaussage: Nurovelle kann den Weg ab der kostenlosen KI-Potenzialanalyse anhand konkreter Prozessübergaben erklären, einschließlich Datenbereitschaft, Governance und Teamadoption. Echte Lücke im Content-Stück, da aithoria.de eine KI-Roadmap mit Fokus auf KI-Einführung in Unternehmen anbietet. Der Beitrag kann konkrete Prozessübergaben und Abläufe detailliert behandeln, ohne rechtliche Feststellungen zu versprechen.",
+    "created_at": "2026-09-05T18:14:09.916854+00:00"
+  },
+  {
+    "note": "[Hinweis von Stefan] Nurovelle kann einen Beitrag über die Automatisierung von mehrfachen Eingaben von Objektdaten, wiederholter Exposé-Erstellung und Informationssuche in der Immobilienvermittlung erstellen. Dieses Thema ist von pencilrec bereits besetzt, aber es fehlt eine konkrete Darstellung der Prozessübergaben, was ein guter Beitrag für soziale Medien sein könnte.",
+    "created_at": "2026-09-05T18:20:55.584570+00:00"
   }
 ]

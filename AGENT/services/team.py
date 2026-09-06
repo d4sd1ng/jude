@@ -21,6 +21,7 @@ import logging
 from core.paths import DATA_DIR
 from services.database import connection
 from services.marke import BRAND_BRIEF
+from services.team_feedback import FeedbackStore
 from services.team_registry import AgentRegistry
 
 logger = logging.getLogger(__name__)
@@ -112,14 +113,8 @@ class SubAgentService:
     # Die drei sind die werkzeugintensivsten Rollen (Recherche ueber mehrere
     # Quellen, dann ablegen). 40 laesst dieselbe Kette zu Ende laufen.
     TOOL_SCHRITTE = 40       # lesen (8x Pflichtquellen), suchen, pruefen, ablegen, notieren
-    MAX_NOTES = 500          # Obergrenze je Agent
-    PROMPT_NOTES = 40        # wie viele davon in den Systemprompt wandern
-    MAX_LEHREN = 40          # Beanstandungen je Mitarbeiter
-    PROMPT_LEHREN = 12       # die haeufigsten davon stehen im Prompt
-    #: Was nicht ins Gedaechtnis darf – Stoerungsmeldungen statt Ergebnisse.
-    KEINE_NOTIZ = ("fehler beim", "fehlgeschlagen", "nicht erreichbar",
-                   "kann nicht hergestellt werden", "keine verbindung",
-                   "verbindung zu", "timeout", "konnte nicht abgerufen")
+    PROMPT_NOTES = 40        # wie viele Notizen in den Systemprompt wandern (Obergrenze: FeedbackStore.MAX_NOTES)
+    PROMPT_LEHREN = 12       # wie viele Lehren/Lob in den Systemprompt wandern (Obergrenze: FeedbackStore.MAX_LEHREN)
 
     def __init__(self, registry, router, ai_router=None):
         self.registry = registry
@@ -188,64 +183,25 @@ class SubAgentService:
 
     # ------------------------------------------------------- Eigenes Gedächtnis
 
-    def _memory_path(self, name: str) -> Path:
-        return DATA_DIR / "sub_agent_memory" / f"{self._key(name)}.json"
+    def _rueckmeldung_sicherstellen(self) -> FeedbackStore:
+        if "_rueckmeldung" not in self.__dict__:
+            self._rueckmeldung = FeedbackStore(self._key)
+        return self._rueckmeldung
 
     def notes(self, name: str) -> list[dict]:
-        try:
-            return json.loads(self._memory_path(name).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return []
+        return self._rueckmeldung_sicherstellen().notes(name)
 
     def remember(self, name: str, note: str) -> dict:
-        """Hält eine Erkenntnis dauerhaft fest.
-
-        Sub-Agenten wurden bisher bei jedem Aufruf neu gebaut und danach
-        verworfen – ein Akquise-Agent fing damit jedes Mal bei null an. Die
-        Notizen überdauern den Lauf und werden beim nächsten Aufruf wieder in
-        den Systemprompt gelegt.
-        """
-        note = str(note).strip()
-        if not note:
-            raise ValueError("Die Notiz ist leer.")
-        # Das Gedaechtnis ist fuer Ergebnisse da, nicht fuer Stoerungen. Bernds
-        # Gedaechtnis bestand aus drei Fehlermeldungen und einem Platzhalter –
-        # beim naechsten Lauf las er als 'was ich bisher weiss', dass nichts geht.
-        # Stoerungen gehoeren in die Blocker des Laufs.
-        if any(muster in note.casefold() for muster in self.KEINE_NOTIZ):
-            raise ValueError("Stoerungen gehoeren nicht ins Gedaechtnis, sondern in die "
-                             "Antwort des Laufs. Halte hier nur Ergebnisse fest "
-                             "(z. B. 'Firma X, Adresse Y aus dem Impressum').")
-        items = self.notes(name)
-        items.append({"note": note[:800], "created_at": datetime.now(timezone.utc).isoformat()})
-        items = items[-self.MAX_NOTES:]
-        path = self._memory_path(name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"agent": name, "gespeichert": note[:120], "notizen_gesamt": len(items)}
+        return self._rueckmeldung_sicherstellen().remember(name, note)
 
     def forget_notes(self, name: str) -> dict:
-        path = self._memory_path(name)
-        removed = len(self.notes(name))
-        path.unlink(missing_ok=True)
-        return {"agent": name, "geloescht": removed}
+        return self._rueckmeldung_sicherstellen().forget_notes(name)
 
     # ---------------------------------------------------------- Aus Fehlern lernen
 
-    def _lehren_pfad(self, name: str) -> Path:
-        return DATA_DIR / "sub_agent_lessons" / f"{self._key(name)}.json"
-
     def lehren(self, name: str) -> list[dict]:
         """Was diesem Mitarbeiter schon einmal beanstandet wurde."""
-        try:
-            return json.loads(self._lehren_pfad(name).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return []
-
-    @staticmethod
-    def _kern(text: str) -> str:
-        """Vergleichsform einer Beanstandung – Interpunktion und Fuellwoerter raus."""
-        return re.sub(r"[^a-z0-9 ]+", "", str(text).casefold())[:90].strip()
+        return self._rueckmeldung_sicherstellen().lehren(name)
 
     def lehre_merken(self, name: str, beanstandung: str, quelle: str = "Jude") -> dict:
         """Eine Beanstandung dauerhaft festhalten – einmal, nicht hundertmal.
@@ -255,92 +211,24 @@ class SubAgentService:
         wieder keine Ahnung davon. Gleichlautende Beanstandungen werden
         zusammengefasst und mitgezaehlt; was oft kam, steht oben.
         """
-        beanstandung = str(beanstandung).strip()
-        if len(beanstandung) < 8:
-            return {"gemerkt": False}
-        kern = self._kern(beanstandung)
-        eintraege = self.lehren(name)
-        for eintrag in eintraege:
-            if eintrag.get("kern") == kern:
-                eintrag["anzahl"] = int(eintrag.get("anzahl", 1)) + 1
-                eintrag["zuletzt"] = datetime.now(timezone.utc).isoformat()
-                # Häufung = Systemfehler, nicht Einzelfall: ab 3 gleichen
-                # Beanstandungen wird eine Prompt-Diagnose beauftragt (einmalig).
-                if int(eintrag.get("anzahl", 1)) == 3:
-                    try:
-                        from services.auftraege import Auftragsbuch
-                        buch = Auftragsbuch()
-                        titel = f"Prompt-Diagnose {name}"
-                        if not any(a["titel"] == titel and a["status"] in ("offen", "in_arbeit", "vorgelegt")
-                                   for a in buch.liste("alle", limit=200)):
-                            buch.erteilen("projektleitung", titel,
-                                          f"Der Mitarbeiter {name} wurde 3x wegen desselben Punkts beanstandet: "
-                                          f"'{eintrag.get('text', '')[:200]}'. Analysiere: Liegt es an seiner Rolle, "
-                                          f"an der Auftragsformulierung oder am Prüf-Maßstab? Lies seine Rolle mit "
-                                          f"list_sub_agents und mache einen konkreten Vorher/Nachher-Vorschlag. "
-                                          f"Lege das Ergebnis mit submit_for_review (art dokument) vor.",
-                                          quelle="jude")
-                    except Exception:
-                        pass
-                break
-        else:
-            eintraege.append({"kern": kern, "text": beanstandung[:400], "quelle": quelle,
-                              "anzahl": 1,
-                              "zuletzt": datetime.now(timezone.utc).isoformat()})
-        eintraege.sort(key=lambda e: (-int(e.get("anzahl", 1)), e.get("zuletzt", "")))
-        eintraege = eintraege[:self.MAX_LEHREN]
-        pfad = self._lehren_pfad(name)
-        pfad.parent.mkdir(parents=True, exist_ok=True)
-        pfad.write_text(json.dumps(eintraege, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"gemerkt": True, "lehren_gesamt": len(eintraege)}
+        return self._rueckmeldung_sicherstellen().lehre_merken(name, beanstandung, quelle)
 
     def forget_lehren(self, name: str) -> dict:
-        pfad = self._lehren_pfad(name)
-        weg = len(self.lehren(name))
-        pfad.unlink(missing_ok=True)
-        return {"agent": name, "geloescht": weg}
-
-    def _lob_pfad(self, name: str) -> Path:
-        return DATA_DIR / "sub_agent_lob" / f"{self._key(name)}.json"
+        return self._rueckmeldung_sicherstellen().forget_lehren(name)
 
     def lob(self, name: str) -> list[dict]:
         """Was an diesem Mitarbeiter schon einmal gelobt wurde."""
-        try:
-            return json.loads(self._lob_pfad(name).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return []
+        return self._rueckmeldung_sicherstellen().lob(name)
 
     def lob_merken(self, name: str, anerkennung: str, quelle: str = "Jude") -> dict:
         """Das Gegenstück zu ``lehre_merken``: bisher hielt das Team nur fest,
         was schiefging, nie was gut war – ein Mitarbeiter, der etwas richtig
         gemacht hat, bekam das nie bestaetigt und wusste beim naechsten Lauf
         nicht, woran er anknuepfen soll."""
-        anerkennung = str(anerkennung).strip()
-        if len(anerkennung) < 8:
-            return {"gemerkt": False}
-        kern = self._kern(anerkennung)
-        eintraege = self.lob(name)
-        for eintrag in eintraege:
-            if eintrag.get("kern") == kern:
-                eintrag["anzahl"] = int(eintrag.get("anzahl", 1)) + 1
-                eintrag["zuletzt"] = datetime.now(timezone.utc).isoformat()
-                break
-        else:
-            eintraege.append({"kern": kern, "text": anerkennung[:400], "quelle": quelle,
-                              "anzahl": 1,
-                              "zuletzt": datetime.now(timezone.utc).isoformat()})
-        eintraege.sort(key=lambda e: (-int(e.get("anzahl", 1)), e.get("zuletzt", "")))
-        eintraege = eintraege[:self.MAX_LEHREN]
-        pfad = self._lob_pfad(name)
-        pfad.parent.mkdir(parents=True, exist_ok=True)
-        pfad.write_text(json.dumps(eintraege, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"gemerkt": True, "lob_gesamt": len(eintraege)}
+        return self._rueckmeldung_sicherstellen().lob_merken(name, anerkennung, quelle)
 
     def forget_lob(self, name: str) -> dict:
-        pfad = self._lob_pfad(name)
-        weg = len(self.lob(name))
-        pfad.unlink(missing_ok=True)
-        return {"agent": name, "geloescht": weg}
+        return self._rueckmeldung_sicherstellen().forget_lob(name)
 
     def _hinweis_tool(self, spec: dict):
         """Einen Kollegen direkt auf etwas hinweisen.
