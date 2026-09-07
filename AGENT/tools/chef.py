@@ -124,6 +124,14 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
             zugestellt.append(bekannt[schluessel])
         return {"datei": name, "zugestellt": zugestellt, "unbekannt": unbekannt}
 
+    # Wie oft der Wächter denselben Rückstand pro Mitarbeiter re-erkannte und
+    # jedes Mal einen NEUEN Auftrag anlegte, statt den vorhandenen offenen zu
+    # nutzen (beobachtet 07.09.: 45 gleichzeitig offene Aufträge, allein 23
+    # für "social" - u.a. acht separate "Wochen-Beitrag fehlt"-Aufträge für
+    # dieselbe Lücke). Harte Sperre statt Prosa-Hinweis, nach demselben
+    # Muster wie notion_db.create()'s Dopplungssperre.
+    MAX_UNERLEDIGT_JE_MITARBEITER = 3
+
     def auftrag_erteilen(agent: str, titel: str, beschreibung: str = "",
                          faellig_am: str = "", sofort_starten: bool = True) -> dict:
         """Auftrag ins Auftragsbuch UND (standardmäßig) sofort losarbeiten lassen."""
@@ -134,6 +142,15 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         if str(agent).strip().casefold() not in bekannt:
             raise ValueError(f"Kein Mitarbeiter namens {agent!r}. Bekannt: {', '.join(sorted(bekannt))}.")
         buch = Auftragsbuch()
+        unerledigt = buch.unerledigt_fuer(agent)
+        if len(unerledigt) >= MAX_UNERLEDIGT_JE_MITARBEITER:
+            vorhandene = "; ".join(f"[{u['id']}] {u['titel']} ({u['status']})" for u in unerledigt)
+            raise ValueError(
+                f"{agent} hat bereits {len(unerledigt)} unerledigte Aufträge, mehr werden "
+                f"nicht angelegt: {vorhandene}. Prüfe erst per auftraege_liste(agent=..., "
+                "status='alle'), ob einer davon die gleiche Lücke abdeckt - dann brauchst "
+                "du keinen neuen. Ist wirklich alles unabhaengige, laufende Arbeit, zuerst "
+                "einen mit auftrag_abbrechen schliessen oder abwarten, bis einer abgenommen ist.")
         a = buch.erteilen(agent, titel, beschreibung, str(faellig_am).strip() or None)
         if sofort_starten:
             buch.status_setzen(a["id"], "in_arbeit")

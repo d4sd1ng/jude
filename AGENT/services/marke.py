@@ -24,6 +24,8 @@ GRUEN_TIEF = "#0a1913"
 GRUEN_SMARAGD = "#112b21"
 GRUEN_FOREST = "#163a26"  # entspricht --color-emerald-bright
 GRUEN_AKZENT = "#163a26"  # kein eigener heller Akzentgruen-Ton im Styleguide – bislang erfunden, hier auf Emerald Bright vereinheitlicht
+GUNMETAL = "#252b2c"
+GUNMETAL_DUNKEL = "#15191a"
 GOLD_KANTE = "#a55d07"
 GOLD_GLANZ = "#fae385"
 GOLD_MITTE = "#b47e11"
@@ -49,13 +51,29 @@ CLAIM = "Building intelligent systems"
 # tatsaechlichen API-Aufruf (gemessen 03.09.2026, "branding isnt really
 # considered on generating anything"). Aus styleguide.md Abschnitt 17.
 BILD_STIL_SUFFIX = (
-    f" Bildstil: mattes Schwarz ({SCHWARZ}) und dunkles glaenzendes Smaragdgruen "
-    f"({GRUEN_SMARAGD}), Gunmetal-Flaechen, Gold nur sparsam als einzelner Akzent "
-    f"(Kante, Lichtsaum oder Detail, {GOLD_MITTE}) - kein zweiter Akzent, kein "
-    "Farbverlauf quer durchs Bild. Raeumliche Form, technische Glas-/Metallwirkung, "
-    "ruhiges gerichtetes Licht - wirkt wie eine teure Manufaktur, nicht wie eine "
-    "Werbeanzeige. Kein Text, keine Labels, keine Logos im Bild, sofern nicht "
-    "ausdruecklich verlangt. Ausgeschlossen: Cyan, Blau als Hauptfarbe, Violett, "
+    # Frueher standen Schwarz/Smaragdgruen mit Hex-Wert nebeneinander und
+    # "Gunmetal-Flaechen" ganz ohne eigenen Hex-Wert, ohne Mengen-/Rangangabe.
+    # Ergebnis (wiederholt beobachtet, u.a. Angebotsuebergabe-Post und
+    # Infografik 2, je ueber 5 Revisionsrunden): Bilder wurden ueberwiegend
+    # gruen statt Gunmetal-dominiert, weil Smaragdgruen der einzige Farbwert
+    # mit praeziser Zahl war und das Modell sich daran verankerte. Fix: jede
+    # Flaeche bekommt einen Hex-Wert UND einen expliziten Rang/Mengenanteil,
+    # aus styleguide.md Abschnitt 6/9 ("Gunmetal als technische Flaeche",
+    # "dunkles Gunmetal / Smaragd / Gold-Highlights" - Gunmetal zuerst).
+    f" Bildstil, in dieser Rangfolge nach Flaechenanteil: (1) Gunmetal "
+    f"({GUNMETAL}, dunkler Uebergang zu {GUNMETAL_DUNKEL}) ist die dominante "
+    "Flaeche und das Hauptmaterial - metallisch, technisch, nimmt den groessten "
+    f"Teil des Bildes ein. (2) mattes Schwarz ({SCHWARZ}) als Tiefe/Grund "
+    f"dahinter. (3) dunkles Smaragdgruen ({GRUEN_SMARAGD}) NUR als Schatten, "
+    "Unterton oder schwacher Reflex innerhalb der Gunmetal-Flaechen - niemals "
+    "eine eigene grosse Flaeche, niemals die Hauptfarbe, niemals mehr Flaeche "
+    f"als Gunmetal. (4) Gold ({GOLD_MITTE}) ganz zuletzt und nur sparsam als "
+    "einzelner Akzent (Kante, Lichtsaum oder Detail) - kein zweiter Akzent, "
+    "kein Farbverlauf quer durchs Bild. Raeumliche Form, technische "
+    "Glas-/Metallwirkung, ruhiges gerichtetes Licht - wirkt wie eine teure "
+    "Manufaktur, nicht wie eine Werbeanzeige. Kein Text, keine Labels, keine "
+    "Logos im Bild, sofern nicht ausdruecklich verlangt. Ausgeschlossen: "
+    "grossflaechiges oder dominantes Gruen, Cyan, Blau als Hauptfarbe, Violett, "
     "Neon, Regenbogenverlaeufe, generische KI-Roboter, Stockfoto-Buerowelt, "
     "Sci-Fi-Konsolen, Gaming- oder Casino-Anmutung."
 )

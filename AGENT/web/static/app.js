@@ -148,17 +148,33 @@ function _findeBildpfad(wert){
   return null;
 }
 function confirmImageHtml(payload){const bild=_findeBildpfad(payload);return bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}
-async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class="card agentcard">${confirmImageHtml(c.payload)}<span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3>${confirmPayloadHtml(c.payload)}<div class=agentrun><button onclick="decide('${c.id}','approve')">Bestätigen</button> <input id="can_${c.id}" placeholder="Grund – nötig zum Ablehnen"><button onclick="decideReject('${c.id}')" style="background:#64748b">Ablehnen</button>${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>';
+let _confirmCache=[];
+async function loadConfirmations(){try{let d=await api('/api/confirmations');_confirmCache=d;$('#confirmations').innerHTML=d.map(c=>`<article class="card agentcard">${confirmImageHtml(c.payload)}<span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3>${confirmPayloadHtml(c.payload)}<div class=agentrun><button class=ghost onclick="openConfirmation('${c.id}')">Ansehen</button><button onclick="decide('${c.id}','approve')">Bestätigen</button> <input id="can_${c.id}" placeholder="Grund – nötig zum Ablehnen"><button onclick="decideReject('${c.id}')" style="background:#64748b">Ablehnen</button>${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>';
 $('#confirmations').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
+window.openConfirmation=async id=>{const c=_confirmCache.find(x=>x.id===id);if(!c)return toast('Bestätigung nicht mehr gefunden – Liste neu geladen?');
+ $('#overlayTitle').textContent=c.summary||c.action_type||'';
+ const bild=_findeBildpfad(c.payload);
+ const tabs=[{name:'Details',html:`<p class=muted small>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</p><pre class="auszug" style="max-height:60vh">${esc(JSON.stringify(c.payload,null,2))}</pre>`}];
+ if(bild)tabs.push(quelleTab(bild));
+ $('#overlayTabs').innerHTML=tabs.map((t,i)=>`<button class="${i?'ghost':''}" data-tab="${i}">${esc(t.name)}</button>`).join('');
+ const zeig=async i=>{[...$('#overlayTabs').children].forEach((b,j)=>b.className=j==i?'':'ghost');
+  const t=tabs[i];$('#overlayBody').innerHTML=t.html??await t.lazy().catch(e=>`<p>${esc(String(e))}</p>`)};
+ [...$('#overlayTabs').children].forEach((b,i)=>b.onclick=()=>zeig(i));
+ $('#overlayActions').innerHTML=`<input id="ovAn" placeholder="Grund – nötig zum Ablehnen"><button onclick="overlayConfirmDecide('${esc(c.id)}','approve')">Bestätigen</button><button class=ghost onclick="overlayConfirmDecide('${esc(c.id)}','reject')">Ablehnen</button>`;
+ zeig(0);overlayShow()};
+window.overlayConfirmDecide=async(id,was)=>{
+ try{if(was==='approve'){await api(`/api/confirmations/${id}/approve`,{method:'POST'});toast('Bestätigt.')}
+  else{const a=($('#ovAn')?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');
+   await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.')}
+  overlayHide();loadConfirmations()}catch(e){toast(e.message)}};
 window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};
 window.decideReject=async(id)=>{const a=($('#can_'+id)?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.');loadConfirmations()}catch(e){toast(e.message)}};
 const WORKER_FORMATE=['Standard-Beitrag','Karussell','Reel','Story','Newsletter','Onepager','Infografik','Recherche','E-Mail','Sonstiges'];
 let _aktivCache=[];
 function workerStatusLine(a){
   if(a.status==='aktiv'){let sek=Math.max(0,Math.round((Date.now()-new Date(a.seit))/1000));let dauer=sek<60?sek+'s':Math.round(sek/60)+'min';
-    const generisch=(a.task||'').startsWith('Erledige deine heutige Aufgabe')||(a.task||'').startsWith('Du hast offene Revisionen');
-    const taskteil=generisch?'':` · ${esc((a.task||'').slice(0,70))}`;
-    return `🟢 läuft seit ${dauer}${taskteil}`}
+    const werkzeugteil=a.aktuelles_werkzeug?` · gerade: ${esc(a.aktuelles_werkzeug)}`:'';
+    return `🟢 läuft seit ${dauer}${werkzeugteil}`}
   if(a.status==='idle')return `⚪ zuletzt ${esc(a.letzter_status)} · ${fmt(a.letzter_lauf_am)}`;
   return `⚪ noch nie gelaufen`;
 }
@@ -199,6 +215,10 @@ $('#dispatchForm')&&($('#dispatchForm').onsubmit=async e=>{e.preventDefault();
     toast(`${name} beauftragt.`);$('#dispatchTopic').value='';loadAktiv()}
   catch(x){toast(x.message)}finally{btn.disabled=false}});
 setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active'))loadAktiv()},8000);
+// Bestaetigungen/Abnahme aktualisierten sich vorher NUR beim Tab-Wechsel oder
+// Knopfdruck - eine neue Freigabe-Anfrage blieb unsichtbar, bis von Hand neu
+// geladen wurde. Gleicher 8s-Rhythmus wie das Team oben.
+setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active')){loadConfirmations();loadReviews()}},8000);
 $('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.slice(0,5).map(n=>`<div class=row><span>${esc(n.message||'')}</span><span><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></span></div>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
 window.markNotificationRead=async id=>{try{await api(`/api/notifications/${id}/read`,{method:'POST'});loadNotifications()}catch(e){toast(e.message)}};
 $('#readAllNotifications')?.addEventListener('click',async()=>{try{let r=await api('/api/notifications/read_all',{method:'POST'});toast(`${r.markiert} als gelesen markiert.`);loadNotifications()}catch(e){toast(e.message)}});
@@ -209,10 +229,22 @@ let reviewArt='';
 function revToggle(art){reviewArt=reviewArt===art?'':art;show('Schreibtisch');
   loadReviews().then(()=>$('#reviews')?.scrollIntoView({behavior:'smooth'}))}
 $$('.toggle.rev').forEach(b=>b.onclick=()=>revToggle(b.dataset.art));
-$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews'+(reviewArt?'?art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.map(v=>{
+// Solange das Team nicht zuverlaessig arbeitet: Tino sieht ALLES (status=alle) -
+// auch was Renate noch nicht entschieden hat (pruefung) oder zurueckgewiesen
+// hat (revision), nicht nur was sie freigegeben hat (offen). Ihre Entscheidung
+// filtert hier bewusst nichts weg.
+const REV_STATUS_LABEL={pruefung:'⏳ bei Renate',offen:'✅ von Renate freigegeben',revision:'↩ von Renate zurückgewiesen',abgenommen:'✔ abgenommen',abgebrochen:'✕ abgebrochen'};
+// Sobald TINO SELBST hier eine Entscheidung trifft, soll der Eintrag aus
+// seiner Ansicht verschwinden - unabhaengig davon, was Renates Urteil war
+// (die bleibt sichtbar fuer alles, was sie noch nicht entschieden oder
+// zurueckgewiesen hat). Serverseitig aendert Tinos "revision" denselben
+// Status wie Renates, darum reicht ein rein clientseitiger Ausschluss.
+const _tinoEntschieden=new Set();
+$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews?status=alle'+(reviewArt?'&art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.filter(v=>!_tinoEntschieden.has(v.id)).map(v=>{
   const bild=(v.quelle||'').split(',').map(s=>s.trim()).find(s=>/\.(png|jpe?g|webp|gif)$/i.test(s));
-  return `<article class="card agentcard">${bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}<span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`
-}).join('')||`<p>${reviewArt?'Nichts zur Abnahme in dieser Art.':'Nichts zur Abnahme.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
+  const statuslabel=REV_STATUS_LABEL[v.status]||v.status;
+  return `<article class="card agentcard" data-review-id="${esc(v.id)}">${bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}<span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''} · ${esc(statuslabel)}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`
+}).join('')||`<p>${reviewArt?'Nichts in dieser Art.':'Nichts vorhanden.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
 $('#reviews').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
 /* Ampeln zeigen nur den aktuellen Zustand: grün wenn etwas anliegt, sonst rot. */
 const REV_FEST=['grafik','post','email','newsletter'];
@@ -280,7 +312,7 @@ window.openReview=async id=>{try{const v=await api('/api/reviews/'+id);
  $('#overlayActions').innerHTML=`<input id="ovAn" placeholder="Anmerkung – nötig für eine Revision"><button onclick="overlayDecide('${esc(v.id)}','abnehmen')">Abnehmen</button><button class=ghost onclick="overlayDecide('${esc(v.id)}','revision')">Zurück damit</button>`;
  zeig(0);overlayShow()}catch(e){toast(e.message)}};
 window.overlayDecide=async(id,was)=>{const a=($('#ovAn')?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung.');
- try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');overlayHide();loadReviews()}catch(e){toast(e.message)}};
+ try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');_tinoEntschieden.add(id);overlayHide();loadReviews()}catch(e){toast(e.message)}};
 /* ---- Aufträge ---- */
 $('#loadAuftraege').onclick=()=>loadAuftraege();
 window.toggleAuftrag=(idx,btn)=>{const row=document.getElementById('au-desc-'+idx);row.hidden=!row.hidden;btn.textContent=row.hidden?'Details':'Weniger'};
@@ -290,7 +322,7 @@ async function loadAuftraege(){try{const d=await api('/api/auftraege');const off
     <tr class=au-desc id="au-desc-${i}" hidden><td colspan=5>${esc(a.beschreibung||'Keine Beschreibung.')}</td></tr>`).join('');
   $('#auftraege').innerHTML=`<table class=auftragtable><thead><tr><th>Mitarbeiter</th><th>Status</th><th>Fällig</th><th>Titel</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }catch(e){toast(e.message)}}
-window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');loadReviews()}catch(e){toast(e.message)}};
+window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');_tinoEntschieden.add(id);loadReviews()}catch(e){toast(e.message)}};
 function tickReview(z){z=z||{};let n=z.offen||0,r=z.revision||0,p=z.pruefung||0,e=$('#tickReview');
  if(e)e.textContent=[n?`${n} offen`:'',p?`${p} bei Jude`:'',r?`${r} in Revision`:''].filter(Boolean).join(' · ')||'nichts offen'}
 async function pollReviews(){try{let d=await api('/api/reviews?limit=1');tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);

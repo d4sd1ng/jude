@@ -65,21 +65,36 @@ class AgentBuilder:
             return name
         return None
 
+    #: Ab welcher Revisionsrunde eines EINZELNEN Erzeugnisses eskaliert wird -
+    #: unabhaengig von agent_runs.status. Gemessen 07.09.2026: ein Bildmotiv
+    #: ging durch 7+ Revisionsrunden, waehrend jeder einzelne Lauf technisch
+    #: sauber als 'abgeschlossen' protokolliert wurde (Werkzeuge liefen
+    #: fehlerfrei) - der Fehlschlag lag ausschliesslich im Inhalt, den nur
+    #: die Chefpruefung/Renate/Tino beurteilen, nicht agent_runs.status.
+    ESKALATION_AB_REVISIONSRUNDE = 3
+
     def _eskalation_noetig(self, agent_name: str) -> bool:
-        """True, wenn die letzten ESKALATION_AB_FOLGEFEHLERN Laeufe dieses
-        Mitarbeiters ALLE nicht 'abgeschlossen' waren - kein neuer Erkennungs-
-        mechanismus noetig, agent_runs.status haelt das schon fest. Sobald
-        irgendwann wieder ein Lauf wirklich abgeschlossen ist, greift diese
-        Pruefung von allein nicht mehr - kein Flag, das jemand zuruecksetzen
-        muesste."""
+        """True, wenn entweder (a) die letzten ESKALATION_AB_FOLGEFEHLERN
+        Laeufe dieses Mitarbeiters ALLE nicht 'abgeschlossen' waren - dafuer
+        reicht agent_runs.status - ODER (b) ein einzelnes Erzeugnis bereits
+        ESKALATION_AB_REVISIONSRUNDE-fach abgelehnt wurde (reviews.runde),
+        selbst wenn jeder einzelne Lauf technisch 'abgeschlossen' war. Beides
+        braucht kein Flag, das jemand zuruecksetzen muesste - sobald ein Lauf
+        wieder abschliesst bzw. eine Revision endlich durchgeht, greift die
+        jeweilige Pruefung von selbst nicht mehr."""
         from services.database import connection
         with connection() as db:
             rows = db.execute(
                 "SELECT status FROM agent_runs WHERE agent=? AND status!='laufend' "
                 "ORDER BY created_at DESC LIMIT ?",
                 (agent_name, self.ESKALATION_AB_FOLGEFEHLERN)).fetchall()
-        return (len(rows) == self.ESKALATION_AB_FOLGEFEHLERN
-                and all(r["status"] != "abgeschlossen" for r in rows))
+            if len(rows) == self.ESKALATION_AB_FOLGEFEHLERN and all(r["status"] != "abgeschlossen" for r in rows):
+                return True
+            hartnaeckig = db.execute(
+                "SELECT 1 FROM reviews WHERE agent=? AND status IN ('pruefung','revision') "
+                "AND runde>=? LIMIT 1",
+                (agent_name, self.ESKALATION_AB_REVISIONSRUNDE)).fetchone()
+        return hartnaeckig is not None
 
     def build_agent(self, spec: dict):
         from core.agent import Agent

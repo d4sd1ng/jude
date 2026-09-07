@@ -85,6 +85,17 @@ class Auftragsbuch:
                 (str(agent).strip().casefold(),)).fetchall()
         return [self._als_dict(z) for z in zeilen]
 
+    def unerledigt_fuer(self, agent: str) -> list[dict]:
+        """Noch nicht abgeschlossen (offen/in_arbeit/vorgelegt) - fuer die
+        Dopplungssperre in auftrag_erteilen, siehe dort."""
+        with connection() as db:
+            zeilen = db.execute(
+                f"SELECT {', '.join(_SPALTEN)} FROM auftraege"
+                " WHERE agent = ? AND status IN ('offen', 'in_arbeit', 'vorgelegt')"
+                " ORDER BY created_at ASC LIMIT 20",
+                (str(agent).strip().casefold(),)).fetchall()
+        return [self._als_dict(z) for z in zeilen]
+
     def ueberfaellig(self) -> list[dict]:
         with connection() as db:
             zeilen = db.execute(

@@ -164,6 +164,41 @@ def test_abbruch_verhindert_den_naechsten_werkzeugaufruf():
     assert spec["name"] not in ABBRUCH_ANGEFORDERT  # run() raeumt die Anforderung selbst auf
 
 
+# ------------------------------------------------------------ Eskalation
+
+def test_eskalation_greift_bei_hartnaeckiger_revisionsrunde():
+    """Deckt den (b)-Zweig aus _eskalation_noetig ab: jeder einzelne Lauf war
+    technisch 'abgeschlossen', aber dasselbe Erzeugnis wurde bereits
+    ESKALATION_AB_REVISIONSRUNDE-fach abgelehnt (reviews.runde) - genau der
+    Fall, den agent_runs.status allein nicht sieht (Infografik 2, Runde 7,
+    07.09.2026)."""
+    from services.database import connection
+    from services.review import ReviewQueue
+
+    ReviewQueue()  # legt die Tabelle an
+    with connection() as db:
+        db.execute(
+            "INSERT INTO reviews(id, created_at, agent, art, titel, quelle, inhalt, status, runde) "
+            "VALUES('r1','2026-09-07T10:00:00','designer','bild','Infografik 2','designer','x','revision',3)")
+
+    builder = AgentBuilder(svc=object(), tools=None)
+    assert builder._eskalation_noetig("designer") is True
+
+
+def test_keine_eskalation_unter_der_revisionsschwelle():
+    from services.database import connection
+    from services.review import ReviewQueue
+
+    ReviewQueue()
+    with connection() as db:
+        db.execute(
+            "INSERT INTO reviews(id, created_at, agent, art, titel, quelle, inhalt, status, runde) "
+            "VALUES('r2','2026-09-07T10:00:00','designer','bild','Infografik 3','designer','x','revision',2)")
+
+    builder = AgentBuilder(svc=object(), tools=None)
+    assert builder._eskalation_noetig("designer") is False
+
+
 # ---------------------------------------------------------------- Abnahme
 
 def test_abnahme_haelt_den_mitarbeiter_nicht_auf():
