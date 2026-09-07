@@ -141,6 +141,17 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         bekannt = {a["name"].casefold() for a in dienst.list()}
         if str(agent).strip().casefold() not in bekannt:
             raise ValueError(f"Kein Mitarbeiter namens {agent!r}. Bekannt: {', '.join(sorted(bekannt))}.")
+        from services.team import SubAgentService as _SAS
+        if str(agent).strip().casefold() == _SAS.REDAKTEUR:
+            raise ValueError(
+                f"{_SAS.REDAKTEUR} legt nie selbst etwas vor (siehe seine Rolle/"
+                "AUSNAHME VON DER ABNAHME-PFLICHT und die fehlende submit_for_review-"
+                "Berechtigung in team_builder.py) - ein direkt an ihn erteilter Auftrag "
+                "kann NIE auf 'vorgelegt' wechseln, egal wie oft er ausgefuehrt wird "
+                "(beobachtet 07.09.2026: Auftrag blieb trotz fertigem Text 'in_arbeit'). "
+                "Erteile den Auftrag stattdessen dem Mitarbeiter, der den Text tatsaechlich "
+                "braucht und vorlegt (z.B. content oder social) - der beauftragt "
+                f"{_SAS.REDAKTEUR} intern per write_copy.")
         buch = Auftragsbuch()
         unerledigt = buch.unerledigt_fuer(agent)
         if len(unerledigt) >= MAX_UNERLEDIGT_JE_MITARBEITER:

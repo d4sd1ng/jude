@@ -62,3 +62,45 @@ def test_ohne_offenen_auftrag_bleibt_die_vorlage_trotzdem_moeglich(tmp_path):
     tool = ToolFactory(svc).review_tool(spec)
     ergebnis = tool.func(art="dokument", titel="Testbeitrag", inhalt="x" * 320)
     assert ergebnis.get("id")
+
+
+def test_zum_auftrag_gehoerige_revision_hat_vorrang_vor_gleicher_art(tmp_path):
+    """Vor dem Fix (07.09.2026) landete jede Vorlage derselben Art desselben
+    Mitarbeiters in der erstbesten offenen Revision - unabhaengig vom Inhalt.
+    Ein Beitragstext geriet so in eine voellig unabhaengige, mehrere Runden
+    alte Onepager-Revision, nur weil beide 'dokument' waren. Der konkret
+    verknuepfte Auftrag muss Vorrang vor einer blossen Art-Uebereinstimmung
+    haben."""
+    from services.database import connection
+    from services.review import ReviewQueue
+
+    svc = _service(tmp_path)
+    spec = svc.get("tester")
+    buch = Auftragsbuch()
+    ReviewQueue()  # legt die Tabelle an
+
+    a_egal = buch.erteilen("tester", "Unabhaengiger Auftrag")
+    a_ziel = buch.erteilen("tester", "Zielauftrag")
+
+    with connection() as db:
+        db.execute(
+            "INSERT INTO reviews(id, created_at, agent, art, titel, quelle, inhalt, status, runde) "
+            "VALUES('rev_egal','2026-09-01T00:00:00',?,'dokument','Unabhaengig','tester','x','revision',2)",
+            (spec["name"],))
+        db.execute(
+            "INSERT INTO reviews(id, created_at, agent, art, titel, quelle, inhalt, status, runde) "
+            "VALUES('rev_ziel','2026-09-02T00:00:00',?,'dokument','Ziel','tester','x','revision',2)",
+            (spec["name"],))
+    buch.verknuepfen(a_ziel["id"], "rev_ziel")
+
+    tool = ToolFactory(svc).review_tool(spec)
+    tool.func(art="dokument", titel="Ueberarbeiteter Zieltext", inhalt="x" * 320,
+             auftrag_id=a_ziel["id"])
+
+    with connection() as db:
+        ziel = dict(db.execute("SELECT status, runde FROM reviews WHERE id='rev_ziel'").fetchone())
+        egal = dict(db.execute("SELECT status, runde FROM reviews WHERE id='rev_egal'").fetchone())
+    assert ziel["status"] == "pruefung" and ziel["runde"] == 3
+    assert egal["status"] == "revision" and egal["runde"] == 2  # unangetastet
+    assert buch.holen(a_ziel["id"])["status"] == "vorgelegt"
+    assert buch.holen(a_egal["id"])["status"] == "offen"  # unangetastet

@@ -18,11 +18,13 @@ from services.auftraege import Auftragsbuch
 class _FakeDienst:
     """Ersetzt SubAgentService: kein echter Agenten-Lauf, keine Kosten."""
 
+    REDAKTEUR = "redakteur"  # auftrag_erteilen prueft dieses Attribut direkt
+
     def __init__(self, *_a, **_k):
         pass
 
     def list(self):
-        return [{"name": "social"}]
+        return [{"name": "social"}, {"name": "redakteur"}]
 
     def run(self, *_a, **_k):
         raise AssertionError("run() sollte hier nicht aufgerufen werden (sofort_starten=False)")
@@ -70,3 +72,14 @@ def test_auftrag_erteilen_erlaubt_neuen_auftrag_nach_abschluss_eines_alten(monke
 
     # Sperre greift nicht mehr, weil nur noch zwei unerledigt sind.
     func(agent="social", titel="Wieder Platz", sofort_starten=False)
+
+
+def test_auftrag_erteilen_lehnt_redakteur_ab(monkeypatch):
+    """redakteur legt nie selbst mit submit_for_review vor (siehe seine Rolle
+    und team_builder.py's explizites Verbot dieses Werkzeugs fuer ihn) - ein
+    direkt an ihn erteilter Auftrag kann nie 'vorgelegt' erreichen. Beobachtet
+    07.09.2026: zwei so erteilte Auftraege blieben trotz fertigem Text fuer
+    Tage auf 'in_arbeit' stehen."""
+    func = _auftrag_erteilen(monkeypatch)
+    with pytest.raises(ValueError, match="legt nie selbst etwas vor"):
+        func(agent="redakteur", titel="Skript schreiben", sofort_starten=False)

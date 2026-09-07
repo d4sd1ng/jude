@@ -211,26 +211,48 @@ class ToolFactory:
                     raise ValueError(f"Referenzierte Datei existiert nicht: {fehlend}. "
                                      f"Erst wirklich schreiben (coding_write/generate_image), "
                                      f"dann vorlegen.")
+            # Welcher eigene offene Auftrag das hier erfuellt - VOR der Revisions-
+            # Zuordnung ermittelt, weil sein review_id (falls schon einmal
+            # vorgelegt) der praeziseste verfuegbare Anker ist: eine konkrete
+            # Bestellung, kein blosses "irgendwas Offenes von mir". Fehlt/passt
+            # auftrag_id nicht, wird wie beim vergessenen ueberarbeitet unten
+            # verfahren - der aelteste eigene offene Auftrag statt gar keiner
+            # (07.09.2026 gemessen: von 38 an einem Tag abgenommenen Vorlagen
+            # waren nur 9 ueberhaupt mit einem Auftrag verknuepft).
+            from services.auftraege import Auftragsbuch
+            offene_auftraege = Auftragsbuch().unerledigt_fuer(spec["name"])
+            auftrag_ziel = str(auftrag_id).strip()
+            if auftrag_ziel not in {a["id"] for a in offene_auftraege}:
+                auftrag_ziel = offene_auftraege[0]["id"] if offene_auftraege else ""
+            auftrag_review_id = next(
+                (a["review_id"] for a in offene_auftraege if a["id"] == auftrag_ziel and a.get("review_id")),
+                "")
+
             # Eine Ueberarbeitung ist keine neue Vorlage: dieselbe Zeile geht
             # eine Runde weiter zurueck zur Pruefung. Das Kopieren der ID aus
             # dem Prompt wird zuverlaessig vergessen (7 liegengebliebene
             # Landingpage-Versuche vom 16.08. bis 03.09. ohne eine einzige
             # echte Ueberarbeitung, gemessen 03.09.2026) – darum wird eine
-            # offene Revision derselben Art automatisch angeknuepft, statt
-            # sich auf den vom Modell zitierten Klammer-Wert zu verlassen.
-            ziel = str(ueberarbeitet).strip()
+            # offene Revision automatisch angeknuepft, statt sich auf den vom
+            # Modell zitierten Klammer-Wert zu verlassen.
             offen = queue.offene_revisionen(spec["name"])
             bekannt = {r["id"] for r in offen}
-            # Eine erfundene oder aus dem Prompt falsch abgeschriebene ID darf
-            # die fertige Arbeit nicht vernichten: 'Unbekannte Vorlage.' liess
-            # den Aufruf scheitern, der Text war weg (gemessen 03.09.2026 bei
-            # social und outreach, je zweimal im selben Lauf). Passt die ID
-            # nicht, wird wie ohne ID verfahren – offene Revision derselben
-            # Art, sonst neu vorlegen.
-            if ziel and ziel not in bekannt:
-                ziel = ""
+            # Reihenfolge der Zuordnung, staerkster Anker zuerst:
+            # 1. der eigene offene Auftrag zeigt schon auf eine offene Revision
+            #    (praezise - dieselbe Bestellung, nicht nur "gleiche Art").
+            # 2. die vom Modell genannte ueberarbeitet-ID, falls sie wirklich
+            #    offen ist.
+            # 3. eine offene Revision DERSELBEN ART - aber nur wenn es wirklich
+            #    eine gibt (vorher fiel das faelschlich auf offen[0] zurueck,
+            #    selbst wenn keine Art passte: ein Beitragstext von Stefan
+            #    landete so in einer 7 Runden alten, voellig anderen Onepager-
+            #    Revision, nur weil beides 'dokument' war - 07.09.2026).
+            ziel = auftrag_review_id if auftrag_review_id in bekannt else ""
             if not ziel:
-                treffer = next((r for r in offen if r["art"] == art), offen[0] if offen else None)
+                kandidat = str(ueberarbeitet).strip()
+                ziel = kandidat if kandidat in bekannt else ""
+            if not ziel:
+                treffer = next((r for r in offen if r["art"] == art), None)
                 if treffer:
                     ziel = treffer["id"]
             if not ziel:
@@ -244,19 +266,6 @@ class ToolFactory:
                 ergebnis = queue.erledigt(ziel, inhalt or None, titel or None, quelle or None)
             else:
                 ergebnis = queue.vorlegen(spec["name"], art, titel, inhalt, quelle, spec.get("person"))
-            # Genau dieselbe "vergessene/erfundene ID"-Lage wie bei ueberarbeitet
-            # oben, nur bisher ohne die dortige Absicherung: auftrag_id war rein
-            # optional, und wurde meist vergessen (07.09.2026 gemessen: von 38
-            # an einem Tag abgenommenen Vorlagen waren nur 9 ueberhaupt mit einem
-            # Auftrag verknuepft - 44 offene Auftraege blieben trotzdem offen,
-            # obwohl die zugehoerige Arbeit laengst abgenommen war). Fehlt die ID
-            # oder passt sie zu keinem eigenen offenen Auftrag, wird der aelteste
-            # eigene offene Auftrag automatisch verknuepft statt gar keiner.
-            from services.auftraege import Auftragsbuch
-            offene_auftraege = Auftragsbuch().unerledigt_fuer(spec["name"])
-            auftrag_ziel = str(auftrag_id).strip()
-            if auftrag_ziel not in {a["id"] for a in offene_auftraege}:
-                auftrag_ziel = offene_auftraege[0]["id"] if offene_auftraege else ""
             if auftrag_ziel:
                 try:
                     Auftragsbuch().verknuepfen(auftrag_ziel,
