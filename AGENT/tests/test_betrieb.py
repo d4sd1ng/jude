@@ -15,6 +15,8 @@ import pytest
 
 from services.review import ReviewQueue
 from services.team import SubAgentService
+from services.team_builder import AgentBuilder
+from services.team_runner import ABBRUCH_ANGEFORDERT, AgentRunner
 
 
 # --------------------------------------------------------- Laufbewertung
@@ -93,6 +95,73 @@ def test_gleiche_notiz_haeuft_sich_nicht_an(tmp_path, monkeypatch):
     assert len(dienst.notes("outreach")) == 1
     dienst.remember("outreach", "Ein zweiter, echter Fund: Firma X, Adresse Y.")
     assert len(dienst.notes("outreach")) == 2
+
+
+# --------------------------------------------------------- Lauf abbrechen
+
+class _FakeToolsForAbbruch:
+    def __init__(self):
+        self.tools = {"irgendwas": object()}  # nicht leer, sonst hat_werkzeuge=False
+        self.execute = None  # wird von AgentRunner.run() auf mitschreiben umgebogen
+
+
+class _FakeAgentForAbbruch:
+    def __init__(self, aufrufe):
+        self.tools = _FakeToolsForAbbruch()
+        self.last_model = "test-modell"
+        self._aufrufe = aufrufe
+        self.tatsaechlich_ausgefuehrt = []
+
+    def process_input(self, task):
+        for werkzeug, argumente in self._aufrufe:
+            ergebnis = self.tools.execute(werkzeug, argumente)
+            self.tatsaechlich_ausgefuehrt.append(werkzeug)
+        return "fertig"
+
+
+class _FakeSvcForAbbruch:
+    REDAKTEUR = "kein-redakteur-in-diesem-test"
+    QUELLEN_PFLICHT: dict = {}
+    SCHREIB_PFLICHT: dict = {}
+
+    def __init__(self, spec):
+        self._spec = spec
+
+    def get(self, name):
+        return self._spec if name == self._spec["name"] else None
+
+    @staticmethod
+    def _key(name):
+        return name.casefold()
+
+    @staticmethod
+    def _chefpruefung(name):
+        return []
+
+
+def test_abbruch_verhindert_den_naechsten_werkzeugaufruf():
+    """ABBRUCH_ANGEFORDERT bricht VOR dem naechsten Werkzeugaufruf ab - ein
+    bereits laufender Aufruf ist damit nicht gemeint (der laesst sich bei
+    Thread-basierter Ausfuehrung nicht von aussen sauber toeten), aber kein
+    weiterer Schritt danach."""
+    spec = {"name": "test_abbruch_agent", "role": "x", "skills": [], "person": None, "alter": None}
+    svc = _FakeSvcForAbbruch(spec)
+    fake_agent = _FakeAgentForAbbruch([("werkzeug_1", {}), ("werkzeug_2", {}), ("werkzeug_3", {})])
+
+    class _FakeBuilder:
+        def build_agent(self, spec):
+            return fake_agent
+
+    runner = AgentRunner(svc, _FakeBuilder())
+    ABBRUCH_ANGEFORDERT.add(spec["name"])
+    try:
+        ergebnis = runner.run(spec["name"], "irgendeine Aufgabe")
+    finally:
+        ABBRUCH_ANGEFORDERT.discard(spec["name"])  # Aufraeumen, falls run() es nicht schon tat
+
+    assert ergebnis["status"] == "abgebrochen"
+    assert fake_agent.tatsaechlich_ausgefuehrt == []  # nicht mal der erste Aufruf lief durch
+    assert spec["name"] not in ABBRUCH_ANGEFORDERT  # run() raeumt die Anforderung selbst auf
 
 
 # ---------------------------------------------------------------- Abnahme

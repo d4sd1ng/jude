@@ -32,8 +32,12 @@ async def agents_run(name: str, payload: dict):
 
 @router.post("/api/agents/{name}/stop")
 def agents_stop(name: str):
-    """Kein Abbruch eines laufenden Laufs (siehe team_runner.py) - nur eine
-    Sperre gegen jeden neuen. Ein bereits laufender Auftrag arbeitet zu Ende."""
+    """Sperrt jeden neuen Lauf UND bricht einen gerade laufenden so bald wie
+    moeglich ab (vor dem naechsten Werkzeugaufruf - siehe ABBRUCH_ANGEFORDERT
+    in team_runner.py; ein bereits laufender einzelner Werkzeugaufruf laeuft
+    noch zu Ende, kein Python-Thread laesst sich von aussen sauber toeten)."""
+    from services.team_runner import ABBRUCH_ANGEFORDERT
+    ABBRUCH_ANGEFORDERT.add(name)
     return team.set_pausiert(name, True)
 
 

@@ -20,6 +20,29 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
+#: Welches Werkzeug ein Mitarbeiter gerade aufgerufen hat, je Agentenname -
+#: fuer die Live-Anzeige im Schreibtisch ("gerade: notion_query" statt des
+#: rohen, oft generischen Auftragstexts). Bewusst im Prozessspeicher statt
+#: in der Datenbank: es ist reine Anzeige, keine Historie, und muss bei
+#: jedem Werkzeugaufruf ohne Datenbank-Overhead aktualisierbar sein.
+AKTIVES_WERKZEUG: dict[str, str] = {}
+
+#: Namen, deren LAUFENDER Lauf so bald wie moeglich abbrechen soll - echter
+#: Abbruch, nicht nur die Sperre gegen einen naechsten Lauf (die lebt in
+#: sub_agents.json, siehe AgentRegistry.set_pausiert). Ein Python-Thread
+#: laesst sich nicht von aussen sauber toeten - dieser Mechanismus ist
+#: kooperativ: mitschreiben() prueft ihn vor JEDEM naechsten Werkzeugaufruf
+#: und bricht dort ab. Ein bereits laufender einzelner Werkzeugaufruf
+#: (z.B. ein generate_image, das schon unterwegs ist) laeuft noch zu Ende -
+#: aber kein weiterer Schritt danach.
+ABBRUCH_ANGEFORDERT: set[str] = set()
+
+
+class LaufAbgebrochen(Exception):
+    """Intern: signalisiert mitten im Lauf, dass ABBRUCH_ANGEFORDERT fuer
+    diesen Mitarbeiter gesetzt wurde - wird in run() abgefangen und als
+    eigener Status 'abgebrochen' protokolliert, kein Fehlschlag."""
+
 
 class AgentRunner:
     #: Rueckgabetexte, mit denen ``ToolRegistry.execute`` einen Fehlschlag meldet.
@@ -85,6 +108,9 @@ class AgentRunner:
                 return werkzeug + "|" + repr(argumente)
 
         def mitschreiben(werkzeug, argumente):
+            if spec["name"] in ABBRUCH_ANGEFORDERT:
+                raise LaufAbgebrochen(f"Abbruch angefordert vor '{werkzeug}'.")
+            AKTIVES_WERKZEUG[spec["name"]] = werkzeug
             werkzeuge.append(werkzeug)
             schluessel = _schluessel(werkzeug, argumente)
             if schluessel == letzter["schluessel"]:
@@ -111,10 +137,15 @@ class AgentRunner:
         vorher = self.router_verbrauch()
         try:
             answer, status, blockers = agent.process_input(task), "abgeschlossen", []
+        except LaufAbgebrochen as exc:
+            answer, status, blockers = "", "abgebrochen", [str(exc)]
         except Exception as exc:
             answer, status = "", "fehlgeschlagen"
             blockers = [f"{type(exc).__name__}: {exc}"]
-        if status != "fehlgeschlagen":
+        finally:
+            AKTIVES_WERKZEUG.pop(spec["name"], None)
+            ABBRUCH_ANGEFORDERT.discard(spec["name"])
+        if status not in ("fehlgeschlagen", "abgebrochen"):
             status, blockers = self._bewerten(werkzeuge, fehlschlaege,
                                               hat_werkzeuge=bool(agent.tools.tools))
         pflicht = svc.QUELLEN_PFLICHT.get(spec["name"])
@@ -124,7 +155,7 @@ class AgentRunner:
                                    f"Werkzeugaufrufen – 'nichts zu tun' zaehlt nur nach echter Pruefung."]
         schreib_pflicht = svc.SCHREIB_PFLICHT.get(spec["name"], ())
         fehlende_pflicht = [w for w in schreib_pflicht if w not in werkzeuge]
-        if fehlende_pflicht and eingereichte_ids:
+        if status != "abgebrochen" and fehlende_pflicht and eingereichte_ids:
             from services.review import ReviewQueue
             queue = ReviewQueue()
             fehlend_text = " und ".join(f"'{w}'" for w in fehlende_pflicht)
@@ -254,7 +285,8 @@ class AgentRunner:
             name = spec["name"]
             eintrag = {"agent": name, "person": spec.get("person"), "pausiert": bool(spec.get("pausiert"))}
             if name in aktiv:
-                eintrag.update(status="aktiv", seit=aktiv[name]["created_at"], task=aktiv[name]["task"])
+                eintrag.update(status="aktiv", seit=aktiv[name]["created_at"], task=aktiv[name]["task"],
+                               aktuelles_werkzeug=AKTIVES_WERKZEUG.get(name))
             elif name in letzte:
                 eintrag.update(status="idle", letzter_status=letzte[name]["status"],
                                 letzter_lauf_am=letzte[name]["created_at"])
