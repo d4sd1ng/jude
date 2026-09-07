@@ -244,10 +244,22 @@ class ToolFactory:
                 ergebnis = queue.erledigt(ziel, inhalt or None, titel or None, quelle or None)
             else:
                 ergebnis = queue.vorlegen(spec["name"], art, titel, inhalt, quelle, spec.get("person"))
-            if str(auftrag_id).strip():
+            # Genau dieselbe "vergessene/erfundene ID"-Lage wie bei ueberarbeitet
+            # oben, nur bisher ohne die dortige Absicherung: auftrag_id war rein
+            # optional, und wurde meist vergessen (07.09.2026 gemessen: von 38
+            # an einem Tag abgenommenen Vorlagen waren nur 9 ueberhaupt mit einem
+            # Auftrag verknuepft - 44 offene Auftraege blieben trotzdem offen,
+            # obwohl die zugehoerige Arbeit laengst abgenommen war). Fehlt die ID
+            # oder passt sie zu keinem eigenen offenen Auftrag, wird der aelteste
+            # eigene offene Auftrag automatisch verknuepft statt gar keiner.
+            from services.auftraege import Auftragsbuch
+            offene_auftraege = Auftragsbuch().unerledigt_fuer(spec["name"])
+            auftrag_ziel = str(auftrag_id).strip()
+            if auftrag_ziel not in {a["id"] for a in offene_auftraege}:
+                auftrag_ziel = offene_auftraege[0]["id"] if offene_auftraege else ""
+            if auftrag_ziel:
                 try:
-                    from services.auftraege import Auftragsbuch
-                    Auftragsbuch().verknuepfen(str(auftrag_id).strip(),
+                    Auftragsbuch().verknuepfen(auftrag_ziel,
                                                ergebnis.get("id") or str(ueberarbeitet).strip())
                 except Exception:
                     pass

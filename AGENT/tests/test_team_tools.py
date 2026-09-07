@@ -1,0 +1,64 @@
+"""submit_for_review <-> Auftragsbuch-Verknuepfung.
+
+Beobachtet 07.09.2026: auftrag_id war rein optional und wurde fast immer
+vergessen - von 38 an einem Tag abgenommenen Vorlagen waren nur 9 ueberhaupt
+mit einem Auftrag verknuepft. Die 44 offenen Auftraege blieben trotzdem
+offen, obwohl ihre Arbeit laengst abgenommen war ("all reviews wasnt related
+to the open jobs"). Gleiches Prinzip wie die bereits bestehende Absicherung
+fuer 'ueberarbeitet' (vergessene/erfundene Revisions-ID): fehlt oder passt
+auftrag_id nicht, wird automatisch der aelteste eigene offene Auftrag
+verknuepft.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import Mock
+
+from core.tool_registry import Tool, ToolRegistry
+from services.auftraege import Auftragsbuch
+from services.team import SubAgentService
+from services.team_tools import ToolFactory
+
+
+def _service(tmp_path):
+    registry = ToolRegistry()
+    registry.register(Tool("noop", "d", lambda: "ok", {"type": "object", "properties": {}}))
+    svc = SubAgentService(registry, Mock())
+    svc.path = tmp_path / "agents.json"
+    svc.create("Tester", "Rolle.", ["noop"])
+    return svc
+
+
+def test_ohne_auftrag_id_wird_der_aelteste_offene_auftrag_verknuepft(tmp_path):
+    svc = _service(tmp_path)
+    spec = svc.get("tester")
+    buch = Auftragsbuch()
+    aeltester = buch.erteilen("tester", "Erster Auftrag")
+    juengerer = buch.erteilen("tester", "Zweiter Auftrag")
+
+    tool = ToolFactory(svc).review_tool(spec)
+    tool.func(art="dokument", titel="Testbeitrag", inhalt="x" * 320)
+
+    assert buch.holen(aeltester["id"])["status"] == "vorgelegt"
+    assert buch.holen(juengerer["id"])["status"] == "offen"
+
+
+def test_erfundene_auftrag_id_faellt_auf_eigenen_offenen_auftrag_zurueck(tmp_path):
+    svc = _service(tmp_path)
+    spec = svc.get("tester")
+    buch = Auftragsbuch()
+    richtiger = buch.erteilen("tester", "Richtiger Auftrag")
+
+    tool = ToolFactory(svc).review_tool(spec)
+    tool.func(art="dokument", titel="Testbeitrag", inhalt="x" * 320, auftrag_id="erfunden-123")
+
+    assert buch.holen(richtiger["id"])["status"] == "vorgelegt"
+
+
+def test_ohne_offenen_auftrag_bleibt_die_vorlage_trotzdem_moeglich(tmp_path):
+    svc = _service(tmp_path)
+    spec = svc.get("tester")
+
+    tool = ToolFactory(svc).review_tool(spec)
+    ergebnis = tool.func(art="dokument", titel="Testbeitrag", inhalt="x" * 320)
+    assert ergebnis.get("id")
