@@ -11,8 +11,10 @@ def _svc():
     svc.key = "test-key"
     svc._schema_cache["social_posts"] = {
         "name": "social_posts", "titel": "social_posts",
-        "felder": {"Titel": "title", "Status": "select"},
-        "erlaubte_werte": {"Status": ["Idee", "Geplant"]},
+        "felder": {"Titel": "title", "Status": "select",
+                   "Geplantes Datum": "date", "Plattform": "multi_select"},
+        "erlaubte_werte": {"Status": ["Idee", "Geplant"],
+                           "Plattform": ["LinkedIn", "Facebook", "TikTok", "Instagram"]},
     }
     return svc
 
@@ -57,6 +59,34 @@ def test_create_succeeds_when_no_title_collision(mock_requests, _db_id):
     assert result["angelegt"] is True
     assert result["id"] == "new-page"
     assert mock_requests.post.call_count == 2
+
+
+def test_validate_korrigiert_unterstrich_und_kleinschreibung_im_feldnamen():
+    """Beobachtet 07.09.2026: 'Geplantes_Datum' (Modell-Variante) statt
+    'Geplantes Datum' (echter Feldname) schlug bisher hart mit 'Unbekannte
+    Felder' fehl - ein reiner Trennzeichen-/Gross-Kleinschreibungs-Fehler,
+    kein echtes unbekanntes Feld."""
+    svc = _svc()
+    fields = {"Titel": "x", "Geplantes_Datum": "2026-09-10"}
+    svc._validate("social_posts", fields)
+    assert "Geplantes Datum" in fields
+    assert "Geplantes_Datum" not in fields
+
+
+def test_validate_zerlegt_kommagetrennten_multi_select_string():
+    """Beobachtet 07.09.2026: 'Plattform': ['LinkedIn, Facebook, TikTok, "
+    "Instagram'] (eine einzelne kommagetrennte Zeichenkette in einer Liste "
+    "mit nur einem Element) statt vier echter Listeneintraege."""
+    svc = _svc()
+    fields = {"Titel": "x", "Plattform": ["LinkedIn, Facebook, TikTok, Instagram"]}
+    svc._validate("social_posts", fields)
+    assert fields["Plattform"] == ["LinkedIn", "Facebook", "TikTok", "Instagram"]
+
+
+def test_validate_lehnt_wirklich_unbekanntes_feld_weiterhin_ab():
+    svc = _svc()
+    with pytest.raises(ValueError, match="Unbekannte Felder"):
+        svc._validate("social_posts", {"Titel": "x", "Voellig_Erfundenes_Feld": "y"})
 
 
 @patch("services.notion_db.requests")

@@ -168,12 +168,43 @@ class NotionDatabaseService:
         Notion legt unbekannte Auswahlwerte stillschweigend als neue Option an –
         nach ein paar Agentenläufen wären die Listen unbrauchbar. Deshalb wird
         hier hart abgewiesen statt stillschweigend erweitert.
+
+        Zwei Normalisierungen VOR der harten Ablehnung (beide wiederholt
+        gemessen, zuletzt 07.09.2026, ueber mehrere Mitarbeiter hinweg -
+        keine Einzelverwechslung):
+        1. Feldnamen mit Leerzeichen ('Geplantes Datum') werden vom Modell
+           zuverlaessig als Unterstrich- oder kleingeschriebene Variante
+           geschrieben ('Geplantes_Datum'). Statt hart abzulehnen, wird auf
+           den echten Feldnamen zurueckgemappt, wenn er nach Entfernen von
+           Gross-/Kleinschreibung und Trennzeichen eindeutig passt.
+        2. multi_select-Felder (z.B. 'Plattform') bekommen oft eine EINZELNE,
+           kommagetrennte Zeichenkette statt einer echten Liste einzelner
+           Werte ('LinkedIn, Facebook, TikTok, Instagram' statt vier
+           Eintraegen) - wird vor der Optionspruefung aufgeteilt.
         """
         schema = self.schema(name)
         felder, erlaubt = schema["felder"], schema["erlaubte_werte"]
+
+        def _norm(s: str) -> str:
+            return s.replace("_", " ").replace("-", " ").casefold().strip()
+
+        lookup = {_norm(f): f for f in felder}
+        for key in list(fields):
+            if key not in felder:
+                echt = lookup.get(_norm(key))
+                if echt:
+                    fields[echt] = fields.pop(key)
+
         unknown = [key for key in fields if key not in felder]
         if unknown:
             raise ValueError(f"Unbekannte Felder {unknown}. Vorhanden: {sorted(felder)}.")
+
+        for key in list(fields):
+            if felder.get(key) == "multi_select":
+                werte = fields[key] if isinstance(fields[key], list) else [fields[key]]
+                if len(werte) == 1 and isinstance(werte[0], str) and "," in werte[0]:
+                    fields[key] = [teil.strip() for teil in werte[0].split(",") if teil.strip()]
+
         for key, value in fields.items():
             if key not in erlaubt or value in (None, ""):
                 continue

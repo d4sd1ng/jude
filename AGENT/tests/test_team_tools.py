@@ -64,6 +64,25 @@ def test_ohne_offenen_auftrag_bleibt_die_vorlage_trotzdem_moeglich(tmp_path):
     assert ergebnis.get("id")
 
 
+def test_hinweisen_loest_vornamen_auf_agentenschluessel_auf(tmp_path):
+    """Rollentexte nennen Kollegen ueberall beim Vornamen ('Heike/designer'),
+    Modelle sprechen sie darum auch bei inform_colleague-Aufrufen so an,
+    obwohl das Werkzeug den Mitarbeiter-Schluessel braucht. Beobachtet
+    07.09.2026: inform_colleague('heike', ...) schlug fehl, obwohl 'designer'
+    eindeutig gemeint war."""
+    svc = _service(tmp_path)
+    svc.create("Designer", "Rolle.", ["noop"], person="Heike")
+    absender = svc.get("tester")
+
+    tool = ToolFactory(svc).hinweis_tool(absender)
+    ergebnis = tool.func(kollege="heike", hinweis="x" * 25)
+
+    assert ergebnis["zugestellt"] is True
+    assert ergebnis["an"] == "Heike"
+    notizen = svc.notes("designer")
+    assert any("Hinweis von Tester" in n.get("note", "") for n in notizen)
+
+
 def test_zum_auftrag_gehoerige_revision_hat_vorrang_vor_gleicher_art(tmp_path):
     """Vor dem Fix (07.09.2026) landete jede Vorlage derselben Art desselben
     Mitarbeiters in der erstbesten offenen Revision - unabhaengig vom Inhalt.

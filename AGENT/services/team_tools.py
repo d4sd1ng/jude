@@ -39,6 +39,19 @@ class ToolFactory:
             kollege = str(kollege).strip().lower()
             ziel = svc.get(kollege)
             if ziel is None:
+                # Rollentexte nennen Kollegen ueberall beim Vornamen ("Heike/
+                # designer", "Heinz, den Redakteur") - Modelle sprechen sie
+                # darum auch hier beim Vornamen an, obwohl das Werkzeug den
+                # Mitarbeiter-Schluessel braucht. Gemessen 07.09.2026:
+                # inform_colleague('heike', ...) schlug fehl, obwohl 'designer'
+                # eindeutig gemeint war. Vornamen-Treffer aufloesen statt
+                # hart abzulehnen.
+                treffer = next((a for a in svc.list()
+                               if str(a.get("person") or "").strip().casefold() == kollege), None)
+                if treffer:
+                    kollege = svc._key(treffer["name"])
+                    ziel = svc.get(kollege)
+            if ziel is None:
                 bekannt = ", ".join(sorted(a["name"] for a in svc.list()))
                 raise ValueError(f"Kein Kollege namens {kollege!r}. Bekannt: {bekannt}.")
             if kollege == svc._key(spec["name"]):
