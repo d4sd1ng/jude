@@ -28,6 +28,14 @@ class AgentBuilder:
     #: seit Tagen erledigte Stoerung fuer aktuell gehalten, ein mehrfach
     #: gezaehltes Motiv trotz expliziter Stueckzahl nicht eingehalten).
     ESKALATIONS_MODELL = "cloud_claude_sonnet"
+    #: Zweite Wahl, falls Anthropic gerade nicht verfuegbar ist (gemessen
+    #: 07.09.2026: Anthropic-Guthaben erschoepft, "credit balance too low",
+    #: bis Mitternacht gesperrt). Ohne diese Stufe fiel eine Eskalation dann
+    #: direkt auf das eigene, oft gerade selbst instabile Modell zurueck
+    #: (zeitgleich haeufige 500er bei cloud_ollama_gptoss) - Eskalation und
+    #: Fallback scheiterten am selben Tag aus zwei unabhaengigen Gruenden.
+    #: OpenAI lief zu diesem Zeitpunkt nachweislich stabil weiter.
+    ESKALATIONS_MODELL_ALT = "cloud_openai_terra"
     #: Ab wie vielen NICHT erfolgreich abgeschlossenen Laeufen IN FOLGE
     #: eskaliert wird. Bewusst niedrig (Tinos Vorgabe: "mehrere Fehler in
     #: Folge"), nicht bei einem einzelnen - ein 'teilweise' allein ist
@@ -107,7 +115,8 @@ class AgentBuilder:
         if self._eskalation_noetig(spec["name"]):
             logger.info("%s: %s Laeufe in Folge nicht abgeschlossen - eskaliere diesen Lauf auf %s.",
                        spec["name"], self.ESKALATION_AB_FOLGEFEHLERN, self.ESKALATIONS_MODELL)
-            modell = self.brauchbares_modell(self.ESKALATIONS_MODELL, eigenes_modell)
+            modell = self.brauchbares_modell(self.ESKALATIONS_MODELL, self.ESKALATIONS_MODELL_ALT,
+                                             eigenes_modell)
         else:
             modell = self.brauchbares_modell(eigenes_modell)
         # Ein Mitarbeiter, dessen Modell keine Werkzeuge bedienen kann, bekommt
