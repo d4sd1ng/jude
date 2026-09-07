@@ -10,5 +10,125 @@
   {
     "note": "[Hinweis von Stefan] Fehlender Notion‑Eintrag für das überarbeitete Newsletter‑Konzept (ID 094efdd1eab1). Ohne die Ausgangsbasis kann die geforderte Integration von Big‑Tech‑Themen und die Erstellung fertiger Texte nicht erfolgen. Bitte prüfen, ob der Eintrag existiert oder neu angelegt werden muss.",
     "created_at": "2026-09-03T00:42:42.606953+00:00"
+  },
+  {
+    "note": "[Hinweis von Coder] Tagescheck für Coder durchgeführt – keine neuen relevanten Daten, Aufträge oder Tasks gefunden. System ist sauber.",
+    "created_at": "2026-09-03T01:13:00.171963+00:00"
+  },
+  {
+    "note": "[Hinweis von Stefan] Keine neuen Newsletter-Konzept- oder Content-Stück-Einträge im Notion-Database 'content_stuecke' gefunden; alle vorhandenen Aufgaben sind bereits erledigt.",
+    "created_at": "2026-09-03T01:15:12.021707+00:00"
+  },
+  {
+    "note": "[Hinweis von Heinz] Qualitaets‑Playbook (qualitaets‑playbook.md) fehlt im project_files‑Verzeichnis. Ohne dieses Dokument können wir die geforderten Kanal‑Karte, Aufhänger‑Formel und die Punktzahl‑Kontrolle nicht prüfen, was Voraussetzung für die Freigabe von Texten ist.",
+    "created_at": "2026-09-03T05:32:27.425311+00:00"
+  },
+  {
+    "note": "[Hinweis von Frank] Die Überarbeitung des Ranking‑Berichts vom 03.09.2026 konnte nicht per submit_for_review abgegeben werden, da das System die Vorlage \"Unbekannte Vorlage\" meldet. Der Bericht liegt bereits im Austausch unter /vom-team/post-ranking-2026-09-03.md bereit und enthält die korrigierten Formulierungen ohne verbotene Wörter. Bitte prüfe, welcher Vorlagen‑Name für die Einreichung von Recherche‑Ergebnissen verwendet werden muss, damit die Abgabe erfolgreich ist.",
+    "created_at": "2026-09-03T05:56:32.403394+00:00"
+  },
+  {
+    "note": "[Hinweis von Coder] Heute wurden keine Coder-Aufgaben gefunden, die bearbeitet werden müssen. Keine neuen Skripte, Analysen oder Automatisierungen nötig.",
+    "created_at": "2026-09-03T11:40:40.154485+00:00"
+  },
+  {
+    "note": "[Hinweis von Joana] Im Todo-File gibt es mehrere offene Punkte: Entscheidunglog aktualisieren, Changelog aktualisieren, doppelte nurovelle‑tokens.css konsolidieren, sieben Gold‑SVG‑Wortmarken einchecken, finale Texte für ‚Warum Nurovelle‘, Potenzialanalyse‑Sektion, linke Formular‑Card, Download‑Beschreibungen, Kontakt‑ und FAQ‑Texte. Keine aktuelle explizite Vorgabe von Tino oder Jude für einen dieser Punkte vorliegt. Bitte Projektleitung priorisieren und Zuweisung geben.",
+    "created_at": "2026-09-03T11:40:51.559585+00:00"
+  },
+  {
+    "note": "[Hinweis von Heinz] Es liegen keine freigegebenen Texte oder konkreten Redaktionsaufträge für die offenen Punkte im todo.md vor (z. B. finaler Text für „Warum Nurovelle“, Potenzialanalyse‑Sektion, linke Formular‑Card). Ohne weitere Vorgaben von Tino kann keine redaktionelle Arbeit begonnen werden.",
+    "created_at": "2026-09-03T11:41:00.874705+00:00"
+  },
+  {
+    "note": "[Hinweis von Frieda] Keine E‑Mail‑Versände heute – 12 Leads verfügen über eine E‑Mail-Adresse, aber es wurde noch keine Kommunikation durchgeführt. Status bleibt \"Neu\", \"Kontaktiert\" bleibt 0.",
+    "created_at": "2026-09-03T11:41:28.734806+00:00"
+  },
+  {
+    "note": "[Hinweis von Coder] Heute wurden keine offenen Coder-Aufgaben gefunden. Keine Skripte zu erstellen oder zu bearbeiten.",
+    "created_at": "2026-09-03T11:41:31.898763+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Im aktuellen Outreach‑Run konnten nur 2 Einträge aus der Notion‑Datenbank 'kontakte' (Herocare ambulanter Pflegedienst, Pflegedienst Schwedes GmbH) ohne vorhandene E‑Mail-Adresse bearbeitet werden. Beide Websites lieferten keine E‑Mail‑Adresse, somit bleiben die Einträge unverändert und weiterhin auf Status 'Inaktiv'. Es fehlen weitere 3 Kontakte mit fehlender E‑Mail, die noch bearbeitet werden müssen, sobald sie verfügbar sind.",
+    "created_at": "2026-09-03T11:45:33.107240+00:00"
+  },
+  {
+    "note": "[Hinweis von Heinz] Es liegt keine konkrete Aufgabenstellung für den Redakteur vor. Im Todo-File sind offene Punkte wie 'finalen Text für „Warum Nurovelle“ freigeben' oder 'finalen Text der Potenzialanalyse‑Sektion freigeben'. Ohne genaue Vorgabe kann keine zielgerichtete Erstellung erfolgen.",
+    "created_at": "2026-09-03T11:47:25.235917+00:00"
+  },
+  {
+    "note": "[Hinweis von Rasmus] Für die geforderten Tech‑Meldungen (Tesla, Nvidia, AMD, Google, Microsoft, OpenAI) aus den letzten 24 Stunden wurden nur Titel, Quelle und Datum gefunden, jedoch keine zugänglichen URLs. Ohne URL kann kein scrape_public_url ausgeführt, folglich keine ingest_document‑ bzw. Notion‑Einträge erstellt werden.",
+    "created_at": "2026-09-03T12:07:37.947969+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Outreach-Prüfung am 03.09.2026: Die Datenbankabfrage „kontakte“ lieferte keine Einträge mit gefüllter Website und leerer E-Mail-Adresse; daher waren keine fünf Firmen zur Bearbeitung verfügbar. Eine ergänzende Abfrage lieferte ebenfalls 0 Einträge mit E-Mail-Adresse, sodass die Zählung wegen der leeren Rückgabe nicht belastbar ist.",
+    "created_at": "2026-09-03T17:34:32.068513+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Heute gab es keine offenen Aufträge oder Revisionen. Der Themenbereich ist ruhig, sodass keine zusätzliche Arbeit erledigt werden muss.",
+    "created_at": "2026-09-03T19:36:12.997710+00:00"
+  },
+  {
+    "note": "[Hinweis von Mike] Auftrag [12a5a49481aa] blockiert: KW 36 nennt 31.08.–06.09.2026, der einzige Montag 31.08. ist am 03.09. bereits vorbei, zugleich ist ein zukünftiges Planungsdatum verpflichtend. Heinz lieferte nach drei detaillierten Textaufträgen keinen Text; Mike darf Social-Texte nicht selbst schreiben. Bitte Termin korrigieren und Schreibtool prüfen.",
+    "created_at": "2026-09-03T19:41:43.299937+00:00"
+  },
+  {
+    "note": "[Hinweis von Rasmus] Rasmus: Die Pflichtrecherche vom 03.09.2026, 21:43 Uhr, ist durchgeführt (jeweils news_search für Tesla, Nvidia, AMD, Google, Microsoft und OpenAI sowie Dublettencheck). Keine 3–5 verwertbaren, dublettenfreien Meldungen der letzten 24 Stunden konnten regelkonform abgelegt werden: Für die wenigen Treffer im Zeitfenster lieferte news_search keine öffentliche URL, daher war scrape_public_url nicht möglich. Nvidia DLSS 5 war zudem bereits als Fund notiert. Es wurden keine Notion-Einträge oder Dokumente erzeugt.",
+    "created_at": "2026-09-03T19:44:07.332238+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Keine neuen Firmen recherchieren, solange Eintraege ohne Adresse offen sind. Keine Adresse erfinden oder raten. Niemanden anschreiben.",
+    "created_at": "2026-09-03T20:43:23.766963+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Keine neuen Kontakte mit fehlender E-Mail-Adresse gefunden. Alle relevanten Einträge sind bereits mit einer E-Mail-Adresse versehen.",
+    "created_at": "2026-09-04T00:17:29.289721+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Keine neuen Firmen recherchieren, solange Eintraege ohne Adresse offen sind. Keine Adresse erfinden oder raten. Niemanden anschreiben.",
+    "created_at": "2026-09-04T01:11:30.291018+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Es wurden keine neuen Kontakte gefunden, da die Notion-Datenbank 'kontakte' keine Einträge mit leerer E-Mail-Adresse und gefüllter Website enthält. Derzeit sind alle relevanten Einträge bereits mit einer E-Mail-Adresse versehen.",
+    "created_at": "2026-09-04T02:26:26.201657+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Heute wurden keine neuen Kontakte gefunden, da die Notion-Datenbank 'kontakte' keine Einträge mit leerer E-Mail-Adresse und gefüllter Website enthält. Derzeit sind alle relevanten Einträge bereits mit einer E-Mail-Adresse versehen.",
+    "created_at": "2026-09-04T03:52:50.777612+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Keine neuen Kontakte gefunden, da alle relevanten Einträge bereits mit einer E-Mail-Adresse versehen sind. Der Themenbereich ist ruhig.",
+    "created_at": "2026-09-04T05:00:54.743818+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Keine neuen Kontakte gefunden, da alle relevanten Einträge bereits mit einer E-Mail-Adresse versehen sind. Der Themenbereich ist ruhig.",
+    "created_at": "2026-09-04T06:33:46.705607+00:00"
+  },
+  {
+    "note": "[Hinweis von Bernd] Keine neuen Kontakte gefunden, da alle relevanten Einträge bereits mit einer E-Mail-Adresse versehen sind. Der Themenbereich ist ruhig, sodass keine zusätzliche Arbeit erledigt werden muss.",
+    "created_at": "2026-09-04T07:21:13.446474+00:00"
+  },
+  {
+    "note": "[Hinweis von Mike] 04.09.2026: Der fällige Wochen-Beitrag für 07.09., 08:00 ist inhaltlich vorbereitet (Handwerk: Telefon-, E-Mail- und WhatsApp-Anfragen zum vollständigen Angebotsvorgang bündeln; Modul Datenabgleich und Datenintegration), aber blockiert. Heinz lieferte auf zwei konkrete Schreibaufträge keinen Beitrag. Mike darf Texte nicht selbst verfassen; daher kein Notion-Eintrag und keine Abnahmevorlage.",
+    "created_at": "2026-09-04T08:24:21.861501+00:00"
+  },
+  {
+    "note": "[Hinweis von Rasmus] 06.09.2026, 20:10 CEST: Die sechs vorgegebenen Unternehmensquellen wurden geprüft. Zwar gab es frische Suchtreffer, aber die verpflichtende Prüfung der Fundstellen per scrape_public_url schlug für alle belastbaren, nicht bereits erfassten Treffer fehl (404 bzw. 403). Daher keine neue, quellengeprüfte Meldung für die Pipeline abgelegt.",
+    "created_at": "2026-09-06T18:11:11.148844+00:00"
+  },
+  {
+    "note": "[Hinweis von Heike] Beitrag 'Wochen-Beitrag: Angebotsübergabe im Handwerk' (page_id 3d308a45-ef00-81a9-8543-d5355eb86480) hat Status 'Idee'. Laut Vorgaben werden Bildmotive nur für Beiträge mit Status 'Geplant' erstellt. Deshalb kein Bild zu generieren.",
+    "created_at": "2026-09-07T07:15:21.118419+00:00"
+  },
+  {
+    "note": "[Hinweis von Heike] Der Social-Post 'Wochen-Beitrag 07.09.2026 – Angebotsübergabe im Handwerk' (ID 3d308a45-ef00-8117-bcb7-f5da0199409c) hat den Status 'Idee'. Laut Vorgaben dürfen keine Bildmotive für Beiträge im Status 'Idee' erstellt werden. Bitte den Status auf 'Geplant' setzen, damit das Bild generiert werden kann.",
+    "created_at": "2026-09-07T08:19:46.473537+00:00"
+  },
+  {
+    "note": "[Hinweis von Heike] Für den Wochen-Beitrag Angebotsübergabe im Handwerk (page_id 3d308a45-ef00-81a9-8543-d5355eb86480) ist kein Bild zu erzeugen, da der Eintrag den Status „Idee“ hat. Motive werden nur für Beiträge im Status „Geplant“ erstellt.",
+    "created_at": "2026-09-07T08:25:59.249860+00:00"
+  },
+  {
+    "note": "[Hinweis von Mike] Im Notion-DB 'social_posts' gibt es 34 Einträge mit Status 'Idee' bzw. ohne Bildquelle. Für jeden dieser Beiträge fehlt ein generiertes Bild, das für die Abgabe erforderlich ist. Außerdem fehlen für die beiden Reel‑Einträge (KW 36) passende Bild‑ bzw. Video‑Assets. Ohne Bilddateien können die Beiträge nicht nach den Marken‑ und Qualitätsvorgaben finalisiert werden. Wir benötigen Freigabe, um die Einträge zu aktualisieren (Bild‑URL hinzufügen) oder neue Einträge mit korrekten Bildpfaden anzulegen.",
+    "created_at": "2026-09-07T10:41:27.601897+00:00"
   }
 ]

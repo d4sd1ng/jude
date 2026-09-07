@@ -80,6 +80,21 @@ def test_ergebnisse_kommen_ins_gedaechtnis(tmp_path, monkeypatch):
     assert len(dienst.notes("outreach")) == 1
 
 
+def test_gleiche_notiz_haeuft_sich_nicht_an(tmp_path, monkeypatch):
+    """Vorher haeufte sich dieselbe Notiz bei jedem Lauf erneut an - gemessen
+    07.09.2026: eine seit Tagen ueberholte Notiz ('NOTION_DB_SOCIAL fehlt')
+    stand 27x unter den letzten 40 Eintraegen und verdraengte damit fast
+    alles andere aus dem Systemprompt des naechsten Laufs."""
+    monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
+    dienst = SubAgentService.__new__(SubAgentService)
+    for _ in range(5):
+        dienst.remember("outreach", "Die Notion-Datenbank-ID fehlt in der .env-Datei.")
+    assert len(dienst.notes("outreach")) == 1
+    dienst.remember("outreach", "Ein zweiter, echter Fund: Firma X, Adresse Y.")
+    assert len(dienst.notes("outreach")) == 2
+
+
 # ---------------------------------------------------------------- Abnahme
 
 def test_abnahme_haelt_den_mitarbeiter_nicht_auf():

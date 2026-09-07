@@ -108,6 +108,21 @@ class FeedbackStore:
                              "(z. B. 'Firma X, Adresse Y aus dem Impressum').")
         pfad = self._pfad("sub_agent_memory", name)
         items = self._lesen(pfad)
+        # Keine Dopplung derselben Notiz: ohne diesen Abgleich haeufte sich
+        # eine falsche, seit Tagen ueberholte Erkenntnis endlos an - gemessen
+        # 07.09.2026, "NOTION_DB_SOCIAL fehlt in .env" (real am 03.09., seitdem
+        # behoben) stand 27x unter den letzten 40 Notizen und verdraengte
+        # damit fast alles andere aus dem Systemprompt. lehre_merken/
+        # lob_merken fassen gleichlautende Eintraege laengst zusammen - hier
+        # fehlte dieselbe Regel bisher komplett. Exakter Textvergleich statt
+        # 'kern'-Normalisierung wie dort, damit die bestehende Form
+        # {"note":..., "created_at":...} (von _build_agent gelesen) unveraendert
+        # bleibt - nur die aelteste doppelte Zeile wird ersetzt statt eine neue
+        # anzuhaengen.
+        kern = note.casefold().strip()
+        vorhanden = next((item for item in items if item.get("note", "").casefold().strip() == kern), None)
+        if vorhanden is not None:
+            items.remove(vorhanden)
         items.append({"note": note[:800], "created_at": datetime.now(timezone.utc).isoformat()})
         items = items[-self.MAX_NOTES:]
         self._schreiben(pfad, items)
