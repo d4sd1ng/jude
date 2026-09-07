@@ -94,8 +94,15 @@ class SubAgentService:
         # Schreib-Werkzeug ist ingest_document, mit dem er jede neue Meldung
         # ablegt, bevor er die Rangliste vorlegt.
         "scraper": ("ingest_document",),
-        "content": ("write_copy", "generate_image"),
-        "social": ("write_copy", "generate_image"),
+        # generate_image war hier bis 07.09.2026 mit dabei - widersprach aber
+        # der tatsaechlichen Arbeitsteilung (Heike/designer macht ALLE
+        # Bildmotive, siehe ihre eigene Rolle: "Du machst die Bildmotive").
+        # Jede Ad-hoc-Anweisung "ruf generate_image nicht selbst auf" lief
+        # gegen diese Pflicht - ein Mitarbeiter, der sie befolgte, bekam sein
+        # eigenes Erzeugnis automatisch zur Revision zurueckgeschickt, weil
+        # die Pflicht-Werkzeug-Pruefung generate_image vermisste.
+        "content": ("write_copy",),
+        "social": ("write_copy",),
         "designer": ("notion_update",),
         "leadmanager": ("write_copy",),
     }

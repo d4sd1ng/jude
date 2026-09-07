@@ -20,6 +20,20 @@ logger = logging.getLogger(__name__)
 
 
 class AgentBuilder:
+    #: Wohin eskaliert wird, wenn ein Mitarbeiter mehrfach in Folge nicht
+    #: wirklich fertig wurde - kein Dauerwechsel, nur fuer den naechsten
+    #: Lauf (siehe _eskalation_noetig unten). Staerkeres Modell, teurer,
+    #: aber sorgfaeltiger bei genauem Befolgen von Vorgaben - genau das,
+    #: woran cloud_ollama_gptoss wiederholt scheiterte (07.09.2026: eine
+    #: seit Tagen erledigte Stoerung fuer aktuell gehalten, ein mehrfach
+    #: gezaehltes Motiv trotz expliziter Stueckzahl nicht eingehalten).
+    ESKALATIONS_MODELL = "cloud_claude_sonnet"
+    #: Ab wie vielen NICHT erfolgreich abgeschlossenen Laeufen IN FOLGE
+    #: eskaliert wird. Bewusst niedrig (Tinos Vorgabe: "mehrere Fehler in
+    #: Folge"), nicht bei einem einzelnen - ein 'teilweise' allein ist
+    #: normaler Betrieb, keine Stoerung.
+    ESKALATION_AB_FOLGEFEHLERN = 2
+
     def __init__(self, svc, tools):
         self.svc = svc
         # getattr statt direktem Attributzugriff: dieselbe __new__-Bypass-
@@ -51,6 +65,22 @@ class AgentBuilder:
             return name
         return None
 
+    def _eskalation_noetig(self, agent_name: str) -> bool:
+        """True, wenn die letzten ESKALATION_AB_FOLGEFEHLERN Laeufe dieses
+        Mitarbeiters ALLE nicht 'abgeschlossen' waren - kein neuer Erkennungs-
+        mechanismus noetig, agent_runs.status haelt das schon fest. Sobald
+        irgendwann wieder ein Lauf wirklich abgeschlossen ist, greift diese
+        Pruefung von allein nicht mehr - kein Flag, das jemand zuruecksetzen
+        muesste."""
+        from services.database import connection
+        with connection() as db:
+            rows = db.execute(
+                "SELECT status FROM agent_runs WHERE agent=? AND status!='laufend' "
+                "ORDER BY created_at DESC LIMIT ?",
+                (agent_name, self.ESKALATION_AB_FOLGEFEHLERN)).fetchall()
+        return (len(rows) == self.ESKALATION_AB_FOLGEFEHLERN
+                and all(r["status"] != "abgeschlossen" for r in rows))
+
     def build_agent(self, spec: dict):
         from core.agent import Agent
         from core.tool_registry import ToolRegistry
@@ -58,7 +88,13 @@ class AgentBuilder:
         sub = ToolRegistry()
         sub.set_confirmations(self.registry.confirmations)
         sub.agent_name = spec["name"]
-        modell = self.brauchbares_modell(spec.get("model") or svc.STANDARD_MODELL)
+        eigenes_modell = spec.get("model") or svc.STANDARD_MODELL
+        if self._eskalation_noetig(spec["name"]):
+            logger.info("%s: %s Laeufe in Folge nicht abgeschlossen - eskaliere diesen Lauf auf %s.",
+                       spec["name"], self.ESKALATION_AB_FOLGEFEHLERN, self.ESKALATIONS_MODELL)
+            modell = self.brauchbares_modell(self.ESKALATIONS_MODELL, eigenes_modell)
+        else:
+            modell = self.brauchbares_modell(eigenes_modell)
         # Ein Mitarbeiter, dessen Modell keine Werkzeuge bedienen kann, bekommt
         # auch keine. Sonst entsteht genau der Schaden, der Mike lahmgelegt hat:
         # das Modell schreibt den Aufruf als Fliesstext hin, nichts wird abgelegt
