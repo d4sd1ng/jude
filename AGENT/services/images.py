@@ -83,8 +83,14 @@ class ImageService:
             # Bild (06.09.2026, Tino: "not finished and really cheap") lief
             # ueber genau diesen Aufruf ohne das Feld - unabhaengig von Motiv
             # oder Prompt-Text guenstiger/flacher gerendert als noetig.
+            # "background" fehlte ebenso: styleguide.md verlangt transparenten
+            # Hintergrund, und ohne dieses Feld verliess sich alles auf "auto" -
+            # der Text im Prompt musste "transparenter Hintergrund" erwaehnen
+            # UND das Modell musste das auch befolgen. Explizit gesetzt ist
+            # zuverlaessiger als implizit erhofft (07.09.2026, dieselbe Lektion
+            # wie bei "quality" oben).
             json={"model": self.model, "prompt": gesendeter_prompt, "size": size, "n": 1,
-                  "quality": os.getenv("JUDE_IMAGE_QUALITY", "high")},
+                  "quality": os.getenv("JUDE_IMAGE_QUALITY", "high"), "background": "transparent"},
             timeout=self.timeout,
         )
         response.raise_for_status()
@@ -104,7 +110,16 @@ class ImageService:
         response = requests.post(
             f"{_API_BASE}/edits",
             headers={"Authorization": f"Bearer {self._require_key()}"},
-            data={"model": self.model, "prompt": prompt, "size": size, "n": 1},
+            # Dieselben zwei Felder wie in generate() oben fehlten hier ebenso -
+            # ein bearbeitetes Bild lief bislang weder mit expliziter Qualitaet
+            # noch mit explizitem transparentem Hintergrund, sondern auf beider
+            # API-eigenen Vorgaben. Gemessen 07.09.2026: ein per edit()
+            # erzeugtes Bild kam vollstaendig deckend zurueck (kein
+            # Alpha-Kanal), obwohl der Prompt "transparent" nirgends
+            # ausschloss - implizit erhofft ist hier so wenig zuverlaessig wie
+            # bei generate().
+            data={"model": self.model, "prompt": prompt, "size": size, "n": 1,
+                 "quality": os.getenv("JUDE_IMAGE_QUALITY", "high"), "background": "transparent"},
             files=files,
             timeout=self.timeout,
         )
