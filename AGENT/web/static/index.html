@@ -5,7 +5,7 @@
   <title>Jude</title><link rel="stylesheet" href="/static/vendor/leaflet.css"><link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header><div id="hudWeather" class="hudweather headweather">–</div><div id="clock" class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div><div id="hudTokens" class="hudtokens headtokens">–</div><div class="controls headercontrols"><button id="voiceToggle" title="Sprachsteuerung starten oder stoppen">🎙️ Sprachsteuerung</button><button id="voiceSkip" title="Aktuelles Thema überspringen">⏭️ Thema</button><span id="voiceState" class="badge">Sprachsteuerung aus</span><span id="health" class="badge">verbinden…</span></div></header>
+<header><div id="hudWeather" class="hudweather headweather">–</div><div id="clock" class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div><div id="hudTokens" class="hudtokens headtokens">–</div><div class="controls headercontrols"><button id="voiceToggle" title="Sprachsteuerung starten oder stoppen">🎙️ Sprachsteuerung</button><button id="voiceSkip" title="Aktuelles Thema überspringen">⏭️ Thema</button><span id="voiceState" class="badge">Sprachsteuerung aus</span><span id="health" class="badge">verbinden…</span><button id="serverRestart" class="ghost" title="Server neu starten">🔄 Server</button></div></header>
 <nav id="nav" aria-label="Bereiche"></nav><main>
 <section data-page="Cockpit">
   <div class="cockpit">
@@ -23,6 +23,7 @@
     <div class="cockC">
       <div class="panel hudpanel bandpanel"><h3>System</h3><div class="hudband">
         <div class="gauge" id="gCpu"><div class="ring"></div><b>–</b><small>CPU %</small></div>
+        <div class="gauge" id="gGpu"><div class="ring"></div><b>–</b><small>GPU %</small></div>
         <div class="gauge" id="gRam"><div class="ring"></div><b>–</b><small>RAM %</small></div>
         <div class="gauge" id="gDisk"><div class="ring"></div><b>–</b><small>Disk %</small></div>
         <div class="gauge" id="gNet"><div class="ring"></div><b>–</b><small>Netz</small></div>
@@ -78,7 +79,7 @@
 <section data-page="Schreibtisch">
   <div class="sectionhead"><div><span class="eyebrow">GERADE AKTIV</span><h2>Team</h2></div><button id="loadAktiv">Aktualisieren</button></div>
   <form id="dispatchForm" class="dispatchform"><select id="dispatchAgent"><option value="">Mitarbeiter wählen…</option></select><input id="dispatchTopic" placeholder="Thema"><select id="dispatchFormat">
-    <option value="post">post</option><option value="email">email</option><option value="newsletter">newsletter</option><option value="sequenz">sequenz</option><option value="dokument">dokument</option><option value="recherche">recherche</option><option value="grafik">grafik</option><option value="sonstiges">sonstiges</option>
+    <option value="Standard-Beitrag">Standard-Beitrag</option><option value="Karussell">Karussell</option><option value="Reel">Reel</option><option value="Story">Story</option><option value="Newsletter">Newsletter</option><option value="Onepager">Onepager</option><option value="Infografik">Infografik</option><option value="Recherche">Recherche</option><option value="E-Mail">E-Mail</option><option value="Sonstiges">Sonstiges</option>
   </select><button type="submit">Beauftragen</button></form>
   <div id="aktiv"></div>
   <div class="sectionhead"><div><span class="eyebrow">FERTIGE ARBEIT</span><h2>Abnahme</h2></div><button id="loadReviews">Aktualisieren</button></div>

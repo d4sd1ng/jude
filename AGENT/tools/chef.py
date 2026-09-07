@@ -152,42 +152,6 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         from services.auftraege import Auftragsbuch
         return Auftragsbuch().abbrechen(auftrag_id)
 
-    def team_tagesrunde() -> dict:
-        """Für den Scheduler: JEDEN Mitarbeiter einmal täglich laufen lassen –
-        nicht nur die, die schon einen offenen Auftrag haben. Vorher lief das
-        Team nur, wenn jemand von Hand einen Auftrag anlegte; Wochen ohne
-        neuen Auftrag bedeuteten Wochen ohne jede Aktivität, unbemerkt."""
-        from services.team import SubAgentService
-        dienst = SubAgentService(registry, router)
-        ergebnisse = []
-        for spec in dienst.list():
-            name = spec["name"]
-            try:
-                lauf = dienst.run(name,
-                                  "TAGESRUNDE: Erledige deine Aufgabe für heute gemäß deiner Rolle "
-                                  "(QUELLE/ARBEIT/ZIEL/FERTIG). Offene Aufträge und Revisionen oben im "
-                                  "Systemprompt zuerst. PFLICHT DANACH, auch ohne offenen Auftrag: führe "
-                                  "den in deiner Rolle unter QUELLE genannten Schritt WIRKLICH aus – "
-                                  "notion_query, scrape_public_url, news_search o. ä., je nachdem was "
-                                  "deine Rolle vorschreibt. 'Nichts zu tun' ohne diesen Schritt zählt "
-                                  "nicht, das Themenfeld ist nie leer, nur ungeprüft. Erst wenn der "
-                                  "wirkliche Check nichts Neues ergibt, rufst du remember_finding mit "
-                                  "einer knappen Begründung auf – das zählt dann als erledigter Check.")
-                ergebnisse.append({"agent": name, "status": lauf.get("status")})
-            except Exception as exc:
-                ergebnisse.append({"agent": name, "fehler": str(exc)[:200]})
-        try:
-            from services.notifications import NotificationService
-            zusammen = {}
-            for e in ergebnisse:
-                schluessel = e.get("status") or "fehler"
-                zusammen[schluessel] = zusammen.get(schluessel, 0) + 1
-            text = ", ".join(f"{v}x {k}" for k, v in zusammen.items())
-            NotificationService().create("team", f"Tagesrunde: {len(ergebnisse)} Mitarbeiter gelaufen", text)
-        except Exception:
-            pass
-        return {"gelaufen": len(ergebnisse), "ergebnisse": ergebnisse}
-
     def revisionen_nacharbeiten() -> dict:
         """Jeder Mitarbeiter mit einer offenen Revision (Vorlage oder zurückgewiesene
         Aktion), der gerade nichts tut, bekommt sie direkt zur Bearbeitung – statt
@@ -293,10 +257,6 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                            "Einen Auftrag abbrechen – nur wenn Tino es sagt.",
                            auftrag_abbrechen,
                            _schema({"auftrag_id": {"type": "string"}}, ["auftrag_id"])))
-    registry.register(Tool("team_tagesrunde",
-                           "Jeden Mitarbeiter einmal laufen lassen, nicht nur die mit offenem Auftrag "
-                           "(nutzt der Scheduler täglich; manuell aufrufbar).",
-                           team_tagesrunde, _schema({})))
     registry.register(Tool("rolle_aktualisieren",
                            "Rollen-Prompt eines Mitarbeiters ersetzen (nach Prompt-Diagnose) – "
                            "erfordert Tinos ausdrückliche Bestätigung.",

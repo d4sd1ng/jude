@@ -6,6 +6,14 @@ function show(p){$$('section').forEach(s=>s.classList.toggle('active',s.dataset.
  if(p==='System'){loadSystem();loadMemory();loadRouting();loadAgents();loadDocs();loadNotifications()}};show(pages[0]);
 function fmt(v){const d=new Date(typeof v==='number'?v*1000:v);return isNaN(d)?String(v??''):d.toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function toast(x){let t=$('#toast');t.textContent=x;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500)}
+$('#serverRestart')?.addEventListener('click',async()=>{
+  if(!confirm('Server jetzt neu starten? Laufende Aufträge werden unterbrochen.'))return;
+  const btn=$('#serverRestart');btn.disabled=true;btn.textContent='🔄 startet neu…';
+  try{await fetch('/api/system/restart',{method:'POST'})}catch(e){}
+  const warten=setInterval(async()=>{
+    try{const r=await fetch('/api/status');if(r.ok){clearInterval(warten);location.reload()}}catch(e){}
+  },1500);
+});
 async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let d=await r.json().catch(()=>({error:r.statusText}));if(!r.ok||d.error)throw Error(d.error||r.statusText);return d}
 api('/api/status').then(s=>{$('#health').textContent='lokal bereit';$('#stats').innerHTML=`<div class=stat><b>${s.router.models.length}</b>Modelle</div><div class=stat><b>${s.mail.filter(x=>x.configured).length}/5</b>Mailkonten</div><div class=stat><b>${s.memory.active_memories}</b>Erinnerungen</div><div class=stat><b>${s.ict.scheduler.enabled?'AN':'AUS'}</b>Kill Zones</div>`;$('#mailStatus').innerHTML=s.mail.map(x=>`<div class=source>${esc(x.address)} · ${x.configured?'bereit':'Schlüssel fehlt'}</div>`).join('');
  const sel=$('#chatModel');sel.innerHTML='<option value="">Auto (Standard)</option>'+s.router.models.filter(m=>m.enabled).map(m=>`<option value="${esc(m.name)}">${esc(m.name)}${m.local?' · lokal':''}</option>`).join('');
@@ -144,7 +152,7 @@ async function loadConfirmations(){try{let d=await api('/api/confirmations');$('
 $('#confirmations').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
 window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};
 window.decideReject=async(id)=>{const a=($('#can_'+id)?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.');loadConfirmations()}catch(e){toast(e.message)}};
-const WORKER_FORMATE=['post','email','newsletter','sequenz','dokument','recherche','grafik','sonstiges'];
+const WORKER_FORMATE=['Standard-Beitrag','Karussell','Reel','Story','Newsletter','Onepager','Infografik','Recherche','E-Mail','Sonstiges'];
 let _aktivCache=[];
 function workerStatusLine(a){
   if(a.status==='aktiv'){let sek=Math.max(0,Math.round((Date.now()-new Date(a.seit))/1000));let dauer=sek<60?sek+'s':Math.round(sek/60)+'min';
@@ -172,7 +180,16 @@ $('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){
   const sel=$('#dispatchAgent');if(sel){const prev=sel.value;sel.innerHTML=dispatchSelectHTML();if([...sel.options].some(o=>o.value===prev))sel.value=prev}
 }catch(e){toast(e.message)}}
 window.stopWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/stop`,{method:'POST'});toast(`${name}: pausiert – nimmt keinen neuen Auftrag mehr an, bis wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
-window.startWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/start`,{method:'POST'});toast(`${name}: wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
+window.startWorker=async(name,btn)=>{btn.disabled=true;try{
+  await api(`/api/agents/${encodeURIComponent(name)}/start`,{method:'POST'});
+  toast(`${name}: gestartet – arbeitet jetzt.`);
+  api(`/api/agents/${encodeURIComponent(name)}/run`,{method:'POST',body:JSON.stringify({task:
+    "Erledige deine Aufgabe für heute gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG). Offene "+
+    "Aufträge und Revisionen zuerst. Führe danach den in deiner Rolle unter QUELLE genannten "+
+    "Schritt wirklich aus, auch ohne offenen Auftrag – 'nichts zu tun' zählt nur nach echter Prüfung."
+  })}).then(()=>loadAktiv()).catch(e=>toast(`${name}: ${e.message}`));
+  loadAktiv();
+}catch(e){toast(e.message);btn.disabled=false}};
 $('#dispatchForm')&&($('#dispatchForm').onsubmit=async e=>{e.preventDefault();
   const name=$('#dispatchAgent').value;const topic=$('#dispatchTopic').value.trim();const format=$('#dispatchFormat').value;
   if(!name)return toast('Mitarbeiter wählen');
@@ -305,6 +322,7 @@ async function pollSystem(){try{const s=await api('/api/system');
   if(t.gpu!=null)setGauge('#gGpuTemp',t.gpu,110,`${t.gpu.toFixed(0)}`);
   if(t.nvme!=null)setGauge('#gNvme',t.nvme,90,`${t.nvme.toFixed(0)}`);
   setGauge('#gCpu',s.cpu_percent,100,`${s.cpu_percent.toFixed(0)}`);
+  if(s.gpu_percent!=null)setGauge('#gGpu',s.gpu_percent,100,`${s.gpu_percent.toFixed(0)}`);
 }catch(e){}finally{setTimeout(pollSystem,2500)}}
 async function pollWeather(){try{const w=await api('/api/weather');
   $('#hudWeather').innerHTML=`<b>${w.temperature!=null?w.temperature.toFixed(1):'–'}°C</b> <span class=cond>${esc(w.condition)}</span><br><span class=small>gefühlt ${w.feels_like??'–'}° · ${w.min??'–'}°/${w.max??'–'}° · Wind ${w.wind_kmh??'–'} km/h · ${esc(w.location.split(',')[1]||'')}</span>`
