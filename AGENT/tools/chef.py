@@ -245,6 +245,62 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         return {"gestartet": gestartet, "schon_aktiv_uebersprungen": uebersprungen,
                 "wartet_auf_naechsten_tick": wartet}
 
+    def auftraege_nacharbeiten() -> dict:
+        """Jeder Mitarbeiter mit einem echten offenen Auftrag (offen/in_arbeit),
+        der gerade nichts tut, bekommt ihn direkt zur Bearbeitung – sonst
+        bleibt ein Auftrag liegen, bis jemand ihn von Hand anstoesst (beobachtet
+        07.09.2026: alle alten Tagesjobs liefen mit erfundenem Pauschaltext und
+        wurden deaktiviert; seitdem arbeitete niemand mehr automatisch am
+        Auftragsbuch - "still whole bunch of jobs nobody is working omn").
+        Dispatcht mit demselben konkreten Auftragstext wie auftrag_erteilen
+        selbst - kein erfundener Pauschalsatz. redakteur bleibt aussen vor
+        (legt nie selbst vor, siehe auftrag_erteilen's eigene Sperre)."""
+        import threading
+        from services.auftraege import Auftragsbuch
+        from services.team import SubAgentService
+        from services.database import connection
+        with connection() as db:
+            laufend = {r["agent"] for r in db.execute(
+                "SELECT DISTINCT agent FROM agent_runs WHERE status='laufend'")}
+        buch = Auftragsbuch()
+        dienst = SubAgentService(registry, router)
+        agenten = dienst.list()
+        bekannt = {a["name"]: a for a in agenten}
+        # Gleiche Obergrenze und Begruendung wie revisionen_nacharbeiten oben.
+        MAX_GLEICHZEITIG = 2
+
+        def _starte(agent_name: str, auftrag: dict) -> None:
+            try:
+                dienst.run(agent_name,
+                          f"AUFTRAG [{auftrag['id']}]: {auftrag['titel']}\n{auftrag['beschreibung']}\n"
+                          f"Lege das Ergebnis mit submit_for_review vor und gib "
+                          f"auftrag_id='{auftrag['id']}' an.")
+            except Exception as exc:
+                try:
+                    from services.notifications import NotificationService
+                    NotificationService().create(
+                        "scheduled_error", f"Auftragsnacharbeit {agent_name} fehlgeschlagen", str(exc)[:300])
+                except Exception:
+                    pass
+
+        gestartet, uebersprungen, wartet = [], [], []
+        for agent_name, spec in bekannt.items():
+            if agent_name == SubAgentService.REDAKTEUR or spec.get("pausiert"):
+                continue
+            offen = buch.offene_fuer(agent_name)
+            if not offen:
+                continue
+            if agent_name in laufend:
+                uebersprungen.append(agent_name)
+                continue
+            if len(gestartet) >= MAX_GLEICHZEITIG:
+                wartet.append(agent_name)
+                continue
+            threading.Thread(target=_starte, args=(agent_name, offen[0]), daemon=True).start()
+            gestartet.append({"agent": agent_name, "auftrag": offen[0]["id"], "titel": offen[0]["titel"]})
+        return {"gestartet": gestartet, "schon_aktiv_uebersprungen": uebersprungen,
+                "wartet_auf_naechsten_tick": wartet}
+
     def rolle_aktualisieren(agent: str, neuer_text: str) -> dict:
         """Rollen-Prompt eines Mitarbeiters ersetzen – nur nach Tinos Bestätigung."""
         from services.team import SubAgentService
@@ -301,3 +357,9 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                            "der gerade nichts tut, direkt daran arbeiten lassen – nur diese, nicht das "
                            "ganze Team (nutzt der Scheduler periodisch; manuell aufrufbar).",
                            revisionen_nacharbeiten, _schema({})))
+    registry.register(Tool("auftraege_nacharbeiten",
+                           "Jeden Mitarbeiter mit einem echten offenen Auftrag im Auftragsbuch (offen/"
+                           "in_arbeit), der gerade nichts tut, direkt daran arbeiten lassen – mit dem "
+                           "echten Auftragstext, kein erfundener Pauschalsatz (nutzt der Scheduler "
+                           "periodisch; manuell aufrufbar).",
+                           auftraege_nacharbeiten, _schema({})))
