@@ -198,11 +198,24 @@ $('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){
 window.stopWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/stop`,{method:'POST'});toast(`${name}: pausiert – nimmt keinen neuen Auftrag mehr an, bis wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
 window.startWorker=async(name,btn)=>{btn.disabled=true;try{
   await api(`/api/agents/${encodeURIComponent(name)}/start`,{method:'POST'});
-  toast(`${name}: gestartet – arbeitet jetzt.`);
+  // Frueher: ein selbst ausgedachter Pauschaltext ("erledige deine Aufgabe
+  // gemaess QUELLE/ARBEIT/ZIEL..."), der weder Tino noch dem Mitarbeiter
+  // sagte, WAS konkret zu tun ist - der Mitarbeiter musste sich die Arbeit
+  // selbst erfinden statt einen echten, von Renate geprueften Auftrag zu
+  // bekommen. Start dispatcht jetzt gegen den aeltesten echten offenen
+  // Auftrag dieses Mitarbeiters (gleicher Aufruf wie auftrag_erteilen ihn
+  // selbst verwendet); gibt es keinen, wird nichts erfunden - der
+  // Mitarbeiter ist bereit, wartet aber auf einen Auftrag von Renate.
+  const offen=(await api(`/api/auftraege?status=alle&agent=${encodeURIComponent(name)}`))
+    .filter(a=>['offen','in_arbeit'].includes(a.status));
+  if(!offen.length){
+    toast(`${name}: gestartet – hat aktuell keinen offenen Auftrag, wartet auf Renate.`);
+    btn.disabled=false;loadAktiv();return;
+  }
+  const a=offen[0];
+  toast(`${name}: gestartet – arbeitet an "${a.titel}".`);
   api(`/api/agents/${encodeURIComponent(name)}/run`,{method:'POST',body:JSON.stringify({task:
-    "Erledige deine Aufgabe für heute gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG). Offene "+
-    "Aufträge und Revisionen zuerst. Führe danach den in deiner Rolle unter QUELLE genannten "+
-    "Schritt wirklich aus, auch ohne offenen Auftrag – 'nichts zu tun' zählt nur nach echter Prüfung."
+    `AUFTRAG [${a.id}]: ${a.titel}\n${a.beschreibung}\nLege das Ergebnis mit submit_for_review vor und gib auftrag_id='${a.id}' an.`
   })}).then(()=>loadAktiv()).catch(e=>toast(`${name}: ${e.message}`));
   loadAktiv();
 }catch(e){toast(e.message);btn.disabled=false}};
