@@ -269,11 +269,12 @@ function revLabel(v){
   if(v.status==='abgebrochen')return '✕ abgebrochen';
   return v.status;
 }
-$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews?status=alle'+(reviewArt?'&art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.filter(v=>v.entschieden_von!=='tino').map(v=>{
+$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews?status=aktiv'+(reviewArt?'&art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.filter(v=>v.entschieden_von!=='tino').map(v=>{
   const bild=(v.quelle||'').split(',').map(s=>s.trim()).find(s=>/\.(png|jpe?g|webp|gif)$/i.test(s));
   const statuslabel=revLabel(v);
-  return `<article class="card agentcard" data-review-id="${esc(v.id)}">${bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}<span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''} · ${esc(statuslabel)}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`
-}).join('')||`<p>${reviewArt?'Nichts in dieser Art.':'Nichts vorhanden.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
+  const aktionen=`<button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button>`;
+  return `<article class="card agentcard" data-review-id="${esc(v.id)}">${bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}<span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''} · ${esc(statuslabel)}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun>${aktionen}</div></article>`
+}).join('')||`<p>${reviewArt?'Nichts in dieser Art.':'Nichts offen.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
 $('#reviews').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
 /* Ampeln zeigen nur den aktuellen Zustand: grün wenn etwas anliegt, sonst rot. */
 const REV_FEST=['grafik','post','email','newsletter'];

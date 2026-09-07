@@ -172,6 +172,15 @@ class ReviewQueue:
 
     def liste(self, status: str = "offen", limit: int = 50, art: str | None = None) -> list[dict]:
         art = (art or "").strip().lower() or None
+        # 'aktiv' = alles, was noch eine Entscheidung braucht (pruefung/offen/
+        # revision) - NICHT abgenommen/abgebrochen. Ohne diese eigene Stufe
+        # holte 'alle' bei jedem 8s-Refresh saemtliche jemals abgenommenen
+        # Vorlagen mit (43 von 55 gemessen 07.09.2026) - reine Ballastfracht,
+        # die Tino nie wieder etwas angeht, aber jedes Mal neu gerendert wurde
+        # ("cleaner? yeah right...").
+        status_filter = "status IN ('pruefung','offen','revision')" if status == "aktiv" else "(?='alle' OR status=?)"
+        params = (art, art, max(1, min(int(limit), 200))) if status == "aktiv" else \
+            (status, status, art, art, max(1, min(int(limit), 200)))
         with connection() as db:
             # Auszug statt Volltext: bei 50 Vorlagen à 12.000 Zeichen waere die
             # Liste sonst ein halbes Megabyte. Den Rest holt die Oberflaeche
@@ -180,9 +189,9 @@ class ReviewQueue:
                 "SELECT id,created_at,agent,person,art,titel,quelle,status,anmerkung,runde,score,"
                 "entschieden_von,"
                 "substr(inhalt,1,700) AS auszug, length(inhalt) AS laenge "
-                "FROM reviews WHERE (?='alle' OR status=?) AND (? IS NULL OR art=?) "
+                f"FROM reviews WHERE {status_filter} AND (? IS NULL OR art=?) "
                 "ORDER BY created_at DESC LIMIT ?",
-                (status, status, art, art, max(1, min(int(limit), 200))))]
+                params)]
 
     def zeigen(self, review_id: str) -> dict:
         with connection() as db:

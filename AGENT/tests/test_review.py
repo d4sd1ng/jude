@@ -52,3 +52,18 @@ def test_liste_gibt_entschieden_von_mit():
     queue.revision(rid, "Zu allgemein", akteur="tino")
     treffer = [v for v in queue.liste(status="alle", limit=200) if v["id"] == rid]
     assert treffer and treffer[0]["entschieden_von"] == "tino"
+
+
+def test_status_aktiv_laesst_abgeschlossenes_weg():
+    """'aktiv' ist fuer die Bestaetigungsliste gedacht: pruefung/offen/revision,
+    NICHT abgenommen/abgebrochen. Ohne diese Stufe holte 'alle' bei jedem
+    8s-Refresh saemtliche jemals abgenommenen Vorlagen mit (43 von 55 Zeilen
+    gemessen 07.09.2026) - reine Ballastfracht ("cleaner? yeah right...")."""
+    queue = ReviewQueue()
+    offen_id = _vorlage(queue)
+    abgenommen_id = _vorlage(queue)
+    queue.abnehmen(abgenommen_id, akteur="tino")
+
+    aktiv = {v["id"] for v in queue.liste(status="aktiv", limit=200)}
+    assert offen_id in aktiv
+    assert abgenommen_id not in aktiv
