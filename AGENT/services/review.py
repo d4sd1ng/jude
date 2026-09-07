@@ -114,10 +114,18 @@ class ReviewQueue:
         return self._entscheiden(review_id, "offen", anmerkung, akteur)
 
     def offene_revisionen(self, agent: str) -> list[dict]:
-        """Was dieser Mitarbeiter überarbeiten soll — kommt in seinen Prompt."""
+        """Was dieser Mitarbeiter überarbeiten soll — kommt in seinen Prompt.
+
+        ``verlauf`` (die bisherige Beanstandungs-Historie) fehlte hier bis
+        07.09.2026 komplett - bei einem Stueck in Runde 11 sah der Mitarbeiter
+        beim naechsten Lauf nur die eine Zeile der aktuellen Anmerkung ('zu
+        wenig'), nichts von den zehn Runden davor. Ohne die Historie liess
+        sich nicht erkennen, ob derselbe Einwand wiederholt uebersehen wird
+        oder ob jede Runde etwas anderes bemaengelt."""
         with connection() as db:
             return [dict(row) for row in db.execute(
-                "SELECT id,art,titel,anmerkung,runde,substr(inhalt,1,3000) AS inhalt FROM reviews "
+                "SELECT id,art,titel,anmerkung,runde,verlauf,"
+                "substr(inhalt,1,3000) AS inhalt FROM reviews "
                 "WHERE agent=? AND status='revision' ORDER BY created_at", (agent,))]
 
     def offene_gleiche(self, agent: str, art: str, titel: str) -> dict | None:

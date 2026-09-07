@@ -217,6 +217,16 @@ class AgentBuilder:
             zeilen = []
             for r in revisionen:
                 zeile = f"- [{r['id']}] {r['titel']} (Runde {r['runde']}): {r['anmerkung']}"
+                # Ohne die bisherige Historie sah der Mitarbeiter bei einem
+                # Stueck in hoher Runde immer nur die eine aktuelle Anmerkung,
+                # nie das Muster ueber die vorherigen Runden - er konnte nicht
+                # erkennen, ob er denselben Einwand wiederholt uebersieht
+                # (gemessen 07.09.2026: Runde 11, verlauf zeigte dasselbe wie
+                # Runde 1 nie ausgewertet). Ab Runde 3 wird das explizit dazu-
+                # gegeben, nicht schon ab Runde 1 - dort ist die aktuelle
+                # Anmerkung allein noch genug Kontext.
+                if r["runde"] >= 3 and r.get("verlauf"):
+                    zeile += f"\n  BISHERIGE RUNDEN (Muster erkennen, nicht denselben Fehler wiederholen):\n  {r['verlauf'].strip()}"
                 if r.get("inhalt"):
                     indented = r['inhalt'][:1500].replace('\n', '\n  ')
                     zeile += f"\n  BISHERIGER INHALT (gezielt verbessern, nicht neu erfinden):\n  {indented}"

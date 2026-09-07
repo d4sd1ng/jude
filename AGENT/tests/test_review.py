@@ -67,3 +67,19 @@ def test_status_aktiv_laesst_abgeschlossenes_weg():
     aktiv = {v["id"] for v in queue.liste(status="aktiv", limit=200)}
     assert offen_id in aktiv
     assert abgenommen_id not in aktiv
+
+
+def test_offene_revisionen_gibt_verlauf_mit():
+    """Beobachtet 07.09.2026: ein Stueck in Runde 11 zeigte dem Mitarbeiter
+    beim naechsten Lauf nur die aktuelle Anmerkung ('zu wenig'), nie die
+    Historie der zehn Runden davor - offene_revisionen() (das den Prompt
+    speist) selektierte 'verlauf' gar nicht erst."""
+    queue = ReviewQueue()
+    rid = _vorlage(queue)
+    queue.revision(rid, "Erster Kritikpunkt", akteur="tino")
+    queue.erledigt(rid, inhalt="x" * 320)
+    queue.revision(rid, "Zweiter Kritikpunkt", akteur="tino")
+
+    treffer = [r for r in queue.offene_revisionen("content") if r["id"] == rid]
+    assert treffer
+    assert "Erster Kritikpunkt" in treffer[0]["verlauf"]
