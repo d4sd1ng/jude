@@ -39,7 +39,7 @@ def review_decide(review_id: str, entscheidung: str, payload: dict | None = None
         raise HTTPException(400, "Für eine Revision wird eine Anmerkung benötigt")
     try:
         if entscheidung == "abnehmen":
-            ergebnis = reviews.abnehmen(review_id, anmerkung)
+            ergebnis = reviews.abnehmen(review_id, anmerkung, akteur="tino")
             # Bisher hielt das Team nur fest, was schiefging – nie, was gut war.
             # Tino soll dafuer nichts extra tippen muessen: eine Abnahme ohne
             # jede Revision ist selbst schon das Signal – automatisch erkannt
@@ -55,7 +55,7 @@ def review_decide(review_id: str, entscheidung: str, payload: dict | None = None
                 with suppress(Exception):
                     team.lob_merken(ergebnis["agent"], anmerkung, quelle="Tino")
             return ergebnis
-        ergebnis = reviews.revision(review_id, anmerkung)
+        ergebnis = reviews.revision(review_id, anmerkung, akteur="tino")
     except KeyError:
         raise HTTPException(404, "Unbekannte Vorlage")
     # Tinos Anmerkung wiegt schwerer als jede andere: sie wird zur Lehre, damit

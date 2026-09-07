@@ -255,16 +255,23 @@ $$('.toggle.rev').forEach(b=>b.onclick=()=>revToggle(b.dataset.art));
 // auch was Renate noch nicht entschieden hat (pruefung) oder zurueckgewiesen
 // hat (revision), nicht nur was sie freigegeben hat (offen). Ihre Entscheidung
 // filtert hier bewusst nichts weg.
-const REV_STATUS_LABEL={pruefung:'⏳ bei Renate',offen:'✅ von Renate freigegeben',revision:'↩ von Renate zurückgewiesen',abgenommen:'✔ abgenommen',abgebrochen:'✕ abgebrochen'};
-// Sobald TINO SELBST hier eine Entscheidung trifft, soll der Eintrag aus
-// seiner Ansicht verschwinden - unabhaengig davon, was Renates Urteil war
-// (die bleibt sichtbar fuer alles, was sie noch nicht entschieden oder
-// zurueckgewiesen hat). Serverseitig aendert Tinos "revision" denselben
-// Status wie Renates, darum reicht ein rein clientseitiger Ausschluss.
-const _tinoEntschieden=new Set();
-$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews?status=alle'+(reviewArt?'&art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.filter(v=>!_tinoEntschieden.has(v.id)).map(v=>{
+// entschieden_von unterscheidet, WER status='revision'/'offen' gesetzt hat -
+// Renates Zurueckweisung sieht in status/anmerkung sonst identisch aus wie
+// Tinos eigene. Vorher gab es dafuer nur ein rein clientseitiges Set, das bei
+// jedem Reload wieder leer war ("every bullshit is again in my queue",
+// 07.09.2026) - jetzt steht es in der DB (services/review.py) und ueberlebt
+// einen Reload.
+function revLabel(v){
+  if(v.status==='revision')return v.entschieden_von==='tino'?'↩ von dir zurückgewiesen':'↩ von Renate zurückgewiesen';
+  if(v.status==='offen')return '✅ von Renate freigegeben';
+  if(v.status==='pruefung')return '⏳ bei Renate';
+  if(v.status==='abgenommen')return '✔ abgenommen';
+  if(v.status==='abgebrochen')return '✕ abgebrochen';
+  return v.status;
+}
+$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews?status=alle'+(reviewArt?'&art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.filter(v=>v.entschieden_von!=='tino').map(v=>{
   const bild=(v.quelle||'').split(',').map(s=>s.trim()).find(s=>/\.(png|jpe?g|webp|gif)$/i.test(s));
-  const statuslabel=REV_STATUS_LABEL[v.status]||v.status;
+  const statuslabel=revLabel(v);
   return `<article class="card agentcard" data-review-id="${esc(v.id)}">${bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}<span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''} · ${esc(statuslabel)}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`
 }).join('')||`<p>${reviewArt?'Nichts in dieser Art.':'Nichts vorhanden.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
 $('#reviews').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
@@ -334,7 +341,7 @@ window.openReview=async id=>{try{const v=await api('/api/reviews/'+id);
  $('#overlayActions').innerHTML=`<input id="ovAn" placeholder="Anmerkung – nötig für eine Revision"><button onclick="overlayDecide('${esc(v.id)}','abnehmen')">Abnehmen</button><button class=ghost onclick="overlayDecide('${esc(v.id)}','revision')">Zurück damit</button>`;
  zeig(0);overlayShow()}catch(e){toast(e.message)}};
 window.overlayDecide=async(id,was)=>{const a=($('#ovAn')?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung.');
- try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');_tinoEntschieden.add(id);overlayHide();loadReviews()}catch(e){toast(e.message)}};
+ try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');overlayHide();loadReviews()}catch(e){toast(e.message)}};
 /* ---- Aufträge ---- */
 $('#loadAuftraege').onclick=()=>loadAuftraege();
 window.toggleAuftrag=(idx,btn)=>{const row=document.getElementById('au-desc-'+idx);row.hidden=!row.hidden;btn.textContent=row.hidden?'Details':'Weniger'};
@@ -344,7 +351,7 @@ async function loadAuftraege(){try{const d=await api('/api/auftraege');const off
     <tr class=au-desc id="au-desc-${i}" hidden><td colspan=5>${esc(a.beschreibung||'Keine Beschreibung.')}</td></tr>`).join('');
   $('#auftraege').innerHTML=`<table class=auftragtable><thead><tr><th>Mitarbeiter</th><th>Status</th><th>Fällig</th><th>Titel</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }catch(e){toast(e.message)}}
-window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');_tinoEntschieden.add(id);loadReviews()}catch(e){toast(e.message)}};
+window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');loadReviews()}catch(e){toast(e.message)}};
 function tickReview(z){z=z||{};let n=z.offen||0,r=z.revision||0,p=z.pruefung||0,e=$('#tickReview');
  if(e)e.textContent=[n?`${n} offen`:'',p?`${p} bei Jude`:'',r?`${r} in Revision`:''].filter(Boolean).join(' · ')||'nichts offen'}
 async function pollReviews(){try{let d=await api('/api/reviews?limit=1');tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);

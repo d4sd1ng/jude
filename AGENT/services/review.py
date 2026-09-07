@@ -63,6 +63,14 @@ class ReviewQueue:
                 db.execute("ALTER TABLE reviews ADD COLUMN verlauf TEXT NOT NULL DEFAULT ''")
             if "score" not in spalten:
                 db.execute("ALTER TABLE reviews ADD COLUMN score INTEGER")
+            if "entschieden_von" not in spalten:
+                # Ohne dieses Feld ist 'revision' nicht von 'wer hat das
+                # entschieden' zu unterscheiden: Renates Zurueckweisung und
+                # Tinos eigene sehen in status/anmerkung identisch aus. Die
+                # Oberflaeche behalf sich bisher mit einem rein clientseitigen,
+                # nicht dauerhaften Ausschluss (verschwand bei jedem Reload
+                # wieder - 07.09.2026, "every bullshit is again in my queue").
+                db.execute("ALTER TABLE reviews ADD COLUMN entschieden_von TEXT NOT NULL DEFAULT ''")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_agent ON reviews(agent)")
 
@@ -101,9 +109,9 @@ class ReviewQueue:
                 "ORDER BY created_at ASC LIMIT ?",
                 (limit,))]
 
-    def freigeben(self, review_id: str, anmerkung: str = "") -> dict:
+    def freigeben(self, review_id: str, anmerkung: str = "", akteur: str = "") -> dict:
         """Jude reicht nach oben durch – ab jetzt sichtbar für Tino."""
-        return self._entscheiden(review_id, "offen", anmerkung)
+        return self._entscheiden(review_id, "offen", anmerkung, akteur)
 
     def offene_revisionen(self, agent: str) -> list[dict]:
         """Was dieser Mitarbeiter überarbeiten soll — kommt in seinen Prompt."""
@@ -170,6 +178,7 @@ class ReviewQueue:
             # ueber ``zeigen`` nach, wenn Tino ihn aufklappt.
             return [dict(row) for row in db.execute(
                 "SELECT id,created_at,agent,person,art,titel,quelle,status,anmerkung,runde,score,"
+                "entschieden_von,"
                 "substr(inhalt,1,700) AS auszug, length(inhalt) AS laenge "
                 "FROM reviews WHERE (?='alle' OR status=?) AND (? IS NULL OR art=?) "
                 "ORDER BY created_at DESC LIMIT ?",
@@ -182,8 +191,8 @@ class ReviewQueue:
             raise KeyError("Unbekannte Vorlage.")
         return dict(row)
 
-    def abnehmen(self, review_id: str, anmerkung: str = "") -> dict:
-        result = self._entscheiden(review_id, "abgenommen", anmerkung)
+    def abnehmen(self, review_id: str, anmerkung: str = "", akteur: str = "") -> dict:
+        result = self._entscheiden(review_id, "abgenommen", anmerkung, akteur)
         try:
             from services.auftraege import Auftragsbuch
             Auftragsbuch().sync_von_review(review_id, "abgenommen")
@@ -191,12 +200,12 @@ class ReviewQueue:
             pass
         return result
 
-    def revision(self, review_id: str, anmerkung: str) -> dict:
+    def revision(self, review_id: str, anmerkung: str, akteur: str = "") -> dict:
         """Zurück an den Mitarbeiter. Die Anmerkung ist Pflicht — ohne sie weiß
         er nicht, was zu ändern ist, und liefert dasselbe noch einmal."""
         if not str(anmerkung).strip():
             raise ValueError("Für eine Revision wird eine Anmerkung benötigt.")
-        result = self._entscheiden(review_id, "revision", anmerkung)
+        result = self._entscheiden(review_id, "revision", anmerkung, akteur)
         try:
             from services.auftraege import Auftragsbuch
             Auftragsbuch().sync_von_review(review_id, "revision")
@@ -236,21 +245,22 @@ class ReviewQueue:
                 "ELSE verlauf END, "
                 "status='pruefung', runde=runde+1, anmerkung='', "
                 "inhalt=COALESCE(?,inhalt), titel=COALESCE(?,titel), "
-                "quelle=COALESCE(?,quelle), entschieden_am=NULL "
+                "quelle=COALESCE(?,quelle), entschieden_am=NULL, entschieden_von='' "
                 "WHERE id=?",
                 (str(inhalt)[:12000] if inhalt else None,
                  str(titel)[:300] if titel else None,
                  str(quelle)[:500] if quelle else None, review_id))
         return self.zeigen(review_id)
 
-    def _entscheiden(self, review_id: str, status: str, anmerkung: str) -> dict:
+    def _entscheiden(self, review_id: str, status: str, anmerkung: str, akteur: str = "") -> dict:
         with connection() as db:
             treffer = db.execute("SELECT id FROM reviews WHERE id=?", (review_id,)).fetchone()
             if treffer is None:
                 raise KeyError("Unbekannte Vorlage.")
-            db.execute("UPDATE reviews SET status=?, anmerkung=?, entschieden_am=? WHERE id=?",
+            db.execute("UPDATE reviews SET status=?, anmerkung=?, entschieden_am=?, "
+                       "entschieden_von=? WHERE id=?",
                        (status, str(anmerkung)[:2000], datetime.now(timezone.utc).isoformat(),
-                        review_id))
+                        str(akteur).strip(), review_id))
         return self.zeigen(review_id)
 
     def score_setzen(self, review_id: str, score: int) -> None:

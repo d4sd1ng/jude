@@ -37,6 +37,18 @@ def austausch_datei(pfad: str):
     wurzeln = (AUSTAUSCH_DIR.resolve(), IMAGES_DIR.resolve())
     roh = pfad.strip()
     ziel = (Path(roh) if roh.startswith("/") else AUSTAUSCH_DIR.resolve().parent / roh).resolve()
+    if (not any(w in ziel.parents for w in wurzeln) or not ziel.is_file()) and roh.startswith("/"):
+        # In reviews.quelle/auftraege.beschreibung stehen teils absolute Pfade
+        # aus einem frueheren Projekt-Wurzelverzeichnis (vor dem Umzug nach
+        # /mnt/ai-data/ - z.B. '/media/d4sd1ng/AI-Data/Projects/Jude/images/...').
+        # Diese Zeilen wurden nicht migriert, darum 404/403 trotz real
+        # vorhandener Datei (gemessen 07.09.2026: Grafik-Vorschau blieb leer,
+        # obwohl dieselbe Datei unter dem aktuellen Pfad existiert). Fallback:
+        # Basisname unter der aktuellen Wurzel suchen, statt den alten
+        # absoluten Pfad woertlich zu nehmen.
+        kandidat = IMAGES_DIR.resolve() / Path(roh).name
+        if kandidat.is_file():
+            ziel = kandidat
     if not any(w in ziel.parents for w in wurzeln) or not ziel.is_file():
         raise HTTPException(403, "Nur Dateien im Austausch-Ordner oder den erzeugten Bildern.")
     return FileResponse(ziel)

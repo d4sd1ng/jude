@@ -315,7 +315,7 @@ class ToolFactory:
             queue = ReviewQueue()
             text = f"{wer}: {str(begruendung).strip()}"
             if urteil == "freigabe":
-                ergebnis = queue.freigeben(review_id, text)
+                ergebnis = queue.freigeben(review_id, text, akteur=spec["name"])
                 try:
                     from services.notifications import NotificationService
                     voll = queue.zeigen(review_id)
@@ -325,7 +325,7 @@ class ToolFactory:
                 except Exception:
                     pass
             else:
-                ergebnis = queue.revision(review_id, text)
+                ergebnis = queue.revision(review_id, text, akteur=spec["name"])
                 try:
                     from services.notifications import NotificationService
                     voll = queue.zeigen(review_id)
