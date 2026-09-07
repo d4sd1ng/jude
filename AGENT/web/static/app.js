@@ -218,7 +218,16 @@ setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active'
 // Bestaetigungen/Abnahme aktualisierten sich vorher NUR beim Tab-Wechsel oder
 // Knopfdruck - eine neue Freigabe-Anfrage blieb unsichtbar, bis von Hand neu
 // geladen wurde. Gleicher 8s-Rhythmus wie das Team oben.
-setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active')){loadConfirmations();loadReviews()}},8000);
+// Das Neuladen ersetzt die Karten komplett (innerHTML) - lief das mitten im
+// Tippen einer Anmerkung, verschwand der Text, weil das Eingabefeld neu
+// gebaut wurde. Darum: ueberspringen, solange der Fokus in einem Anmerkungs-
+// oder Ablehnungsfeld innerhalb Bestaetigungen/Abnahme/Overlay liegt.
+function _tippendGerade(){
+  const el=document.activeElement;
+  if(!el||!['INPUT','TEXTAREA'].includes(el.tagName))return false;
+  return !!(el.closest('#confirmations')||el.closest('#reviews')||el.id==='ovAn');
+}
+setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active')&&!_tippendGerade()){loadConfirmations();loadReviews()}},8000);
 $('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.slice(0,5).map(n=>`<div class=row><span>${esc(n.message||'')}</span><span><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></span></div>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
 window.markNotificationRead=async id=>{try{await api(`/api/notifications/${id}/read`,{method:'POST'});loadNotifications()}catch(e){toast(e.message)}};
 $('#readAllNotifications')?.addEventListener('click',async()=>{try{let r=await api('/api/notifications/read_all',{method:'POST'});toast(`${r.markiert} als gelesen markiert.`);loadNotifications()}catch(e){toast(e.message)}});
