@@ -29,18 +29,36 @@ def _service(tmp_path):
     return svc
 
 
-def test_ohne_auftrag_id_wird_der_aelteste_offene_auftrag_verknuepft(tmp_path):
+def test_ohne_auftrag_id_wird_der_einzige_offene_auftrag_verknuepft(tmp_path):
     svc = _service(tmp_path)
     spec = svc.get("tester")
     buch = Auftragsbuch()
-    aeltester = buch.erteilen("tester", "Erster Auftrag")
-    juengerer = buch.erteilen("tester", "Zweiter Auftrag")
+    einziger = buch.erteilen("tester", "Einziger Auftrag")
 
     tool = ToolFactory(svc).review_tool(spec)
     tool.func(art="dokument", titel="Testbeitrag", inhalt="x" * 320)
 
-    assert buch.holen(aeltester["id"])["status"] == "vorgelegt"
-    assert buch.holen(juengerer["id"])["status"] == "offen"
+    assert buch.holen(einziger["id"])["status"] == "vorgelegt"
+
+
+def test_ohne_auftrag_id_wird_bei_mehreren_kandidaten_nicht_geraten(tmp_path):
+    """Beobachtet 07.09.2026: Mike hatte 27 gleichzeitig offene Auftraege -
+    'der aelteste' war fast immer der FALSCHE und wurde durch einen voellig
+    unabhaengigen neuen Post ueberschrieben (der seit Tagen laufende
+    'Angebotsuebergabe im Handwerk'-Beitrag ging so verloren). Bei mehr als
+    einem Kandidaten wird darum nicht mehr geraten - beide bleiben
+    unangetastet, bis eine Vorlage sie eindeutig per auftrag_id benennt."""
+    svc = _service(tmp_path)
+    spec = svc.get("tester")
+    buch = Auftragsbuch()
+    erster = buch.erteilen("tester", "Erster Auftrag")
+    zweiter = buch.erteilen("tester", "Zweiter Auftrag")
+
+    tool = ToolFactory(svc).review_tool(spec)
+    tool.func(art="dokument", titel="Testbeitrag", inhalt="x" * 320)
+
+    assert buch.holen(erster["id"])["status"] == "offen"
+    assert buch.holen(zweiter["id"])["status"] == "offen"
 
 
 def test_erfundene_auftrag_id_faellt_auf_eigenen_offenen_auftrag_zurueck(tmp_path):

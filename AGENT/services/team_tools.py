@@ -227,16 +227,26 @@ class ToolFactory:
             # Welcher eigene offene Auftrag das hier erfuellt - VOR der Revisions-
             # Zuordnung ermittelt, weil sein review_id (falls schon einmal
             # vorgelegt) der praeziseste verfuegbare Anker ist: eine konkrete
-            # Bestellung, kein blosses "irgendwas Offenes von mir". Fehlt/passt
-            # auftrag_id nicht, wird wie beim vergessenen ueberarbeitet unten
-            # verfahren - der aelteste eigene offene Auftrag statt gar keiner
-            # (07.09.2026 gemessen: von 38 an einem Tag abgenommenen Vorlagen
-            # waren nur 9 ueberhaupt mit einem Auftrag verknuepft).
+            # Bestellung, kein blosses "irgendwas Offenes von mir".
+            #
+            # Fehlt/passt auftrag_id nicht, wurde bisher der AELTESTE eigene
+            # offene Auftrag geraten. Das war selbst bei "praezisem" review_id-
+            # Anker nur eine Illusion von Praezision: Mike hatte 27 gleichzeitig
+            # offene Auftraege, "der aelteste" war fast immer der FALSCHE - ein
+            # frischer Post zu einem neuen Thema ueberschrieb so zweimal echten,
+            # unabhaengigen Inhalt (07.09.2026, zuletzt live beobachtet: ein neuer
+            # LinkedIn-Post zerstoerte den seit Tagen laufenden "Angebotsuebergabe
+            # im Handwerk"-Beitrag, nur weil dessen Auftrag zufaellig der
+            # aelteste von 27 war). Geraten wird darum nur noch, wenn es GENAU
+            # EINEN Kandidaten gibt - keine Auswahl noetig, keine Verwechslung
+            # moeglich. Bei mehreren bleibt auftrag_ziel leer; die Vorlage faellt
+            # dann auf den Titel-Abgleich oder eine neue Zeile zurueck, statt
+            # geraten zu werden.
             from services.auftraege import Auftragsbuch
             offene_auftraege = Auftragsbuch().unerledigt_fuer(spec["name"])
             auftrag_ziel = str(auftrag_id).strip()
             if auftrag_ziel not in {a["id"] for a in offene_auftraege}:
-                auftrag_ziel = offene_auftraege[0]["id"] if offene_auftraege else ""
+                auftrag_ziel = offene_auftraege[0]["id"] if len(offene_auftraege) == 1 else ""
             auftrag_review_id = next(
                 (a["review_id"] for a in offene_auftraege if a["id"] == auftrag_ziel and a.get("review_id")),
                 "")
