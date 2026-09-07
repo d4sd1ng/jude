@@ -118,16 +118,21 @@ models:
     tags: [cloud, top_tier, langlaufend, agentisch, analyse, grosserkontext, tools]
     priority: 10
 
-  cloud_deepseek_chat:
-    provider: deepseek
-    model_name: deepseek-chat
-    cost_per_1k_input: 0.00027
-    cost_per_1k_output: 0.0011
-    avg_latency_ms: 900
-    max_tokens: 8192
-    context_length: 128000
-    tags: [cloud, kostenguenstig, analyse, code, tools]
-    priority: 8
+  # DeepSeek am 07.09.2026 auf Tinos Ansage aus der Kette entfernt: Provider
+  # dauerhaft mit "Insufficient Balance" gesperrt, blockierte damit jeden
+  # Fallback-Versuch an dieser Stelle, bis der naechste Provider probiert
+  # wurde - reine Wartezeit ohne Nutzen. Definition bleibt erhalten, falls
+  # spaeter wieder aufgeladen wird.
+  # cloud_deepseek_chat:
+  #   provider: deepseek
+  #   model_name: deepseek-chat
+  #   cost_per_1k_input: 0.00027
+  #   cost_per_1k_output: 0.0011
+  #   avg_latency_ms: 900
+  #   max_tokens: 8192
+  #   context_length: 128000
+  #   tags: [cloud, kostenguenstig, analyse, code, tools]
+  #   priority: 8
 
   # Groq am 02.09.2026 auf Tinos Ansage entfernt. Grund: die freie Stufe erlaubt
   # 8000 Token pro Minute, das Modell reservierte aber allein 8192 fuer die
@@ -279,8 +284,7 @@ router:
     - cloud_ollama_nemotron_super  # frei, Cloud, schneller
     - cloud_ollama_gptoss20        # frei, Cloud, kleiner/schneller
     - cloud_ollama_gemma           # frei, Cloud, letzte kostenlose Cloud-Reserve
-    - cloud_deepseek_chat   # günstig & fähig (übersprungen ohne DEEPSEEK_API_KEY)
-    - cloud_openai_terra    # mittleres Reasoning – erste bezahlte Stufe
+    - cloud_openai_terra    # mittleres Reasoning – erste bezahlte Stufe (deepseek 07.09.2026 entfernt, siehe oben)
     - cloud_claude_sonnet   # stark
     - cloud_openai_sol      # hohes Reasoning, Top-Tier
     - cloud_claude_fable    # Top-Tier, stärkste/teuerste Stufe

@@ -34,7 +34,6 @@ task_types:
       - cloud_ollama_nemotron_super
       - cloud_ollama_gptoss20
       - cloud_ollama_gemma
-      - cloud_deepseek_chat
       - cloud_openai_terra
       - local_qwen_coder
 
@@ -43,7 +42,6 @@ task_types:
     requires_tools: true
     tiers:
       - cloud_ollama_gptoss
-      - cloud_deepseek_chat
       - cloud_openai_terra
       - cloud_claude_sonnet
       - local_qwen_coder
@@ -60,8 +58,8 @@ task_types:
 
   code_engineering:
     requires_tools: true
-    tiers: [local_qwen_coder, cloud_ollama_gptoss, cloud_deepseek_chat, cloud_openai_terra, cloud_claude_sonnet]
+    tiers: [local_qwen_coder, cloud_ollama_gptoss, cloud_openai_terra, cloud_claude_sonnet]
 
   data_analysis:
     requires_tools: true
-    tiers: [cloud_ollama_gptoss, cloud_deepseek_chat, cloud_openai_terra, cloud_claude_sonnet]
+    tiers: [cloud_ollama_gptoss, cloud_openai_terra, cloud_claude_sonnet]

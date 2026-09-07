@@ -199,13 +199,12 @@ def test_keine_eskalation_unter_der_revisionsschwelle():
     assert builder._eskalation_noetig("designer") is False
 
 
-def test_eskalation_faellt_auf_openai_zurueck_wenn_anthropic_gesperrt_ist(monkeypatch):
-    """Beobachtet 07.09.2026: Anthropic-Guthaben erschoepft ('credit balance
-    too low', bis Mitternacht gesperrt) UND cloud_ollama_gptoss zeitgleich
-    instabil (wiederholte 500er) - eine Eskalation, die direkt auf das
-    eigene (gerade selbst kaputte) Modell zurueckfiel, half nichts. OpenAI
-    lief nachweislich weiter. Die Eskalationskette muss daher OpenAI als
-    zweite Stufe versuchen, bevor sie aufs eigene Modell zurueckfaellt."""
+def test_eskalation_versucht_openai_zuerst(monkeypatch):
+    """Tinos ausdruecklicher Vorgabe (07.09.2026): die Eskalation geht erst
+    zu OpenAI, dann zu Anthropic - nicht umgekehrt. War kurz vertauscht,
+    waehrend Anthropic wegen leerem Guthaben ohnehin bis Mitternacht
+    gesperrt war - jeder Versuch dort war verlorene Zeit, bevor die
+    tatsaechlich funktionierende Stufe drankam."""
     from dataclasses import dataclass
 
     @dataclass
@@ -222,8 +221,7 @@ def test_eskalation_faellt_auf_openai_zurueck_wenn_anthropic_gesperrt_ist(monkey
         def _provider_enabled(self, _provider):
             return True
 
-    gesperrt = {"anthropic"}
-    monkeypatch.setattr("core.model_router.provider_gesperrt", lambda p: p in gesperrt)
+    monkeypatch.setattr("core.model_router.provider_gesperrt", lambda p: False)
 
     class _FakeSvc:
         registry = None
@@ -234,6 +232,42 @@ def test_eskalation_faellt_auf_openai_zurueck_wenn_anthropic_gesperrt_ist(monkey
     ergebnis = builder.brauchbares_modell(builder.ESKALATIONS_MODELL, builder.ESKALATIONS_MODELL_ALT,
                                           "cloud_ollama_gptoss")
     assert ergebnis == "cloud_openai_terra"
+
+
+def test_eskalation_faellt_auf_anthropic_zurueck_wenn_openai_gesperrt_ist(monkeypatch):
+    """Beobachtet 07.09.2026: mehrere Provider gleichzeitig gesperrt
+    (Anthropic-Guthaben leer, Ollama Cloud Session-Limit erreicht, DeepSeek
+    ohne Guthaben) - die Eskalationskette muss auch dann noch eine zweite
+    Stufe versuchen, statt sofort aufs eigene (oft selbst instabile) Modell
+    zurueckzufallen."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class _Spec:
+        provider: str
+
+    class _FakeRouter:
+        models = {
+            "cloud_claude_sonnet": _Spec("anthropic"),
+            "cloud_openai_terra": _Spec("openai"),
+            "cloud_ollama_gptoss": _Spec("ollama_cloud"),
+        }
+
+        def _provider_enabled(self, _provider):
+            return True
+
+    gesperrt = {"openai"}
+    monkeypatch.setattr("core.model_router.provider_gesperrt", lambda p: p in gesperrt)
+
+    class _FakeSvc:
+        registry = None
+        router = _FakeRouter()
+        ai_router = None
+
+    builder = AgentBuilder(svc=_FakeSvc(), tools=None)
+    ergebnis = builder.brauchbares_modell(builder.ESKALATIONS_MODELL, builder.ESKALATIONS_MODELL_ALT,
+                                          "cloud_ollama_gptoss")
+    assert ergebnis == "cloud_claude_sonnet"
 
 
 # ---------------------------------------------------------------- Abnahme

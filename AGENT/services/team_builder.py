@@ -27,15 +27,14 @@ class AgentBuilder:
     #: woran cloud_ollama_gptoss wiederholt scheiterte (07.09.2026: eine
     #: seit Tagen erledigte Stoerung fuer aktuell gehalten, ein mehrfach
     #: gezaehltes Motiv trotz expliziter Stueckzahl nicht eingehalten).
-    ESKALATIONS_MODELL = "cloud_claude_sonnet"
-    #: Zweite Wahl, falls Anthropic gerade nicht verfuegbar ist (gemessen
-    #: 07.09.2026: Anthropic-Guthaben erschoepft, "credit balance too low",
-    #: bis Mitternacht gesperrt). Ohne diese Stufe fiel eine Eskalation dann
-    #: direkt auf das eigene, oft gerade selbst instabile Modell zurueck
-    #: (zeitgleich haeufige 500er bei cloud_ollama_gptoss) - Eskalation und
-    #: Fallback scheiterten am selben Tag aus zwei unabhaengigen Gruenden.
-    #: OpenAI lief zu diesem Zeitpunkt nachweislich stabil weiter.
-    ESKALATIONS_MODELL_ALT = "cloud_openai_terra"
+    #: Reihenfolge auf Tinos ausdrueckliche Ansage (07.09.2026): erst OpenAI,
+    #: dann Anthropic - nicht umgekehrt. War kurz vertauscht (Anthropic
+    #: zuerst versucht), waehrend Anthropic ohnehin bis Mitternacht wegen
+    #: leerem Guthaben gesperrt war - jeder Versuch dort war von vornherein
+    #: verlorene Zeit, bevor die eigentlich funktionierende Stufe drankam.
+    ESKALATIONS_MODELL = "cloud_openai_terra"
+    #: Zweite Wahl, falls OpenAI selbst gerade nicht verfuegbar ist.
+    ESKALATIONS_MODELL_ALT = "cloud_claude_sonnet"
     #: Ab wie vielen NICHT erfolgreich abgeschlossenen Laeufen IN FOLGE
     #: eskaliert wird. Bewusst niedrig (Tinos Vorgabe: "mehrere Fehler in
     #: Folge"), nicht bei einem einzelnen - ein 'teilweise' allein ist
