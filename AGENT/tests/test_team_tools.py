@@ -123,3 +123,32 @@ def test_zum_auftrag_gehoerige_revision_hat_vorrang_vor_gleicher_art(tmp_path):
     assert egal["status"] == "revision" and egal["runde"] == 2  # unangetastet
     assert buch.holen(a_ziel["id"])["status"] == "vorgelegt"
     assert buch.holen(a_egal["id"])["status"] == "offen"  # unangetastet
+
+
+def test_unabhaengige_neue_vorlage_ueberschreibt_keine_offene_revision_gleicher_art(tmp_path):
+    """Beobachtet 07.09.2026 (zweiter Fall derselben Bugklasse): Stefans
+    wiederkehrender Markenfuehrungs-Bericht ueberschrieb einen echten,
+    laufenden Artikelentwurf - beide 'dokument', kein Auftrag, kein
+    ueberarbeitet, keine Titel-Uebereinstimmung. Ohne einen der drei
+    praezisen Anker (Auftrag/ueberarbeitet/exakter Titel) MUSS eine neue
+    Zeile entstehen statt eine bestehende zu kapern."""
+    from services.database import connection
+    from services.review import ReviewQueue
+
+    svc = _service(tmp_path)
+    spec = svc.get("tester")
+    ReviewQueue()
+
+    with connection() as db:
+        db.execute(
+            "INSERT INTO reviews(id, created_at, agent, art, titel, quelle, inhalt, status, runde) "
+            "VALUES('rev_artikel','2026-09-01T00:00:00',?,'dokument','KI-Einführung für KMUs','tester','x','revision',10)",
+            (spec["name"],))
+
+    tool = ToolFactory(svc).review_tool(spec)
+    ergebnis = tool.func(art="dokument", titel="Prüfung der Markenführung", inhalt="y" * 320)
+
+    assert ergebnis["id"] != "rev_artikel"
+    with connection() as db:
+        artikel = dict(db.execute("SELECT titel, status, runde FROM reviews WHERE id='rev_artikel'").fetchone())
+    assert artikel == {"titel": "KI-Einführung für KMUs", "status": "revision", "runde": 10}  # unangetastet

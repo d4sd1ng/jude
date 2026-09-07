@@ -250,27 +250,31 @@ class ToolFactory:
             # Modell zitierten Klammer-Wert zu verlassen.
             offen = queue.offene_revisionen(spec["name"])
             bekannt = {r["id"] for r in offen}
-            # Reihenfolge der Zuordnung, staerkster Anker zuerst:
+            # Reihenfolge der Zuordnung, staerkster Anker zuerst - JEDE Stufe
+            # muss die konkrete Sache identifizieren, nie nur "irgendetwas
+            # Offenes von mir derselben Art":
             # 1. der eigene offene Auftrag zeigt schon auf eine offene Revision
-            #    (praezise - dieselbe Bestellung, nicht nur "gleiche Art").
+            #    (praezise - dieselbe Bestellung).
             # 2. die vom Modell genannte ueberarbeitet-ID, falls sie wirklich
             #    offen ist.
-            # 3. eine offene Revision DERSELBEN ART - aber nur wenn es wirklich
-            #    eine gibt (vorher fiel das faelschlich auf offen[0] zurueck,
-            #    selbst wenn keine Art passte: ein Beitragstext von Stefan
-            #    landete so in einer 7 Runden alten, voellig anderen Onepager-
-            #    Revision, nur weil beides 'dokument' war - 07.09.2026).
+            # 3. exakt derselbe Titel liegt schon offen/in Pruefung (siehe
+            #    ReviewQueue.offene_gleiche) - dieselbe Sache, nur erneut
+            #    eingereicht.
+            # KEINE Stufe "eine offene Revision derselben Art, egal welcher
+            # Inhalt" mehr: genau das ueberschrieb wiederholt fremden Inhalt
+            # (07.09.2026 zweimal gemessen - ein Beitragstext landete in
+            # einer voelligen anderen, laengst laufenden Onepager-Revision,
+            # spaeter ueberschrieb Stefans wiederkehrender Markenfuehrungs-
+            # Bericht einen echten Artikelentwurf, beide Male nur weil beide
+            # 'dokument' waren). Passt keine der drei praezisen Stufen, wird
+            # lieber eine neue Zeile angelegt als geraten - eine zusaetzliche
+            # Zeile ist sichtbar und leicht zusammenzufuehren, ueberschriebener
+            # fremder Inhalt ist unsichtbarer Datenverlust.
             ziel = auftrag_review_id if auftrag_review_id in bekannt else ""
             if not ziel:
                 kandidat = str(ueberarbeitet).strip()
                 ziel = kandidat if kandidat in bekannt else ""
             if not ziel:
-                treffer = next((r for r in offen if r["art"] == art), None)
-                if treffer:
-                    ziel = treffer["id"]
-            if not ziel:
-                # Dieselbe Sache liegt schon in der Pruefung: anknuepfen statt
-                # eine 70. Zeile anzulegen (siehe ReviewQueue.offene_gleiche).
                 gleiche = queue.offene_gleiche(spec["name"], art, titel)
                 if gleiche:
                     ziel = gleiche["id"]
