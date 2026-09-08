@@ -111,7 +111,8 @@ class AgentBuilder:
         sub.set_confirmations(self.registry.confirmations)
         sub.agent_name = spec["name"]
         eigenes_modell = spec.get("model") or svc.STANDARD_MODELL
-        if self._eskalation_noetig(spec["name"]):
+        eskalieren = self._eskalation_noetig(spec["name"])
+        if eskalieren:
             logger.info("%s: %s Laeufe in Folge nicht abgeschlossen - eskaliere diesen Lauf auf %s.",
                        spec["name"], self.ESKALATION_AB_FOLGEFEHLERN, self.ESKALATIONS_MODELL)
             modell = self.brauchbares_modell(self.ESKALATIONS_MODELL, self.ESKALATIONS_MODELL_ALT,
@@ -304,4 +305,4 @@ class AgentBuilder:
                      force_model=modell, agent_name=spec["name"],
                      task_type=spec.get("task_type", "routine_dispatch"),
                      use_ai_router=bool(spec.get("use_ai_router", False)),
-                     ai_router=self.ai_router)
+                     ai_router=self.ai_router, eskalieren=eskalieren)

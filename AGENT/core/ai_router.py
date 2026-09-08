@@ -36,14 +36,30 @@ class AIRouter:
         self.registry = task_registry
         self.registry.validate(set(self.router.models))
 
+    #: Wohin eskaliert wird, wenn AgentBuilder._eskalation_noetig() True liefert -
+    #: dieselbe Reihenfolge/Begruendung wie AgentBuilder.ESKALATIONS_MODELL/
+    #: ESKALATIONS_MODELL_ALT (dort: OpenAI zuerst, Anthropic zweite Wahl, siehe
+    #: dortiger Kommentar). Eigene Konstanten statt Import, um keine Abhaengigkeit
+    #: von services.team_builder in core/ einzufuehren.
+    ESKALATIONS_MODELLE = ("cloud_openai_terra", "cloud_claude_sonnet")
+
     def generate(self, task_type: str, messages: list[dict], tools: list[dict] | None = None,
-                agent_name: str | None = None, allow_uncensored: bool = False) -> dict:
+                agent_name: str | None = None, allow_uncensored: bool = False,
+                eskalieren: bool = False) -> dict:
         if task_type == "jude_chat":
             # Unveraenderter weicher Pfad - siehe Modulkommentar oben.
             return self.router.call_with_fallback(messages, tools, allow_uncensored, strict_tools=False)
 
         namen = self.registry.tiers_for(task_type)
         braucht_werkzeuge = self.registry.requires_tools(task_type)
+        if eskalieren:
+            # Eskalationsmodelle VOR die normale Kette setzen, statt sie zu
+            # ersetzen - faellt auch die Eskalationsstufe aus, bleibt die
+            # normale Kette als Ausweichebene erhalten. Steht eines der
+            # Eskalationsmodelle schon in der normalen Kette (z.B. cloud_openai_terra
+            # bei content_drafting), wird es nach vorn gezogen statt doppelt
+            # aufzutauchen.
+            namen = list(self.ESKALATIONS_MODELLE) + [n for n in namen if n not in self.ESKALATIONS_MODELLE]
         kette = [self.router.models[n] for n in namen if n in self.router.models]
         kette = [m for m in kette if self.router._provider_enabled(m.provider)
                 and (not braucht_werkzeuge or "tools" in m.tags)]

@@ -24,7 +24,7 @@ class Agent:
     def __init__(self, model_router: ModelRouter, tool_registry: ToolRegistry, max_tool_steps: int = 8,
                  system_prompt: str | None = None, force_model: str | None = None,
                  agent_name: str | None = None, task_type: str | None = None,
-                 use_ai_router: bool = False, ai_router=None):
+                 use_ai_router: bool = False, ai_router=None, eskalieren: bool = False):
         self.router = model_router
         self.tools = tool_registry
         self.max_tool_steps = max_tool_steps
@@ -36,6 +36,13 @@ class Agent:
         self.task_type = task_type
         self.use_ai_router = use_ai_router
         self.ai_router = ai_router
+        # AgentBuilder._eskalation_noetig() reichte bisher nur ueber force_model
+        # bis hierher durch - sobald use_ai_router=True ist, wird force_model auf
+        # diesem Pfad nie gelesen (siehe process_input), die faultbasierte
+        # Eskalation waere damit fuer jede Rolle mit use_ai_router=True stillos
+        # abgeschaltet gewesen (07.09.2026 gefunden, als alle elf Rollen auf
+        # use_ai_router=True migriert wurden). Eigener Kanal dafuer.
+        self.eskalieren = eskalieren
         # "jude" markiert Judes eigenes Gespräch mit Tino (Cockpit-Chat/Sprache) –
         # nur dessen Verlauf wird nach einem Neustart wiederhergestellt. Sub-Agenten
         # bekommen ihren Namen, damit ihre Läufe in derselben Tabelle nicht mit
@@ -134,7 +141,8 @@ class Agent:
         for _ in range(self.max_tool_steps + 1):
             if self.use_ai_router and self.task_type and self.ai_router is not None:
                 response = self.ai_router.generate(self.task_type, self.conversation_history, tools,
-                                                   agent_name=self.agent_name, allow_uncensored=allow_uncensored)
+                                                   agent_name=self.agent_name, allow_uncensored=allow_uncensored,
+                                                   eskalieren=self.eskalieren)
             else:
                 response = self.router.call_with_fallback(self.conversation_history, tools, allow_uncensored,
                                                           force_model=self.force_model,
