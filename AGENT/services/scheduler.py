@@ -9,6 +9,7 @@ vorgelesen). Aufgaben werden als JSON unter ``Jude/data`` gespeichert.
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import threading
 import uuid
@@ -16,6 +17,8 @@ from datetime import datetime, timedelta, timezone
 
 from core.paths import DATA_DIR
 from services.notifications import NotificationService
+
+logger = logging.getLogger(__name__)
 
 #: Werkzeuge, die lange laufen und im Hintergrund starten sollen, um den
 #: Scheduler-Tick nicht zu blockieren (und damit chat_lock in web/app.py zu halten).
@@ -30,6 +33,41 @@ class SchedulerService:
     #: einmal, gemessen 03.09.2026) – das darf nie wieder passieren, auch
     #: nicht in diesem Kanten-fall.
     MAX_GLEICHZEITIG = 3
+
+    #: Die eine laufende Instanz - services/review.py und services/
+    #: confirmations.py liegen unterhalb von services/team.py in der
+    #: Importreihenfolge und bekommen den Scheduler nie durchgereicht; ohne
+    #: diese Referenz gäbe es keinen Weg, aus einer Ablehnung heraus sofort
+    #: nachzufassen, nur ueber einen Poll-Tick (siehe dispatch_now unten -
+    #: 11.09.2026, Tino: "remove that timer... they need to immediatly work
+    #: on it").
+    #:
+    #: WIRD NICHT automatisch in __init__ gesetzt - bewusst. main.py setzt sie
+    #: explizit auf die EINE echte Instanz nach der Konstruktion. Automatisch
+    #: bei jeder Konstruktion zu setzen sah zunaechst einfacher aus, brach aber
+    #: die Testisolation: tests/test_new_features.py baut zwei eigene
+    #: SchedulerService()-Instanzen mit eigenen (teils fehlenden) 'agent'-
+    #: Referenzen fuer isolierte Scheduler-Tests. Jede Konstruktion startet
+    #: MAX_GLEICHZEITIG echte Daemon-Worker-Threads, die den Prozess ueberleben
+    #: (Daemon-Threads enden nie von selbst) - mit Auto-Registrierung wurde
+    #: JEDE dieser Test-Instanzen zur globalen Singleton, und ein spaeterer,
+    #: voellig unabhaengiger Test, der revision() aufrief, weckte den
+    #: liegengebliebenen Worker-Thread der ALTEN Test-Instanz auf, der dann
+    #: mit dem 'agent' (oder None) dieses alten Tests parallel auf dieselbe
+    #: Test-Datenbank zugriff wie der gerade laufende Test - Ursache eines
+    #: "duplicate column name"-Races beim Schema-Migrationscheck in
+    #: services/database.py, gemessen 11.09.2026 direkt nach Einfuehrung.
+    _aktiv: "SchedulerService | None" = None
+
+    @classmethod
+    def aktuelle(cls) -> "SchedulerService | None":
+        return cls._aktiv
+
+    @classmethod
+    def registrieren(cls, instanz: "SchedulerService") -> None:
+        """Von main.py nach der echten Konstruktion aufzurufen - siehe
+        Kommentar bei ``_aktiv`` oben, warum das nicht automatisch passiert."""
+        cls._aktiv = instanz
 
     def __init__(self, agent=None, briefing=None, voice=None):
         self.agent = agent
@@ -53,6 +91,75 @@ class SchedulerService:
         for _ in range(self.MAX_GLEICHZEITIG):
             threading.Thread(target=self._worker, daemon=True).start()
 
+    #: Mindestabstand zwischen zwei dispatch_now()-Ausloesungen fuer DENSELBEN
+    #: Mitarbeiter (siehe Kommentar in dispatch_now unten - Endlosschleifen-
+    #: Schutz, gemessen 11.09.2026).
+    DISPATCH_NOW_COOLDOWN_SEC = 120
+
+    def dispatch_now(self, agent_name: str, task_text: str) -> bool:
+        """Eine Revision SOFORT einreihen statt auf den naechsten Poll-Tick zu
+        warten (11.09.2026 - Tino: eine Ablehnung soll nicht bis zu 5/30
+        Minuten liegen bleiben, bevor jemand drangeht).
+
+        Landet trotzdem im selben begrenzten Worker-Pool wie geplante
+        Aufgaben (MAX_GLEICHZEITIG Worker-Threads) - ein Schwall gleichzeitiger
+        Ablehnungen reiht sich FIFO ein statt unbegrenzt parallel zu feuern,
+        derselbe Schutz, der nach dem Budget-Blowout vom 03.09.2026 eingefuehrt
+        wurde. Kein Eintrag in scheduled_tasks.json noetig - _abschluss()
+        ignoriert eine Aufgaben-ID, die dort nicht vorkommt, klaglos.
+
+        Gibt False zurueck (und tut nichts), wenn der Mitarbeiter gerade
+        bereits laeuft - sein laufender Durchgang bekommt die Revision beim
+        naechsten eigenen Abschluss ohnehin zu sehen (offene_revisionen()/
+        agenten_mit_offenen_revisionen() sind Teil seines Systemprompts).
+
+        COOLDOWN (neu, 11.09.2026 - echte Endlosschleife beobachtet): der
+        deterministische Gate-Check in team_gate.py laeuft SYNCHRON am Ende
+        jedes eigenen Laufs eines Mitarbeiters und ruft bei ungueltigem JSON
+        selbst queue.revision() auf - das loeste dispatch_now() aus, WAEHREND
+        der Mitarbeiter laut agent_runs schon wieder auf 'nicht laufend'
+        stand (sein Lauf war ja gerade fertig). Der obige "laeuft bereits"-
+        Schutz griff darum nicht: scraper wurde binnen 20 Minuten 14 Runden
+        lang sofort erneut gestartet, produzierte praktisch dieselbe defekte
+        Ausgabe erneut und loeste damit die naechste sofortige Ablehnung aus -
+        eine echte Endlosschleife, viel schneller als jeder vorherige Poll-
+        Takt sie je erzeugen konnte. Ein Mitarbeiter, der innerhalb der
+        Cooldown-Zeit schon einen eigenen Lauf beendet hat, wartet stattdessen
+        bis zur naechsten regulaeren Gelegenheit (naechster eigener Trigger,
+        z.B. sein eigener Tagesablauf oder eine neue, spaetere Ablehnung nach
+        Ablauf der Cooldown-Zeit) - kein blindes Sofort-Wiederholen derselben
+        vermutlich unveraenderten Ausgabe.
+        """
+        from services.database import connection
+        with connection() as db:
+            laufend = db.execute(
+                "SELECT 1 FROM agent_runs WHERE agent=? AND status='laufend' LIMIT 1",
+                (agent_name,)).fetchone()
+            letzter = db.execute(
+                "SELECT created_at FROM agent_runs WHERE agent=? ORDER BY created_at DESC LIMIT 1",
+                (agent_name,)).fetchone()
+        if laufend:
+            return False
+        if letzter:
+            # agent_runs.created_at steht als Python-isoformat() ('...T...+00:00'),
+            # SQLite's eigenes datetime('now', '-N seconds') liefert ein anderes
+            # Format ('YYYY-MM-DD HH:MM:SS') - ein roher String-Vergleich zwischen
+            # beiden waere IMMER wahr (Groszbuchstabe 'T' sortiert lexikalisch nach
+            # dem Leerzeichen), haette dispatch_now() also fuer immer lahmgelegt,
+            # nicht nur fuer die Cooldown-Zeit. Deshalb hier in Python parsen und
+            # vergleichen statt der SQL-Funktion zu vertrauen.
+            zuletzt = datetime.fromisoformat(letzter["created_at"])
+            if (datetime.now(timezone.utc) - zuletzt).total_seconds() < self.DISPATCH_NOW_COOLDOWN_SEC:
+                return False
+        self._warteschlange.put({
+            "id": uuid.uuid4().hex[:12],
+            "name": f"Revision sofort ({agent_name})",
+            "action_type": "tool",
+            "tool": "delegate_to_agent",
+            "tool_args": {"name": agent_name, "task": task_text},
+        })
+        return True
+
     def _worker(self) -> None:
         while True:
             task = self._warteschlange.get()
@@ -63,13 +170,33 @@ class SchedulerService:
                     self._laufend_ids.discard(task["id"])
                 self._warteschlange.task_done()
 
+    @staticmethod
+    def _zusammenfassen(ergebnis) -> str:
+        """Kompakte, lesbare Notification statt der rohen Werkzeug-Antwort.
+
+        ``delegate_to_agent`` (AgentRunner.run()) liefert u.a. den kompletten
+        Systemprompt unter 'role' - bei einem str(dict)[:2000] fraß allein das
+        den ganzen Platz auf, noch bevor 'status'/'answer' ueberhaupt anfingen
+        (gemessen 11.09.2026: jede 'Trendrecherche (Rasmus)'-Notification
+        brach mitten in scrapers Rollentext ab, kein einziges Mal war zu
+        sehen, ob und was er tatsaechlich gefunden hatte).
+        """
+        if isinstance(ergebnis, dict) and "agent" in ergebnis and "status" in ergebnis:
+            wer = ergebnis.get("person") or ergebnis.get("agent")
+            antwort = str(ergebnis.get("answer") or "").strip()
+            kern = f"{wer} ({ergebnis['agent']}): {ergebnis['status']}"
+            return f"{kern} - {antwort[:1800]}" if antwort else kern
+        return str(ergebnis)[:2000]
+
     def _verarbeite(self, task: dict) -> None:
         fehler = None
+        begonnen = datetime.now(timezone.utc)
+        logger.info("Scheduler: '%s' (%s) startet.", task.get("name", task["id"]), task.get("tool"))
         try:
             ergebnis = self.agent.tools.execute(task["tool"], dict(task.get("tool_args") or {}))
             if isinstance(ergebnis, str) and "fehlgeschlagen:" in ergebnis[:160]:
                 raise RuntimeError(ergebnis[:300])
-            NotificationService.create("scheduled", task["name"], str(ergebnis)[:2000], {"task_id": task["id"]})
+            NotificationService.create("scheduled", task["name"], self._zusammenfassen(ergebnis), {"task_id": task["id"]})
         except Exception as exc:
             fehler = str(exc)
             try:
@@ -78,6 +205,12 @@ class SchedulerService:
                                            str(exc)[:300])
             except Exception:
                 pass
+        dauer = (datetime.now(timezone.utc) - begonnen).total_seconds()
+        if fehler:
+            logger.warning("Scheduler: '%s' fehlgeschlagen nach %.1fs: %s",
+                           task.get("name", task["id"]), dauer, fehler[:300])
+        else:
+            logger.info("Scheduler: '%s' fertig nach %.1fs.", task.get("name", task["id"]), dauer)
         self._abschluss(task, datetime.now(timezone.utc).astimezone(), fehler=fehler)
 
     # ------------------------------------------------------------ Speicher

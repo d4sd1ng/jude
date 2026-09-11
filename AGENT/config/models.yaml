@@ -77,6 +77,81 @@ models:
     tags: [cloud, top_tier, analyse, code, agentisch, grosserkontext]
     priority: 10
 
+  # Fuenf weitere OpenAI-Modelle (11.09.2026, Tino: von der Preisliste unter
+  # developers.openai.com/api/docs/pricing - "we should add all of them even
+  # seperated for escalation on each employee concerning to his job or
+  # tasks"). Preise von dort auf cost_per_1k umgerechnet (Angabe dort ist pro
+  # 1M Token); cost_per_1k_cached_input geschaetzt im selben Verhaeltnis
+  # (~10% des Input-Preises), das die drei bestehenden OpenAI-Eintraege oben
+  # bereits durchgaengig zeigen - die Seite selbst nennt keinen Cache-Preis.
+  # NICHT hier aufgenommen: legacy gpt-3.5/gpt-4-turbo/gpt-4o-Familie (durch
+  # die 5.x-Reihe abgeloest), *-pro-Varianten (10x Kosten fuer denselben
+  # Rang), Embeddings/Moderation (andere Werkzeugklasse, kein Chat/Tool-Call).
+  cloud_openai_gpt51:
+    provider: openai
+    model_name: gpt-5.1
+    cost_per_1k_input: 0.00125
+    cost_per_1k_cached_input: 0.000125
+    cost_per_1k_output: 0.010
+    avg_latency_ms: 600
+    max_tokens: 8192
+    context_length: 1050000
+    reasoning_effort: low
+    tags: [cloud, schnell, kostenguenstig, tools]
+    priority: 7
+
+  cloud_openai_gpt52:
+    provider: openai
+    model_name: gpt-5.2
+    cost_per_1k_input: 0.00175
+    cost_per_1k_cached_input: 0.000175
+    cost_per_1k_output: 0.014
+    avg_latency_ms: 800
+    max_tokens: 16384
+    context_length: 1050000
+    reasoning_effort: medium
+    tags: [cloud, analyse, code, tools]
+    priority: 8
+
+  cloud_openai_gpt54:
+    provider: openai
+    model_name: gpt-5.4
+    cost_per_1k_input: 0.0025
+    cost_per_1k_cached_input: 0.00025
+    cost_per_1k_output: 0.015
+    avg_latency_ms: 900
+    max_tokens: 16384
+    context_length: 1050000
+    reasoning_effort: medium
+    tags: [cloud, analyse, code, tools, grosserkontext]
+    priority: 8
+
+  cloud_openai_gpt55:
+    provider: openai
+    model_name: gpt-5.5
+    cost_per_1k_input: 0.005
+    cost_per_1k_cached_input: 0.0005
+    cost_per_1k_output: 0.030
+    avg_latency_ms: 1200
+    max_tokens: 24576
+    context_length: 1050000
+    reasoning_effort: high
+    tags: [cloud, top_tier, analyse, code, agentisch, grosserkontext]
+    priority: 9
+
+  cloud_openai_astra:
+    provider: openai
+    model_name: gpt-6-astra
+    cost_per_1k_input: 0.010
+    cost_per_1k_cached_input: 0.001
+    cost_per_1k_output: 0.050
+    avg_latency_ms: 1500
+    max_tokens: 32768
+    context_length: 1050000
+    reasoning_effort: high
+    tags: [cloud, flagship, top_tier, analyse, code, agentisch, grosserkontext]
+    priority: 11
+
   cloud_claude_sonnet:
     provider: anthropic
     model_name: claude-sonnet-5

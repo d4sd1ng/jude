@@ -230,8 +230,19 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                 except Exception:
                     pass
 
+        # Reihenfolge mischen statt der festen Dict-/SQL-Reihenfolge zu
+        # folgen: sonst gewinnen bei mehr offenen Kandidaten als
+        # MAX_GLEICHZEITIG immer dieselben zwei (wer zufaellig zuerst aus der
+        # Abfrage kommt) die beiden Slots - jeden Tick, unbegrenzt. Gemessen
+        # 11.09.2026: engineer und designer standen bei jedem einzelnen Tick
+        # seit ueber einer Stunde auf 'gestartet', scraper/social/sequencer/
+        # content jedes Mal auf 'wartet_auf_naechsten_tick' - kein einziges
+        # Mal drangekommen, obwohl der Tick alle 5 Minuten lief.
+        import random
+        eintraege = list(offen.items())
+        random.shuffle(eintraege)
         gestartet, uebersprungen, wartet = [], [], []
-        for agent_name, anzahl in offen.items():
+        for agent_name, anzahl in eintraege:
             if agent_name not in bekannt:
                 continue
             if agent_name in laufend:

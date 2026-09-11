@@ -26,6 +26,11 @@ task_types:
   # Schleife bis zum Schritt-Deckel, ohne die Revision je abzuschliessen).
   # Ein bezahlter, aber zuverlaessiger Versuch ist besser als ein kostenloser,
   # der strukturell haengen bleibt.
+  # gpt-5.1 (11.09.2026) haengt hier NACH cloud_openai_terra, nicht davor:
+  # dieselbe Rolle wie ein zweiter bezahlter Versuch, wenn terra selbst
+  # gesperrt/nicht erreichbar ist, bevor auf lokal (unzuverlaessig, siehe
+  # Kommentar unten) zurueckgefallen wird - fuer die haeufigen/geringwertigen
+  # Rollen reicht das guenstigste bezahlte Modell, kein hoeherer Rang noetig.
   routine_dispatch:
     requires_tools: true
     tiers:
@@ -35,31 +40,60 @@ task_types:
       - cloud_ollama_gptoss20
       - cloud_ollama_gemma
       - cloud_openai_terra
+      - cloud_openai_gpt51
       - local_qwen_coder
 
   # Selten/hochwertig: endgueltiger, kundengerichteter Text unter Markenregeln.
+  # gpt-5.4/5.5 (11.09.2026) haengen um claude_sonnet herum als weitere echte
+  # Versuche, bevor auf lokal zurueckgefallen wird - Heinz' Text geht direkt
+  # zu Tino, ein zusaetzlicher bezahlter Versuch ist hier eher gerechtfertigt
+  # als bei routine_dispatch.
   content_drafting:
     requires_tools: true
     tiers:
       - cloud_ollama_gptoss
       - cloud_openai_terra
+      - cloud_openai_gpt54
       - cloud_claude_sonnet
+      - cloud_openai_gpt55
       - local_qwen_coder
 
   # Selten/hoechstwertig: Gatekeeper-Entscheidungen, bevor Tino etwas sieht.
+  # cloud_openai_astra (11.09.2026, gpt-6-astra, das teuerste/staerkste
+  # verfuegbare Modell) steht bewusst spaet in der Kette, kurz vor dem
+  # letzten Fallback: Renates Entscheidung ist die letzte Instanz vor Tino,
+  # das rechtfertigt den hoechsten Einsatz - aber erst NACHDEM die
+  # guenstigeren Stufen (inkl. sol) schon gescheitert sind, nicht routinemaessig.
   judgment_review:
     requires_tools: true
     tiers:
       - cloud_openai_terra
+      - cloud_openai_gpt54
       - cloud_claude_sonnet
+      - cloud_openai_gpt55
       - cloud_ollama_gptoss
       - cloud_openai_sol
+      - cloud_openai_astra
       - cloud_claude_fable
 
+  # gpt-5.2/5.4 (11.09.2026) als zusaetzliche bezahlte Versuche vor Claude:
+  # beide haben genug Reasoning fuer Code, guenstiger als Claude, daher zuerst.
   code_engineering:
     requires_tools: true
-    tiers: [local_qwen_coder, cloud_ollama_gptoss, cloud_openai_terra, cloud_claude_sonnet]
+    tiers:
+      - local_qwen_coder
+      - cloud_ollama_gptoss
+      - cloud_openai_terra
+      - cloud_openai_gpt52
+      - cloud_claude_sonnet
+      - cloud_openai_gpt54
 
+  # gpt-5.2 (11.09.2026) zwischen terra und Claude - ausreichend fuer
+  # Bewertungs-/Score-Aufgaben, ohne gleich auf Claude zu eskalieren.
   data_analysis:
     requires_tools: true
-    tiers: [cloud_ollama_gptoss, cloud_openai_terra, cloud_claude_sonnet]
+    tiers:
+      - cloud_ollama_gptoss
+      - cloud_openai_terra
+      - cloud_openai_gpt52
+      - cloud_claude_sonnet

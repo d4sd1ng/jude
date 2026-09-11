@@ -138,6 +138,18 @@ class ReviewQueue:
         Wiedervorlage-Automatik griff nicht, weil sie nur ``status='revision'``
         kannte – zum Zeitpunkt des erneuten Einreichens stand die Vorgaengerin
         aber noch auf ``pruefung``.
+
+        ``'offen'`` (bereits von Renate freigegeben, wartet auf Tino) fehlte
+        hier bis 11.09.2026 ebenfalls: eine bereits freigegebene, gleichnamige
+        Vorlage wurde von einem spaeteren Lauf desselben Mitarbeiters NICHT
+        gefunden, weil ihr Status inzwischen 'offen' statt 'pruefung'/
+        'revision' war - Folge war eine zweite, komplett eigenstaendige Zeile
+        mit identischem Titel, die getrennt durch Renates Pruefung lief und am
+        Ende ALS DUPLIKAT NEBEN der ersten in Tinos Abnahme-Warteschlange
+        landete (beobachtet bei scraper: zwei 'Trend-Rangliste 11.09.2026'-
+        Karten gleichzeitig bei Renate/Tino). 'abgenommen' bleibt bewusst
+        aussen vor: ein bereits von Tino abgeschlossenes Stueck soll ein
+        spaeterer, echter neuer Tagesbericht NICHT stillschweigend ueberschreiben.
         """
         titel = str(titel).strip()[:300]
         if not titel:
@@ -146,7 +158,7 @@ class ReviewQueue:
             row = db.execute(
                 "SELECT id,art,titel,status,runde FROM reviews "
                 "WHERE agent=? AND art=? AND lower(titel)=lower(?) "
-                "AND status IN ('pruefung','revision') ORDER BY created_at LIMIT 1",
+                "AND status IN ('pruefung','revision','offen') ORDER BY created_at LIMIT 1",
                 (agent, str(art).strip().lower(), titel)).fetchone()
         return dict(row) if row else None
 
@@ -226,6 +238,17 @@ class ReviewQueue:
         try:
             from services.auftraege import Auftragsbuch
             Auftragsbuch().sync_von_review(review_id, "revision")
+        except Exception:
+            pass
+        # Sofort nachfassen statt auf den naechsten Poll-Tick zu warten
+        # (11.09.2026 - Tino: eine Revision soll nicht liegen bleiben).
+        try:
+            from services.scheduler import SchedulerService
+            sched = SchedulerService.aktuelle()
+            if sched is not None:
+                sched.dispatch_now(result["agent"],
+                                   "Du hast eine offene Revision - siehe oben im Systemprompt. "
+                                   "Arbeite sie ab, bevor du etwas Neues beginnst.")
         except Exception:
             pass
         return result

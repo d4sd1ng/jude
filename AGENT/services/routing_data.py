@@ -12,9 +12,12 @@ vorher am jeweiligen Aufrufort.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from services.database import connection
+
+logger = logging.getLogger(__name__)
 
 
 class RouteDecisionRepository:
@@ -41,12 +44,18 @@ class RouteDecisionRepository:
                 "UPDATE route_decisions SET final_model=?,success=1,escalated=?,latency_ms=?,attempts_json=? "
                 "WHERE id=?",
                 (final_model, escalated, latency_ms, attempts_json, route_id))
+        # Bis 10.09.2026 war auch das Routing-Ergebnis selbst stumm - nur in
+        # route_decisions sichtbar, nicht im Log. Escalation war damit nur per
+        # SQL-Abfrage nachvollziehbar, nie live im laufenden Betrieb sichtbar.
+        logger.info("Routing %s: final_model=%s%s, %dms.", route_id, final_model,
+                    " (escaliert)" if escalated else "", latency_ms)
 
     def mark_failure(self, route_id: str, latency_ms: int, attempts_json: str, error: str) -> None:
         with connection() as db:
             db.execute(
                 "UPDATE route_decisions SET latency_ms=?,attempts_json=?,error=? WHERE id=?",
                 (latency_ms, attempts_json, error, route_id))
+        logger.warning("Routing %s fehlgeschlagen nach %dms: %s", route_id, latency_ms, error[:300])
 
     def record_feedback(self, route_id: str, value: int, feedback_at: str) -> None:
         with connection() as db:

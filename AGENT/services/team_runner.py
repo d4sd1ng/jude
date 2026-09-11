@@ -54,7 +54,7 @@ class AgentRunner:
         self.svc = svc
         self.builder = builder
 
-    def run(self, name: str, task: str) -> dict:
+    def run(self, name: str, task: str, parent_agent: str | None = None) -> dict:
         svc = self.svc
         spec = svc.get(name)
         if spec is None:
@@ -132,7 +132,9 @@ class AgentRunner:
             return ergebnis
         agent.tools.execute = mitschreiben
         ergebnis_id = uuid.uuid4().hex[:12]
-        self._lauf_beginnen(ergebnis_id, spec, task)
+        self._lauf_beginnen(ergebnis_id, spec, task, parent_agent)
+        logger.info("%s: Lauf %s gestartet%s.", spec["name"], ergebnis_id,
+                   f" (ausgeloest von {parent_agent})" if parent_agent else "")
         begonnen = time.monotonic()
         vorher = self.router_verbrauch()
         try:
@@ -177,6 +179,14 @@ class AgentRunner:
         dauer = int((time.monotonic() - begonnen) * 1000)
         self._protokollieren(ergebnis_id, spec, task, status, answer, blockers,
                              agent.last_model, nachher, vorher, dauer, werkzeuge)
+        # Bisher stand im Klartext-Log NUR etwas, wenn etwas schiefging
+        # (Provider-Sperren, Eskalation) - ein normal durchgelaufener Lauf
+        # hinterliess keine einzige Zeile. Ohne das war aus dem Log allein
+        # nie zu sehen, WELCHES Modell einen Lauf tatsaechlich beendete, nur
+        # aus route_decisions (und dort bis zur AI-Router-Migration ohne
+        # agent_name fuer die meisten Rollen) - gemessen 08.09.2026.
+        logger.info("%s: Lauf %s beendet - status=%s, modell=%s, dauer=%sms, werkzeuge=%s.",
+                   spec["name"], ergebnis_id, status, agent.last_model, dauer, werkzeuge)
         # Der Mitarbeiter ist hier fertig – die Chefpruefung haelt ihn nicht auf.
         # Der Redakteur legt nichts vor, bei ihm gaebe es nichts zu pruefen.
         geprueft = ([] if spec["name"] == svc.REDAKTEUR
@@ -238,18 +248,26 @@ class AgentRunner:
             return "fehlgeschlagen", fehlschlaege
         return "teilweise", fehlschlaege
 
-    def _lauf_beginnen(self, lauf_id, spec, task) -> None:
+    def _lauf_beginnen(self, lauf_id, spec, task, parent_agent: str | None = None) -> None:
         """Sofort beim Start eine Zeile anlegen (status='laufend') – sonst
         taucht ein laufender Auftrag nirgends auf, bevor er fertig ist, und
-        es ist von aussen nicht zu sehen, ob gerade jemand arbeitet."""
+        es ist von aussen nicht zu sehen, ob gerade jemand arbeitet.
+
+        parent_agent: wer diesen Lauf ausgeloest hat, falls es ein
+        verschachtelter Lauf ist (z.B. Heinz ueber write_copy aus einem
+        anderen Mitarbeiter-Lauf heraus). Ohne dieses Feld war ein
+        verschachtelter Lauf von einem eigenstaendigen nicht zu unterscheiden -
+        beide sahen in agent_runs identisch aus (gemessen 08.09.2026, beim
+        Versuch nachzuvollziehen, welches Modell Heinz' Text tatsaechlich
+        schrieb)."""
         try:
             from services.database import connection
             with connection() as db:
                 db.execute(
-                    "INSERT INTO agent_runs(id,created_at,agent,person,task,status) "
-                    "VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO agent_runs(id,created_at,agent,person,task,status,parent_agent) "
+                    "VALUES(?,?,?,?,?,?,?)",
                     (lauf_id, datetime.now(timezone.utc).isoformat(), spec["name"],
-                     spec.get("person"), task[:4000], "laufend"))
+                     spec.get("person"), task[:4000], "laufend", parent_agent))
         except Exception as exc:
             logger.warning("Laufstart nicht protokolliert: %s", exc)
 

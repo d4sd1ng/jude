@@ -1,4 +1,4 @@
-"""Bilder erzeugen und bearbeiten über die OpenAI-Images-API (gpt-image-1).
+"""Bilder erzeugen und bearbeiten über die OpenAI-Images-API (gpt-image-2.5-flare).
 
 Erzeugte und bearbeitete Bilder werden lokal unter ``Jude/images`` abgelegt, mit
 einer Metadaten-JSON pro Bild (Prompt, Größe, Quelle, Zeit). So bleibt die
@@ -23,7 +23,13 @@ _ALLOWED_SIZES = {"1024x1024", "1024x1536", "1536x1024", "auto"}
 
 class ImageService:
     def __init__(self, model: str | None = None, timeout: int = 180):
-        self.model = model or os.getenv("JUDE_IMAGE_MODEL", "gpt-image-1")
+        # gpt-image-1 (11.09.2026 als veraltet erkannt, developers.openai.com/
+        # api/docs/guides/image-generation nennt gpt-image-2.5-sunburst
+        # (Editierpraezision) und gpt-image-2.5-flare (schnelle Alltags-
+        # generierung) als aktuelle Modelle) - flare passt zu designers
+        # tatsaechlichem Einsatz (laufende Post-/Grafik-Motive, keine
+        # praezise Bildbearbeitung).
+        self.model = model or os.getenv("JUDE_IMAGE_MODEL", "gpt-image-2.5-flare")
         self.timeout = timeout
 
     # --------------------------------------------------------------- intern

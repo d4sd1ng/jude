@@ -164,6 +164,30 @@ def test_abbruch_verhindert_den_naechsten_werkzeugaufruf():
     assert spec["name"] not in ABBRUCH_ANGEFORDERT  # run() raeumt die Anforderung selbst auf
 
 
+def test_verschachtelter_lauf_haelt_fest_wer_ihn_ausgeloest_hat():
+    """Beobachtet 08.09.2026: ein von write_copy ausgeloester Redakteur-Lauf
+    sah in agent_runs identisch aus wie ein eigenstaendiger - nicht
+    nachvollziehbar, welcher Mitarbeiter ihn ausgeloest hat. parent_agent
+    haelt das jetzt fest."""
+    from services.database import connection
+
+    spec = {"name": "test_verschachtelt_agent", "role": "x", "skills": [], "person": None, "alter": None}
+    svc = _FakeSvcForAbbruch(spec)
+    fake_agent = _FakeAgentForAbbruch([])
+
+    class _FakeBuilder:
+        def build_agent(self, spec):
+            return fake_agent
+
+    runner = AgentRunner(svc, _FakeBuilder())
+    ergebnis = runner.run(spec["name"], "vom Kollegen ausgeloeste Aufgabe", parent_agent="social")
+
+    with connection() as db:
+        zeile = db.execute("SELECT parent_agent FROM agent_runs WHERE id=?",
+                          (ergebnis["task_id"],)).fetchone()
+    assert zeile["parent_agent"] == "social"
+
+
 # ------------------------------------------------------------ Eskalation
 
 def test_eskalation_greift_bei_hartnaeckiger_revisionsrunde():
@@ -594,5 +618,5 @@ def test_pipeline_json_gate_laesst_gueltige_rangliste_durch(tmp_path, monkeypatc
 
     ergebnis = dienst._chefpruefung("scraper")
 
-    assert ergebnis == []
+    assert ergebnis == [{"id": vorlage["id"], "urteil": "gates_bestanden"}]
     assert queue.zeigen(vorlage["id"])["status"] == "pruefung"

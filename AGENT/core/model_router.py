@@ -860,6 +860,19 @@ class ModelRouter:
                 datetime.now(timezone.utc).isoformat(), spec.provider, spec.model_name, input_tokens, output_tokens,
                 cached, cache_write, reasoning, str(usage.get("service_tier", "standard")),
                 str(usage.get("tariff", "standard")), multiplier, request_id, cost)
+            # Bis 10.09.2026 lief jeder Modellaufruf - bezahlt oder nicht -
+            # komplett stumm: der Preis landete nur in model_usage (SQLite),
+            # nirgends im Log. Jede Kostenfrage diese Sitzung brauchte eine
+            # SQL-Abfrage statt eines Blicks ins Log. Ab jetzt steht jeder
+            # Aufruf im Log, mit Preis, egal ob 0 oder nicht - sonst faellt ein
+            # teurer Ausreisser erst im naechsten Budget-Check auf, nicht wenn
+            # er passiert.
+            if cost > 0:
+                logger.info("call_llm: %s/%s - %d in / %d out Token, $%.4f (request_id=%s).",
+                            spec.provider, spec.model_name, input_tokens, output_tokens, cost, request_id)
+            else:
+                logger.info("call_llm: %s/%s - %d in / %d out Token, kostenlos (request_id=%s).",
+                            spec.provider, spec.model_name, input_tokens, output_tokens, request_id)
             return response
 
     def call_with_fallback(self, messages: list[dict], tools: list[dict] | None = None,

@@ -91,7 +91,7 @@ def register(registry: ToolRegistry) -> None:
     ))
     registry.register(Tool(
         name="generate_image",
-        description=("Erzeugt ein Bild aus einer Textbeschreibung über OpenAI (gpt-image-1) und speichert es "
+        description=("Erzeugt ein Bild aus einer Textbeschreibung über OpenAI (gpt-image-2.5-flare) und speichert es "
                      "lokal unter Jude/images. Der Nurovelle-Bildstil (Farben, Material, Verbote) wird automatisch "
                      "an jeden Prompt angehängt (marke=true, Standard) – nicht selbst wiederholen. Nur für "
                      "ausdrücklich private/markenfremde Bilder marke=false setzen."),
@@ -115,7 +115,10 @@ def register(registry: ToolRegistry) -> None:
             "titel": {"type": "string"},
             "kennzahlen": {"type": "array", "items": {"type": "object", "properties": {
                 "wert": {"type": "string"}, "label": {"type": "string"},
-            }}, "description": "Bis zu vier {wert, label} Paare, z.B. {'wert':'8 h','label':'Dokumentation pro Woche'}."},
+                "icon": {"type": "string", "description": "Optional: Pfad zu einer Linien-Icon-Datei im "
+                         "Homepage-Repo, z.B. 'Bilder/icons/Vorteile/3.png' (Ordner: branche/1-9, "
+                         "service/1-9, Vorteile/1-5) - erscheint klein neben dieser Kennzahl."},
+            }}, "description": "Bis zu vier {wert, label, icon?} Paare, z.B. {'wert':'8 h','label':'Dokumentation pro Woche'}."},
             "fussnote": {"type": "string"},
             "breite": {"type": "integer"}, "hoehe": {"type": "integer"},
         }, "required": ["kicker", "titel", "kennzahlen"]},
@@ -131,7 +134,10 @@ def register(registry: ToolRegistry) -> None:
             "titel": {"type": "string"}, "untertitel": {"type": "string"},
             "abschnitte": {"type": "array", "items": {"type": "object", "properties": {
                 "kopf": {"type": "string"}, "text": {"type": "string"},
-            }}, "description": "Bis zu fuenf {kopf, text} Abschnitte."},
+                "icon": {"type": "string", "description": "Optional: Pfad zu einer Linien-Icon-Datei im "
+                         "Homepage-Repo, z.B. 'Bilder/icons/service/2.png' (Ordner: branche/1-9, "
+                         "service/1-9, Vorteile/1-5) - erscheint klein neben diesem Abschnittskopf."},
+            }}, "description": "Bis zu fuenf {kopf, text, icon?} Abschnitte."},
             "abschluss": {"type": "string", "description": "Optionale hervorgehobene Schlusszeile/CTA."},
             "breite": {"type": "integer"}, "hoehe": {"type": "integer"},
         }, "required": ["titel", "untertitel", "abschnitte"]},

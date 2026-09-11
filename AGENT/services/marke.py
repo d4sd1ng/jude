@@ -12,6 +12,8 @@ ohne das Bild neu zu erzeugen.
 
 from __future__ import annotations
 
+import base64
+import mimetypes
 from html import escape
 
 #: Farbwerte der Marke.
@@ -153,30 +155,74 @@ def _umbruch(text: str, zeichen: int) -> list[str]:
     return zeilen
 
 
+def _icon_daturi(pfad: str) -> str | None:
+    """Ein Icon aus dem Homepage-Repo (assets.md Abschnitt 4) als data:-URI,
+    damit es direkt im SVG steht statt als externer Verweis - Chromium
+    rasterisiert das SVG spaeter isoliert (services/rasterizer.py), ein
+    relativer Dateipfad waere dort nicht aufloesbar.
+
+    Fehlt die Datei oder ist kein Pfad angegeben: ``None``, still - ein
+    fehlendes Icon soll die ganze Grafik nicht zum Absturz bringen, die
+    Karte faellt dann auf den reinen Text-/Balken-Aufbau zurueck.
+    """
+    if not pfad:
+        return None
+    from tools.datei_lesen import _homepage_repo_wurzel
+    wurzel = _homepage_repo_wurzel()
+    if wurzel is None:
+        return None
+    ziel = (wurzel / str(pfad).strip().lstrip("/")).resolve()
+    if wurzel not in ziel.parents or not ziel.is_file():
+        return None
+    typ = mimetypes.guess_type(ziel.name)[0] or "image/png"
+    daten = base64.b64encode(ziel.read_bytes()).decode("ascii")
+    return f"data:{typ};base64,{daten}"
+
+
 def infografik(kicker: str, titel: str, kennzahlen: list[dict],
                fussnote: str = "", breite: int = 1080, hoehe: int = 1350) -> str:
     """Eine Infografik mit bis zu vier Kennzahlen.
 
-    ``kennzahlen``: ``[{"wert": "8 h", "label": "Dokumentation pro Woche"}, …]``
+    ``kennzahlen``: ``[{"wert": "8 h", "label": "Dokumentation pro Woche",
+    "icon": "assets/icons/icons_vorteile/icon3.png"}, …]`` – ``icon`` ist
+    optional, ein Pfad relativ zum Homepage-Repo (siehe assets.md Abschnitt 4).
     Die Werte stehen in Gold, die Erläuterung darunter gedeckt – Gold bleibt der
     einzige Akzent, sonst kippt der Auftritt ins Werbliche.
     """
+    titel_zeilen = _umbruch(titel, 26)[:3]
+    eintraege = kennzahlen[:4]
+    # Die Fusszeile steht auf einer festen Position relativ zu 'hoehe', die
+    # Kennzahlen-Kacheln wachsen von oben mit fester Kachelhoehe (148px) je
+    # Eintrag - eine zu klein gewaehlte 'hoehe' liess die letzte Kachel bislang
+    # direkt in die Fusszeile hineinlaufen (gemessen 10.09.2026: Aufruf mit
+    # hoehe=800 bei vier Kennzahlen ueberlappte "Nurovelle" mit der letzten
+    # Kachel - fuer den Aufrufer unsichtbar, sichtbar erst im fertigen PNG).
+    # Die Canvas waechst deshalb automatisch mit, statt eine zu kleine Vorgabe
+    # unveraendert und ungeprueft zu uebernehmen.
+    y_ende = 210 + len(titel_zeilen) * 74 + 40 + len(eintraege) * 148
+    hoehe = max(int(hoehe), y_ende + 190)
     teile = [_kopf(breite, hoehe)]
     teile.append(f'<text x="56" y="130" fill="url(#goldwort)" font-size="20" '
                  f'font-weight="600" letter-spacing="3.4">{escape(kicker.upper())}</text>')
     y = 210
-    for zeile in _umbruch(titel, 26)[:3]:
+    for zeile in titel_zeilen:
         teile.append(f'<text x="56" y="{y}" fill="{HELL}" font-family="{SCHRIFT_TITEL}" '
                      f'font-size="62" font-weight="700">{escape(zeile)}</text>')
         y += 74
     y += 40
-    for eintrag in kennzahlen[:4]:
-        teile.append(f'<rect x="56" y="{y-4}" width="4" height="86" fill="url(#gold)"/>')
-        teile.append(f'<text x="86" y="{y+48}" fill="url(#goldwort)" '
+    for eintrag in eintraege:
+        icon_uri = _icon_daturi(eintrag.get("icon", ""))
+        text_x = 86
+        if icon_uri:
+            teile.append(f'<image href="{icon_uri}" x="56" y="{y-4}" width="52" height="52"/>')
+            text_x = 124
+        else:
+            teile.append(f'<rect x="56" y="{y-4}" width="4" height="86" fill="url(#gold)"/>')
+        teile.append(f'<text x="{text_x}" y="{y+48}" fill="url(#goldwort)" '
                      f'font-family="{SCHRIFT_TITEL}" font-size="58" font-weight="800">'
                      f'{escape(str(eintrag.get("wert","")))}</text>')
         for i, zeile in enumerate(_umbruch(eintrag.get("label", ""), 44)[:2]):
-            teile.append(f'<text x="86" y="{y+78+i*24}" fill="{HELL_GEDECKT}" '
+            teile.append(f'<text x="{text_x}" y="{y+78+i*24}" fill="{HELL_GEDECKT}" '
                          f'font-size="21">{escape(zeile)}</text>')
         y += 148
     if fussnote:
@@ -189,24 +235,47 @@ def infografik(kicker: str, titel: str, kennzahlen: list[dict],
 
 def onepager(titel: str, untertitel: str, abschnitte: list[dict],
              abschluss: str = "", breite: int = 1240, hoehe: int = 1754) -> str:
-    """Ein Onepager in A4-Verhältnis. ``abschnitte``: ``[{"kopf":…, "text":…}]``"""
+    """Ein Onepager in A4-Verhältnis.
+
+    ``abschnitte``: ``[{"kopf":…, "text":…, "icon": "assets/icons/icons_service/icon2.png"}]``
+    – ``icon`` ist optional, ein Pfad relativ zum Homepage-Repo (siehe
+    assets.md Abschnitt 4). Mit Icon wirkt jeder Abschnitt als eigene
+    Aufzaehlungs-Karte statt als reiner Fliesstextblock.
+    """
+    titel_zeilen = _umbruch(titel, 30)[:2]
+    untertitel_zeilen = _umbruch(untertitel, 62)[:3]
+    eintraege = abschnitte[:5]
+    # Dieselbe Ursache wie in infografik() oben: die Abschluss-Box haengt an
+    # einer festen Position relativ zu 'hoehe', der Inhalt waechst von oben -
+    # bei zu klein gewaehlter 'hoehe' lief der letzte Abschnitt in die Box
+    # bzw. die Fusszeile hinein. Canvas waechst deshalb mit dem tatsaechlichen
+    # Inhalt mit, statt eine zu kleine Vorgabe unveraendert zu uebernehmen.
+    y_ende = 200 + len(titel_zeilen) * 68 + len(untertitel_zeilen) * 34 + 60 + 56
+    for abschnitt in eintraege:
+        y_ende += 40 + len(_umbruch(abschnitt.get("text", ""), 74)[:5]) * 30 + 34
+    hoehe = max(int(hoehe), y_ende + (230 if abschluss else 170))
     teile = [_kopf(breite, hoehe)]
     teile.append(f'<text x="72" y="128" fill="url(#goldwort)" font-size="19" '
                  f'font-weight="600" letter-spacing="3.4">NUROVELLE</text>')
     y = 200
-    for zeile in _umbruch(titel, 30)[:2]:
+    for zeile in titel_zeilen:
         teile.append(f'<text x="72" y="{y}" fill="{HELL}" font-family="{SCHRIFT_TITEL}" '
                      f'font-size="56" font-weight="700">{escape(zeile)}</text>')
         y += 68
-    for zeile in _umbruch(untertitel, 62)[:3]:
+    for zeile in untertitel_zeilen:
         teile.append(f'<text x="72" y="{y+14}" fill="{HELL_GEDECKT}" font-size="24">'
                      f'{escape(zeile)}</text>')
         y += 34
     y += 60
     teile.append(f'<rect x="72" y="{y}" width="{breite-144}" height="2" fill="url(#gold)"/>')
     y += 56
-    for abschnitt in abschnitte[:5]:
-        teile.append(f'<text x="72" y="{y}" fill="url(#goldwort)" font-family="{SCHRIFT_TITEL}" '
+    for abschnitt in eintraege:
+        icon_uri = _icon_daturi(abschnitt.get("icon", ""))
+        kopf_x = 72
+        if icon_uri:
+            teile.append(f'<image href="{icon_uri}" x="72" y="{y-32}" width="40" height="40"/>')
+            kopf_x = 124
+        teile.append(f'<text x="{kopf_x}" y="{y}" fill="url(#goldwort)" font-family="{SCHRIFT_TITEL}" '
                      f'font-size="30" font-weight="700">{escape(abschnitt.get("kopf",""))}</text>')
         y += 40
         for zeile in _umbruch(abschnitt.get("text", ""), 74)[:5]:

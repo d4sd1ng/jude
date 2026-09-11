@@ -149,6 +149,15 @@ def initialize_database(path: Path | None = None) -> None:
         route_columns = {row[1] for row in db.execute("PRAGMA table_info(route_decisions)")}
         if "agent_name" not in route_columns:
             db.execute("ALTER TABLE route_decisions ADD COLUMN agent_name TEXT")
+        # Ohne diese Spalte war ein verschachtelter Lauf (z.B. Heinz, von
+        # write_copy aus Mikes Lauf heraus ausgeloest) nicht von einem
+        # eigenstaendigen redakteur-Lauf zu unterscheiden - beide sahen in
+        # agent_runs identisch aus, nur ueber zeitliche Naehe zu erraten
+        # (gemessen 08.09.2026, beim Versuch nachzuvollziehen, welches
+        # Modell Heinz' Text tatsaechlich geschrieben hat).
+        run_columns = {row[1] for row in db.execute("PRAGMA table_info(agent_runs)")}
+        if "parent_agent" not in run_columns:
+            db.execute("ALTER TABLE agent_runs ADD COLUMN parent_agent TEXT")
 
 
 @contextmanager

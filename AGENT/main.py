@@ -50,6 +50,7 @@ def build_application() -> tuple[Agent, ToolCreator]:
     agent.team = SubAgentService(registry, router, ai_router=ai_router)
     register_team(registry, agent.team)
     agent.scheduler = SchedulerService(agent)
+    SchedulerService.registrieren(agent.scheduler)
     register_scheduler(registry, agent.scheduler)
     agent.backup = BackupService()
     register_backup(registry, agent.backup)

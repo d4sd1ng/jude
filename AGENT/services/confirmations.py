@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Callable
 
 from services.database import audit, connection
+
+logger = logging.getLogger(__name__)
 
 Executor = Callable[[str, dict], str]
 
@@ -77,6 +80,7 @@ class ConfirmationQueue:
                         (summary, payload_json, created, treffer),
                     )
                 audit("confirmation_requested", treffer, {"action_type": action_type, "summary": summary, "ueberarbeitet": True}, True)
+                logger.info("Bestaetigung %s (%s, %s) erneut vorgelegt: %s", treffer, action_type, agent or "?", summary[:150])
                 try:
                     from services.notifications import NotificationService
                     NotificationService().create("bestaetigung", f"Freigabe nötig: {action_type}", summary[:200])
@@ -90,6 +94,7 @@ class ConfirmationQueue:
                 (action_id, action_type, summary, payload_json, created, agent),
             )
         audit("confirmation_requested", action_id, {"action_type": action_type, "summary": summary}, True)
+        logger.info("Bestaetigung %s (%s, %s) angelegt: %s", action_id, action_type, agent or "?", summary[:150])
         # Ohne Meldung wartete die Schleuse stumm: Joanas Landingpage-Schreib-
         # vorgänge lagen hier, ohne dass Tino je davon erfuhr (16.08.).
         try:
@@ -146,6 +151,18 @@ class ConfirmationQueue:
                 (str(anmerkung)[:2000], now, action_id),
             )
         audit("confirmation_revision", action_id, {"anmerkung": anmerkung}, True)
+        # Sofort nachfassen statt auf den naechsten Poll-Tick zu warten
+        # (11.09.2026 - Tino: eine Revision soll nicht liegen bleiben).
+        if row["agent"]:
+            try:
+                from services.scheduler import SchedulerService
+                sched = SchedulerService.aktuelle()
+                if sched is not None:
+                    sched.dispatch_now(row["agent"],
+                                       "Du hast eine offene Revision - siehe oben im Systemprompt. "
+                                       "Arbeite sie ab, bevor du etwas Neues beginnst.")
+            except Exception:
+                pass
         return {"id": action_id, "status": "revision", "agent": row["agent"]}
 
     def decide(self, action_id: str, approve: bool, executor: Executor) -> dict:
@@ -168,6 +185,7 @@ class ConfirmationQueue:
                 action_type = row["action_type"]
         if rejected:
             audit("confirmation_rejected", action_id, {"action_type": action_type}, True)
+            logger.info("Bestaetigung %s (%s) abgelehnt.", action_id, action_type)
             return {"id": action_id, "status": "rejected", "result": "Vom Nutzer abgelehnt"}
         try:
             result = executor(action_type, payload)
@@ -175,8 +193,10 @@ class ConfirmationQueue:
             with connection() as db:
                 db.execute("UPDATE confirmations SET status='failed',result=? WHERE id=?", (str(exc), action_id))
             audit("confirmation_execution", action_id, {"action_type": action_type, "error": str(exc)}, False)
+            logger.warning("Bestaetigung %s (%s) fehlgeschlagen bei Ausfuehrung: %s", action_id, action_type, exc)
             raise
         with connection() as db:
             db.execute("UPDATE confirmations SET status='approved',decided_at=?,result=? WHERE id=?", (now, result, action_id))
         audit("confirmation_execution", action_id, {"action_type": action_type}, True)
+        logger.info("Bestaetigung %s (%s) ausgefuehrt: %s", action_id, action_type, str(result)[:200])
         return {"id": action_id, "status": "approved", "result": result}

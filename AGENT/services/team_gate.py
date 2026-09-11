@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -235,6 +234,8 @@ class ContentGate:
         queue = ReviewQueue()
         offene = [v for v in queue.zur_pruefung(limit=20) if v["agent"] == agent_name]
         entschieden = []
+        logger.info("pruefen(%s): %s Vorlage(n) in Pruefung - %s.", agent_name, len(offene),
+                    ", ".join(f"{v['id']}/{v['art']}/Runde{v.get('runde', 1)}" for v in offene) or "keine")
         for vorlage in offene:
             try:
                 voll = queue.zeigen(vorlage["id"])
@@ -396,8 +397,23 @@ class ContentGate:
                 # auch fuer Beitraege, nicht nur fuer 'grafik' (04.09.2026 -
                 # social legte Post-/Reel-Text ohne jedes Bild vor, obwohl die
                 # eigene Rolle jetzt generate_image dafuer vorschreibt).
+                # Onepager (content, art='dokument') zaehlt seit 11.09.2026
+                # ebenfalls dazu: contents eigene Rolle verlangt seit 07.09.2026
+                # bereits, Heike per inform_colleague zu benachrichtigen, damit
+                # sie grafik_onepager aufruft ("ohne diese Benachrichtigung
+                # bleibt der Onepager ein reiner Text ohne Layout, das ist
+                # NICHT fertig") - das stand aber nur als Prosa-Regel da, ohne
+                # jede deterministische Durchsetzung. Ergebnis (gemessen
+                # 11.09.2026, Tino: "to put just text on it is complete off
+                # from a onepager"): reine Text-Gliederungen kamen unveraendert
+                # bis zu Tino durch, weil niemand die fehlende Bilddatei
+                # zaehlte. Titel-Heuristik statt fixem Art-Wert, weil 'dokument'
+                # auch fuer Blog-Artikel/Whitepaper gilt, die AUSDRUECKLICH
+                # KEIN Bild brauchen (content-Rolle, BILD-Abschnitt).
                 if (voll["art"] == "grafik" or voll["agent"] == "designer"
-                        or (voll["art"] == "post" and voll["agent"] == "social")):
+                        or (voll["art"] == "post" and voll["agent"] == "social")
+                        or (voll["art"] == "dokument" and voll["agent"] == "content"
+                            and "onepager" in voll["titel"].lower())):
                     quelle_bild = str(voll.get("quelle") or "")
                     # Bis 04.09.2026 pruefte dieses Tor die Zeichenkette, nicht
                     # die Datei: ein korrekt geschriebenes 'Infografik_2.png'
@@ -406,15 +422,27 @@ class ContentGate:
                     hat_bild = bool(self._bilddateien(quelle_bild))
                     if not hat_bild:
                         genannt = re.search(r"\.(png|jpe?g|webp|gif|svg)(\?|$|,)", quelle_bild, re.I)
-                        grund = ("Keine Bilddatei vorgelegt: 'grafik' braucht ein mit generate_image "
-                                 "erzeugtes Bild samt Dateipfad in quelle, keine Text-Beschreibung des "
-                                 "geplanten Motivs.")
-                        if genannt:
-                            grund = (f"Die angegebene Bilddatei existiert nicht: {quelle_bild[:120]}. "
-                                     f"Einen Dateinamen hinzuschreiben erzeugt kein Bild – erst "
-                                     f"generate_image aufrufen, dann den entstandenen Pfad vorlegen.")
+                        ist_onepager = voll["art"] == "dokument" and voll["agent"] == "content"
+                        if ist_onepager:
+                            grund = ("Kein Layout vorgelegt: ein Onepager braucht die von Heike per "
+                                     "grafik_onepager erzeugte Bilddatei in quelle, keine reine "
+                                     "Text-Gliederung. Heike per inform_colleague mit Titel/Untertitel/"
+                                     "Abschnitten/Abschluss benachrichtigen (siehe eigene Rolle, "
+                                     "ONEPAGER-LAYOUT), dann mit deren Dateipfad erneut vorlegen.")
+                        else:
+                            grund = ("Keine Bilddatei vorgelegt: 'grafik' braucht ein mit generate_image "
+                                     "erzeugtes Bild samt Dateipfad in quelle, keine Text-Beschreibung des "
+                                     "geplanten Motivs.")
+                            if genannt:
+                                grund = (f"Die angegebene Bilddatei existiert nicht: {quelle_bild[:120]}. "
+                                         f"Einen Dateinamen hinzuschreiben erzeugt kein Bild – erst "
+                                         f"generate_image aufrufen, dann den entstandenen Pfad vorlegen.")
                         queue.revision(vorlage["id"], f"Jude: {grund}")
                         self._feedback.lehre_merken(agent_name,
+                                          "Ein Onepager ohne die von Heike erzeugte Layout-Datei wird "
+                                          "nicht angenommen - erst per inform_colleague benachrichtigen "
+                                          "und deren Dateipfad als quelle angeben, dann vorlegen."
+                                          if ist_onepager else
                                           "Eine 'grafik'-Vorlage ohne echte Bilddatei wird nicht "
                                           "angenommen – erst generate_image aufrufen und den "
                                           "Dateipfad als quelle angeben, dann vorlegen.")
@@ -537,11 +565,41 @@ class ContentGate:
                 # statt neue Einwaende nachzuschieben - dieselbe Absicht (keine
                 # endlose Rueckweisungsschleife), aber als Urteil einer echten
                 # Pruefinstanz statt als blinder Bypass.
+                #
+                # Bis 10.09.2026 war dieser Fall (alle deterministischen Gates
+                # bestanden) komplett stumm - kein Log, kein Eintrag in
+                # entschieden. Ein Social-Post ohne Bild kam so ungeklaert durch
+                # (b6a86c63df28, 10.09.2026) und liess sich im Nachhinein nicht
+                # rekonstruieren: kein Log zeigte, welche Gates ueberhaupt liefen.
+                # Ab jetzt wird jeder Durchlass explizit protokolliert, damit ein
+                # zweiter Fall sofort erklaerbar ist statt erneut Stunden Suche
+                # zu kosten.
+                logger.info("pruefen(%s): %s alle deterministischen Gates bestanden, "
+                            "bleibt auf 'pruefung' (wartet auf Projektleitung).",
+                            agent_name, vorlage["id"])
+                entschieden.append({"id": vorlage["id"], "urteil": "gates_bestanden"})
             except Exception as exc:
-                # Im Zweifel nach oben durchreichen: lieber legt Tino etwas
-                # Mittelmaessiges beiseite, als dass Arbeit unsichtbar liegen bleibt.
-                logger.warning("Chefpruefung fehlgeschlagen (%s): %s", vorlage["id"], exc)
-                with suppress(Exception):
-                    queue.freigeben(vorlage["id"], "Ungeprueft – Judes Pruefung fiel aus.")
-                entschieden.append({"id": vorlage["id"], "urteil": "ungeprueft"})
+                # Fail-closed, nicht fail-open: ein Fehler IM Gate ist kein Grund,
+                # das Gate zu umgehen - genau das tat dieser Block bis 11.09.2026
+                # (automatisches freigeben() bei jeder Exception, egal welcher).
+                # Ein Social-Post ohne Bild (b6a86c63df28, 10.09.2026) blieb dadurch
+                # unerklaerbar: kein Log zeigte, ob ein Gate-Fehler die Ursache war,
+                # weil der Fehlerfall selbst zur automatischen Freigabe fuehrte statt
+                # zu einem sichtbaren Halt. Bleibt jetzt auf 'pruefung' stehen wie
+                # jeder andere bestandene/unentschiedene Fall auch - Projektleitung
+                # sieht es ueber pruefungsliste(), Tino verliert nichts unbemerkt.
+                logger.warning("Chefpruefung fehlgeschlagen (%s): %s - bleibt auf 'pruefung'.",
+                                vorlage["id"], exc)
+                try:
+                    from services.notifications import NotificationService
+                    NotificationService().create("fehler",
+                                                 f"Pruefung fehlgeschlagen: {vorlage.get('titel', vorlage['id'])[:70]}",
+                                                 str(exc)[:200])
+                except Exception:
+                    pass
+                entschieden.append({"id": vorlage["id"], "urteil": "gate_fehler"})
+        if entschieden:
+            logger.info("pruefen(%s) fertig: %s.", agent_name,
+                        "; ".join(f"{e['id']}={e['urteil']}" + (f"({e['grund']})" if e.get('grund') else "")
+                                  for e in entschieden))
         return entschieden

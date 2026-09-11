@@ -43,7 +43,20 @@ def agents_stop(name: str):
 
 @router.post("/api/agents/{name}/start")
 def agents_start(name: str):
-    return team.set_pausiert(name, False)
+    """'Start' im Cockpit hiess bisher nur 'darf wieder', nicht 'tut jetzt
+    etwas' - set_pausiert(False) hob lediglich die Sperre auf, der
+    Mitarbeiter blieb untaetig, bis ihn zufaellig ein anderer Trigger
+    (Auftrag, Revision, naechster Tick) erreichte. Tino: 'no matter what if
+    i hit start on any employee they have to start immediatly with working'
+    (11.09.2026) - danach hier zusaetzlich sofort ueber denselben
+    begrenzten Worker-Pool wie eine Revision einreihen (dispatch_now)."""
+    ergebnis = team.set_pausiert(name, False)
+    from services.scheduler import SchedulerService
+    sched = SchedulerService.aktuelle()
+    if sched is not None:
+        sched.dispatch_now(name, "Beginne sofort mit deiner naechsten anstehenden Aufgabe "
+                                  "gemaess deiner Rolle (siehe oben im Systemprompt: QUELLE/ARBEIT).")
+    return ergebnis
 
 
 @router.get("/api/agents/aktiv")

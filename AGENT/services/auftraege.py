@@ -53,6 +53,24 @@ class Auftragsbuch:
         titel = str(titel).strip()
         if not titel:
             raise ValueError("Der Auftrag braucht einen Titel.")
+        agent_norm = str(agent).strip().casefold()
+        # Ohne diesen Abgleich legt ein Aufrufer, der regelmaessig dieselbe
+        # Luecke findet (z.B. Renates RUECKSTAND-Zaehlung, jetzt alle 5
+        # Minuten statt einmalig), bei jedem Lauf einen weiteren, identischen
+        # Auftrag an - dieselbe Klasse Fehler wie die 69 gleichlautenden
+        # E-Mail-Bestaetigungen bzw. 41 gleichen Infografik-Vorlagen, die
+        # services/review.py.offene_gleiche() und services/confirmations.py
+        # bereits fuer ihre jeweiligen Warteschlangen loesen (11.09.2026).
+        with connection() as db:
+            row = db.execute(
+                "SELECT id, status, faellig_am FROM auftraege "
+                "WHERE agent=? AND lower(titel)=lower(?) "
+                "AND status IN ('offen','in_arbeit','vorgelegt') "
+                "ORDER BY created_at DESC LIMIT 1",
+                (agent_norm, titel)).fetchone()
+        if row is not None:
+            return {"id": row["id"], "agent": agent, "titel": titel,
+                    "status": row["status"], "faellig_am": row["faellig_am"]}
         eintrag_id = uuid.uuid4().hex[:12]
         jetzt = self._jetzt()
         with connection() as db:
@@ -60,7 +78,7 @@ class Auftragsbuch:
                 "INSERT INTO auftraege(id, created_at, updated_at, titel, beschreibung,"
                 " agent, quelle, faellig_am) VALUES(?,?,?,?,?,?,?,?)",
                 (eintrag_id, jetzt, jetzt, titel, str(beschreibung).strip(),
-                 str(agent).strip().casefold(), quelle, faellig_am))
+                 agent_norm, quelle, faellig_am))
         return {"id": eintrag_id, "agent": agent, "titel": titel,
                 "status": "offen", "faellig_am": faellig_am}
 

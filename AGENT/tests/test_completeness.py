@@ -236,15 +236,24 @@ def test_coding_service_real_git_repository():
 def test_remote_gui_requires_auth_and_status_is_fast(monkeypatch):
     monkeypatch.delenv("JUDE_GUI_USER", raising=False)
     monkeypatch.delenv("JUDE_GUI_PASSWORD", raising=False)
-    client = TestClient(app)
-    assert client.get("/api/status").status_code == 403
-    monkeypatch.setenv("JUDE_GUI_USER", "jude")
-    monkeypatch.setenv("JUDE_GUI_PASSWORD", "secret")
-    response = client.get("/api/status", auth=("jude", "secret"))
-    assert response.status_code == 200
-    assert response.json()["ict"]["connection"]["ready"] is None
-    page = client.get("/", auth=("jude", "secret"))
-    assert page.status_code == 200 and 'id="mealResult"' in page.text and 'id="shopBrand"' in page.text
+    # Als Context-Manager, nicht als nackte Konstruktion: nur so feuert beim
+    # Testende auch der Lifespan-Shutdown. Ohne ihn blieb web/app.py's
+    # Hintergrund-Task _task_scheduler() (scheduler.tick() alle 30s in einem
+    # echten Thread) fuer den Rest des Pytest-Prozesses am Leben und griff
+    # parallel zu spaeteren, voellig unabhaengigen Tests auf dieselbe
+    # Datenbank zu - gemessen 11.09.2026 als sporadisches "duplicate column
+    # name"-Race beim Schema-Migrationscheck in services/database.py, das
+    # zufaellige andere Tests traf (test_review.py, test_betrieb.py, dieses
+    # Modul selbst), je nach Ausfuehrungsreihenfolge.
+    with TestClient(app) as client:
+        assert client.get("/api/status").status_code == 403
+        monkeypatch.setenv("JUDE_GUI_USER", "jude")
+        monkeypatch.setenv("JUDE_GUI_PASSWORD", "secret")
+        response = client.get("/api/status", auth=("jude", "secret"))
+        assert response.status_code == 200
+        assert response.json()["ict"]["connection"]["ready"] is None
+        page = client.get("/", auth=("jude", "secret"))
+        assert page.status_code == 200 and 'id="mealResult"' in page.text and 'id="shopBrand"' in page.text
 
 
 def test_static_mount_is_behind_the_same_auth(monkeypatch):
@@ -255,12 +264,15 @@ def test_static_mount_is_behind_the_same_auth(monkeypatch):
     """
     monkeypatch.setenv("JUDE_GUI_USER", "jude")
     monkeypatch.setenv("JUDE_GUI_PASSWORD", "secret")
-    client = TestClient(app)
-    assert client.get("/static/app.js").status_code == 401
-    assert client.get("/static/app.js", auth=("jude", "secret")).status_code == 200
-    monkeypatch.delenv("JUDE_GUI_USER", raising=False)
-    monkeypatch.delenv("JUDE_GUI_PASSWORD", raising=False)
-    assert client.get("/static/app.js").status_code == 403
+    # Context-Manager statt nackter Konstruktion - siehe Kommentar in
+    # test_remote_gui_requires_auth_and_status_is_fast oben (derselbe
+    # Leaked-Background-Task-Grund).
+    with TestClient(app) as client:
+        assert client.get("/static/app.js").status_code == 401
+        assert client.get("/static/app.js", auth=("jude", "secret")).status_code == 200
+        monkeypatch.delenv("JUDE_GUI_USER", raising=False)
+        monkeypatch.delenv("JUDE_GUI_PASSWORD", raising=False)
+        assert client.get("/static/app.js").status_code == 403
 
 
 def test_gui_downloads_recorded_meal_pdf(monkeypatch):
@@ -275,7 +287,11 @@ def test_gui_downloads_recorded_meal_pdf(monkeypatch):
         with connection() as db:
             db.execute("INSERT INTO meal_plans(id,created_at,days,people,plan_json,pdf_path) VALUES(?,?,?,?,?,?)",
                        (plan_id, "now", 7, 2, "{}", str(target)))
-        response = TestClient(app).get(f"/api/meals/{plan_id}/pdf", auth=("jude", "secret"))
+        # Context-Manager statt nackter Konstruktion - siehe Kommentar in
+        # test_remote_gui_requires_auth_and_status_is_fast oben (derselbe
+        # Leaked-Background-Task-Grund).
+        with TestClient(app) as client:
+            response = client.get(f"/api/meals/{plan_id}/pdf", auth=("jude", "secret"))
         assert response.status_code == 200 and response.headers["content-type"] == "application/pdf"
     finally:
         target.unlink(missing_ok=True)

@@ -192,11 +192,15 @@ def register(registry: ToolRegistry) -> None:
     ))
     registry.register(Tool(
         name="list_project_files",
-        description=("Zeigt den Inhalt eines Verzeichnisses im Jude-Projekt oder im "
-                     "Nurovelle-Homepage-Repo (nur lesend). Damit findest du Vorgabedateien, "
-                     "Bilder und Icons, bevor du sie verwendest."),
+        description=("Zeigt den Inhalt EINES konkreten Verzeichnisses im Jude-Projekt oder im "
+                     "Nurovelle-Homepage-Repo (nur lesend). 'path' ist Pflicht und muss ein "
+                     "konkreter Unterordner sein, z.B. 'austausch/an-team/vorlagen/nurovelle' - "
+                     "NIE leer oder '.' lassen: das trifft sonst auf die Wurzel des Homepage-Repos "
+                     "(46+ Eintraege, u.a. node_modules), nicht auf das, was eigentlich gemeint war "
+                     "(gemessen 11.09.2026 - zwei Laeufe haengten sich an genau diesem leeren Aufruf "
+                     "ueber 3 Minuten auf, bevor sie ohne Ergebnis abbrachen)."),
         func=list_project_files,
         param_schema={"type": "object", "properties": {
             "path": {"type": "string"}, "pattern": {"type": "string"},
-        }},
+        }, "required": ["path"]},
     ))

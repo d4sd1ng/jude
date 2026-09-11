@@ -130,7 +130,7 @@ class ToolFactory:
                     "Ohne Empfaenger, Branche und Taetigkeit kann er nur Allgemeinplaetze "
                     "schreiben – gib sie mit, sonst wird der Text zurueckgewiesen.",
                     quelle="Auftragspruefung")
-            ergebnis = svc.run(svc.REDAKTEUR, (
+            ergebnis = svc.run(svc.REDAKTEUR, parent_agent=spec["name"], task=(
                 f"Auftrag von {wer}.\n"
                 f"{BRAND_BRIEF}\n"
                 f"Ton: {ton}. Laenge: {grenzen.get(laenge, grenzen['mittel'])}.\n"

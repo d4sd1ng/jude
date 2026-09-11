@@ -88,7 +88,23 @@ class SubAgentService:
     #: das extremste Beispiel).
     SCHREIB_PFLICHT = {
         "engineer": ("coding_write",),
-        "sequencer": ("write_copy",),
+        # sequencer/content/social/leadmanager (11.09.2026 - schwerer,
+        # seit mindestens 04.09.2026 unentdeckter Fehler): stand hier bis
+        # heute auf "write_copy" - aber alle vier delegieren das eigentliche
+        # Formulieren per Rollentext ausdruecklich an Heinz/redakteur
+        # ("Formuliere nicht selbst. Beauftrage Heinz... mit write_copy") und
+        # haben write_copy GAR NICHT in ihrer eigenen Skill-Liste. write_copy
+        # taucht in IHREM Lauf darum NIE auf - es laeuft unter Heinz' eigenem
+        # Agentennamen, in einem verschachtelten delegate_to_agent-Aufruf.
+        # Ergebnis: JEDE Vorlage dieser vier Rollen wurde automatisch als
+        # Revision zurueckgewiesen ("write_copy fehlt"), unabhaengig von der
+        # tatsaechlichen Qualitaet - der Kommentar hier nannte leadmanager
+        # explizit "das extremste Beispiel" (0x jemals aufgerufen) und liess
+        # es trotzdem stehen. Ersetzt durch notion_update, dieselbe Wahl wie
+        # bei designer unten - der Tool-Aufruf, den ihr jeweiliges ZIEL
+        # tatsaechlich vorschreibt (Notion-Eintrag pflegen), nicht der, den
+        # ein anderer Mitarbeiter in ihrem Namen erledigt.
+        "sequencer": ("notion_update",),
         # scraper (05.09.2026, Pipeline-Umstellung Phase 1): write_copy ist ihm
         # jetzt verboten (Trend Scout, siehe TEXTER oben) - sein tatsaechliches
         # Schreib-Werkzeug ist ingest_document, mit dem er jede neue Meldung
@@ -101,10 +117,10 @@ class SubAgentService:
         # gegen diese Pflicht - ein Mitarbeiter, der sie befolgte, bekam sein
         # eigenes Erzeugnis automatisch zur Revision zurueckgeschickt, weil
         # die Pflicht-Werkzeug-Pruefung generate_image vermisste.
-        "content": ("write_copy",),
-        "social": ("write_copy",),
+        "content": ("notion_update",),
+        "social": ("notion_update",),
         "designer": ("notion_update",),
-        "leadmanager": ("write_copy",),
+        "leadmanager": ("notion_update",),
     }
     # 16 war zu knapp: allein die 8 VERBINDLICHEN QUELLEN (project_files/*.md)
     # kosten schon 8 Schritte, bevor die eigentliche Arbeit beginnt – gemessen
@@ -114,7 +130,7 @@ class SubAgentService:
     # 'fehlgeschlagen', obwohl sie arbeiteten – abgeschnitten, nicht gescheitert.
     # Die drei sind die werkzeugintensivsten Rollen (Recherche ueber mehrere
     # Quellen, dann ablegen). 40 laesst dieselbe Kette zu Ende laufen.
-    TOOL_SCHRITTE = 40       # lesen (8x Pflichtquellen), suchen, pruefen, ablegen, notieren
+    TOOL_SCHRITTE = 40       # lesen (2x Pflichtquellen), suchen, pruefen, ablegen, notieren
     PROMPT_NOTES = 40        # wie viele Notizen in den Systemprompt wandern (Obergrenze: FeedbackStore.MAX_NOTES)
     PROMPT_LEHREN = 12       # wie viele Lehren/Lob in den Systemprompt wandern (Obergrenze: FeedbackStore.MAX_LEHREN)
 
@@ -288,8 +304,8 @@ class SubAgentService:
             self._ausfuehrung = AgentRunner(self, self._baumeister_sicherstellen())
         return self._ausfuehrung
 
-    def run(self, name: str, task: str) -> dict:
-        return self._ausfuehrung_sicherstellen().run(name, task)
+    def run(self, name: str, task: str, parent_agent: str | None = None) -> dict:
+        return self._ausfuehrung_sicherstellen().run(name, task, parent_agent)
 
     @classmethod
     def _ist_fehlschlag(cls, ergebnis) -> bool:

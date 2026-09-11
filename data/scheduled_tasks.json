@@ -12,12 +12,28 @@
     "tool_args": {},
     "speak": false,
     "enabled": true,
-    "last_run": "2026-09-04T01:00:23.964948+00:00",
+    "last_run": "2026-09-11T01:00:28.061852+00:00",
     "created_at": "2026-08-13T17:15:48.341933+00:00"
   },
-  "2a1619296477": {
-    "id": "2a1619296477",
-    "name": "Tagesjob: projektleitung",
+  "7931e68c5af7": {
+    "id": "7931e68c5af7",
+    "name": "Auftragsbuch nacharbeiten",
+    "action_type": "tool",
+    "schedule": {
+      "type": "interval",
+      "every_minutes": 20
+    },
+    "prompt": null,
+    "tool": "auftraege_nacharbeiten",
+    "tool_args": {},
+    "speak": false,
+    "enabled": false,
+    "last_run": "2026-09-07T22:10:55.583715+00:00",
+    "created_at": "2026-09-07T17:36:36.618423+00:00"
+  },
+  "64ca2359b755": {
+    "id": "64ca2359b755",
+    "name": "Chefpruefung nachholen (Renate)",
     "action_type": "tool",
     "schedule": {
       "type": "interval",
@@ -27,201 +43,30 @@
     "tool": "delegate_to_agent",
     "tool_args": {
       "name": "projektleitung",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
+      "task": "Zwei Dinge in dieser Reihenfolge: 1. Ruf pruefungsliste() auf und entscheide JEDES Stueck darin wirklich mit pruefung_entscheiden (freigabe oder revision mit Begruendung) - nicht nur ansehen. 2. Fuehre danach deine RUECKSTAND-Zaehlung durch (siehe eigener Rollenabschnitt oben: je Posten-Art gesamt offen / davon ueber 7 Tage liegengeblieben) und erteile per auftrag_erteilen JEDEM Mitarbeiter mit einer echten Luecke (mehr als 7 Tage ohne fertigen Posten) direkt einen konkreten Auftrag - ein Bericht ohne erteilte Auftraege ist keine Antwort auf eine Luecke."
     },
     "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T07:16:48.872295+00:00",
-    "created_at": "2026-09-03T11:22:56.653861+00:00"
+    "enabled": true,
+    "last_run": "2026-09-11T14:57:36.645804+00:00",
+    "created_at": "2026-09-07T17:42:00.013540+00:00"
   },
-  "902972418d5f": {
-    "id": "902972418d5f",
-    "name": "Tagesjob: outreach",
+  "3a0deb454ca2": {
+    "id": "3a0deb454ca2",
+    "name": "Trendrecherche (Rasmus)",
     "action_type": "tool",
     "schedule": {
       "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "outreach",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T07:28:25.174790+00:00",
-    "created_at": "2026-09-03T11:22:56.654188+00:00"
-  },
-  "c28d448e8355": {
-    "id": "c28d448e8355",
-    "name": "Tagesjob: scraper",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
+      "every_minutes": 15
     },
     "prompt": null,
     "tool": "delegate_to_agent",
     "tool_args": {
       "name": "scraper",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
+      "task": "Neue Trend-Kandidaten recherchieren und ablegen - dieselbe Aufgabe wie immer, kein spezifischer Auftrag noetig."
     },
     "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T06:34:01.299123+00:00",
-    "created_at": "2026-09-03T11:22:56.654514+00:00"
-  },
-  "62f8572a9ed0": {
-    "id": "62f8572a9ed0",
-    "name": "Tagesjob: content",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "content",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T07:52:46.761257+00:00",
-    "created_at": "2026-09-03T11:22:56.654833+00:00"
-  },
-  "fbf633648da2": {
-    "id": "fbf633648da2",
-    "name": "Tagesjob: social",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "social",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T07:08:02.549248+00:00",
-    "created_at": "2026-09-03T11:22:56.655162+00:00"
-  },
-  "e993b169353b": {
-    "id": "e993b169353b",
-    "name": "Tagesjob: sequencer",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "sequencer",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T06:14:39.263487+00:00",
-    "created_at": "2026-09-03T11:22:56.655480+00:00"
-  },
-  "6ef457090010": {
-    "id": "6ef457090010",
-    "name": "Tagesjob: analyst",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "analyst",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T07:17:22.188671+00:00",
-    "created_at": "2026-09-03T11:22:56.655793+00:00"
-  },
-  "79e9d47cdc83": {
-    "id": "79e9d47cdc83",
-    "name": "Tagesjob: leadmanager",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "leadmanager",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T06:46:29.436522+00:00",
-    "created_at": "2026-09-03T11:22:56.656108+00:00"
-  },
-  "bde66a9788be": {
-    "id": "bde66a9788be",
-    "name": "Tagesjob: designer",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "designer",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T06:53:58.006958+00:00",
-    "created_at": "2026-09-03T11:22:56.656458+00:00"
-  },
-  "bec38f809ed6": {
-    "id": "bec38f809ed6",
-    "name": "Tagesjob: engineer",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "engineer",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T07:00:18.036760+00:00",
-    "created_at": "2026-09-03T11:22:56.656640+00:00"
-  },
-  "ccbbc2d7f170": {
-    "id": "ccbbc2d7f170",
-    "name": "Tagesjob: redakteur",
-    "action_type": "tool",
-    "schedule": {
-      "type": "interval",
-      "every_minutes": 5
-    },
-    "prompt": null,
-    "tool": "delegate_to_agent",
-    "tool_args": {
-      "name": "redakteur",
-      "task": "Erledige deine heutige Aufgabe gemäß deiner Rolle (QUELLE/ARBEIT/ZIEL/FERTIG)."
-    },
-    "speak": false,
-    "enabled": false,
-    "last_run": "2026-09-04T07:05:15.218808+00:00",
-    "created_at": "2026-09-03T11:22:56.656827+00:00"
+    "enabled": true,
+    "last_run": "2026-09-11T14:48:52.966196+00:00",
+    "created_at": "2026-09-10T22:37:03.559171+00:00"
   }
 }
