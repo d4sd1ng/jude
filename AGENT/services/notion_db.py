@@ -168,12 +168,43 @@ class NotionDatabaseService:
         Notion legt unbekannte Auswahlwerte stillschweigend als neue Option an –
         nach ein paar Agentenläufen wären die Listen unbrauchbar. Deshalb wird
         hier hart abgewiesen statt stillschweigend erweitert.
+
+        Zwei Normalisierungen VOR der harten Ablehnung (beide wiederholt
+        gemessen, zuletzt 07.09.2026, ueber mehrere Mitarbeiter hinweg -
+        keine Einzelverwechslung):
+        1. Feldnamen mit Leerzeichen ('Geplantes Datum') werden vom Modell
+           zuverlaessig als Unterstrich- oder kleingeschriebene Variante
+           geschrieben ('Geplantes_Datum'). Statt hart abzulehnen, wird auf
+           den echten Feldnamen zurueckgemappt, wenn er nach Entfernen von
+           Gross-/Kleinschreibung und Trennzeichen eindeutig passt.
+        2. multi_select-Felder (z.B. 'Plattform') bekommen oft eine EINZELNE,
+           kommagetrennte Zeichenkette statt einer echten Liste einzelner
+           Werte ('LinkedIn, Facebook, TikTok, Instagram' statt vier
+           Eintraegen) - wird vor der Optionspruefung aufgeteilt.
         """
         schema = self.schema(name)
         felder, erlaubt = schema["felder"], schema["erlaubte_werte"]
+
+        def _norm(s: str) -> str:
+            return s.replace("_", " ").replace("-", " ").casefold().strip()
+
+        lookup = {_norm(f): f for f in felder}
+        for key in list(fields):
+            if key not in felder:
+                echt = lookup.get(_norm(key))
+                if echt:
+                    fields[echt] = fields.pop(key)
+
         unknown = [key for key in fields if key not in felder]
         if unknown:
             raise ValueError(f"Unbekannte Felder {unknown}. Vorhanden: {sorted(felder)}.")
+
+        for key in list(fields):
+            if felder.get(key) == "multi_select":
+                werte = fields[key] if isinstance(fields[key], list) else [fields[key]]
+                if len(werte) == 1 and isinstance(werte[0], str) and "," in werte[0]:
+                    fields[key] = [teil.strip() for teil in werte[0].split(",") if teil.strip()]
+
         for key, value in fields.items():
             if key not in erlaubt or value in (None, ""):
                 continue
@@ -185,7 +216,41 @@ class NotionDatabaseService:
         return felder
 
     def create(self, name: str, fields: dict) -> dict:
+        """Legt einen neuen Eintrag an - AUSSER es gibt schon einen nicht
+        archivierten Eintrag mit demselben Titel, dann wird abgelehnt statt
+        eines Duplikats angelegt.
+
+        Ohne diesen Abgleich legte eine Ueberarbeitung (Mitarbeiter kennt
+        seine eigene page_id nicht mehr sicher, ruft im Zweifel notion_create
+        statt notion_update auf) bei jeder Runde einen weiteren Eintrag mit
+        demselben Titel an. Gemessen 07.09.2026: ein einziger Wochenbeitrag
+        hatte am Ende DREI Eintraege in social_posts, zwei davon mit eigener
+        Bild-URL, der dritte (der eigentlich bearbeitete) blieb leer - jede
+        Bestaetigung fuer seine Bild-URL wartete auf eine Seite, die nie die
+        war, an der weitergearbeitet wurde. Titel ist das natuerliche
+        Duplikat-Merkmal: es ist das einzige Pflichtfeld jeder Notion-Seite
+        (title-Property) und genau das, worueber ein Mitarbeiter seine eigene
+        Vorlage wiedererkennt.
+
+        Bewusst KEIN automatisches Update auf den Treffer: notion_create ist
+        (anders als notion_update) nicht bestaetigungspflichtig - wuerde
+        create() hier selbst update() aufrufen, liesse sich Tinos
+        Bestaetigungspflicht fuer Schreibzugriffe auf bestehende Eintraege
+        genau darueber umgehen. Der Aufrufer bekommt stattdessen die
+        vorhandene page_id genannt und muss bewusst notion_update waehlen -
+        das bleibt bestaetigungspflichtig, wie vorgesehen.
+        """
         schema = self._validate(name, fields)
+        titel_feld = next((feld for feld, art in schema.items() if art == "title"), None)
+        if titel_feld and fields.get(titel_feld):
+            vorhanden = self.query(name, limit=100, search=str(fields[titel_feld]))
+            treffer = next((e for e in vorhanden["eintraege"]
+                            if str(e.get(titel_feld, "")).strip() == str(fields[titel_feld]).strip()), None)
+            if treffer:
+                raise ValueError(
+                    f"Es gibt bereits einen Eintrag mit genau diesem Titel (id={treffer['id']}). "
+                    f"Kein neuer Eintrag - nutze stattdessen notion_update mit dieser page_id, "
+                    f"um den vorhandenen Eintrag zu aendern.")
         properties = {key: self._to_property(schema[key], value) for key, value in fields.items()}
         response = requests.post(f"{API}/pages", headers=self._headers(),
                                  json={"parent": {"database_id": self._database_id(name)},
@@ -201,3 +266,13 @@ class NotionDatabaseService:
                                   json={"properties": properties}, timeout=25)
         response.raise_for_status()
         return {"aktualisiert": True, "id": page_id, "datenbank": name}
+
+    def archive(self, name: str, page_id: str) -> dict:
+        """Eine Seite in den Papierkorb legen - fuer Duplikate, die nach dem
+        Zusammenfuehren (siehe create() oben) uebrig bleiben. Notion loescht
+        dabei nichts endgueltig; archivierte Seiten liegen im Papierkorb und
+        sind von dort wiederherstellbar."""
+        response = requests.patch(f"{API}/pages/{page_id}", headers=self._headers(),
+                                  json={"archived": True}, timeout=25)
+        response.raise_for_status()
+        return {"archiviert": True, "id": page_id, "datenbank": name}

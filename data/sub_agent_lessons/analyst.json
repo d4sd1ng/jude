@@ -1,9 +1,37 @@
 [
   {
+    "kern": "wortfilter schlgt wiederholt an keine englischen marketingwoerteranglizismen z b insights",
+    "text": "Wortfilter schlägt wiederholt an: keine englischen Marketing-Woerter/Anglizismen (z. B. insights, tool, report, optimierung, loesung) – immer deutsche, konkrete Formulierungen statt Werbedeutsch.",
+    "quelle": "Jude",
+    "anzahl": 2,
+    "zuletzt": "2026-09-05T19:42:59.844208+00:00"
+  },
+  {
     "kern": "der text enthlt englische wrter wie setup clickbait und hooks die durch deutsche quivalent",
     "text": "Der Text enthält englische Wörter wie \"Setup\", \"Clickbait\" und \"Hooks\", die durch deutsche Äquivalente ersetzt werden sollten, um den Massstab einzuhalten.",
     "quelle": "Jude",
     "anzahl": 1,
     "zuletzt": "2026-08-15T14:47:53.781075+00:00"
+  },
+  {
+    "kern": "wortfilter verboteneenglische woerter im text report scores ersetze sie durch deutsche kon",
+    "text": "Wortfilter: verbotene/englische Woerter im Text: report, scores. Ersetze sie durch deutsche, konkrete Formulierungen.",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-03T01:11:34.888793+00:00"
+  },
+  {
+    "kern": "scoring is too bad mus be at least 70",
+    "text": "scoring is too bad mus be at least 70%",
+    "quelle": "Tino",
+    "anzahl": 1,
+    "zuletzt": "2026-09-03T11:47:16.791565+00:00"
+  },
+  {
+    "kern": "fehlende tagline kein goldwort in berschrift keine cta keine bildkartenelemente  damit nic",
+    "text": "Fehlende Tagline, kein Gold‑Wort in Überschrift, keine CTA, keine Bild‑/Karten‑Elemente – damit nicht konform zum Premium‑Standard und Marken‑Mindestanforderungen.",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-03T12:12:17.692251+00:00"
   }
 ]

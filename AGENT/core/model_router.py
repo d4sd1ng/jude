@@ -14,13 +14,14 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import requests
 import yaml
 from services.database import connection
+from services.routing_data import ModelUsageRepository, RouteDecisionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +31,123 @@ logger = logging.getLogger(__name__)
 _PROVIDER_429: dict[str, dict] = {}
 _SPERRDAUER_S = 900
 
+# Muster für Fehler, die sich NIE von selbst lösen (leeres Guthaben, gesperrter
+# Account) – anders als 429 (Rate-Limit, oft in Sekunden vorbei) lohnt sich
+# hier kein zweiter Versuch. Gemessen 01.09.: ohne das hämmerte jeder einzelne
+# Mitarbeiterlauf bis zu 10 Minuten lang alle drei Anthropic-Modelle frisch,
+# weil ein 400 ("credit balance too low") die 429-Sperre nie auslöste.
+# "requires a subscription" kam am 02.09. von Ollama Cloud (HTTP 402) fuer die
+# grossen Modelle – ebenfalls nichts, was ein zweiter Versuch loest.
+_DAUERHAFT_MUSTER = re.compile(
+    r"credit balance|insufficient_quota|credit_balance_exhausted|billing"
+    r"|requires a subscription"
+    # Ollama Cloud's woechentliches Freikontingent: kein Rate-Limit, das nach
+    # Minuten vorbei ist – blieb bisher unerkannt und wurde alle 15 Minuten
+    # (_SPERRDAUER_S) neu versucht, ueber zwei Stunden lang, gemessen 03.09.2026.
+    r"|weekly usage limit"
+    # DeepSeeks eigene Formulierung fuer leeres Guthaben (HTTP 402) - traf
+    # keins der obigen Muster und wurde dadurch bei JEDEM Tool-Schritt und
+    # jedem verschachtelten delegate_to_agent-Aufruf erneut versucht (5x in
+    # unter 10s beobachtet bei content -> write_copy -> redakteur, 03.09.2026).
+    r"|insufficient balance", re.IGNORECASE)
+
+
+def _ist_dauerhafter_fehler(exc: Exception) -> bool:
+    return bool(_DAUERHAFT_MUSTER.search(str(exc)))
+
+
+def _tagesende_ts() -> float:
+    """Zeitstempel der nächsten lokalen Mitternacht."""
+    jetzt = datetime.now().astimezone()
+    mitternacht = (jetzt + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    return mitternacht.timestamp()
+
 
 def _provider_429_gesperrt(provider: str) -> bool:
     eintrag = _PROVIDER_429.get(provider)
     return bool(eintrag and eintrag.get("bis", 0) > time.time() and eintrag.get("zaehler", 0) >= 2)
 
 
-def _provider_429_merken(provider: str, war_429: bool) -> None:
+def _provider_lock_spiegeln(provider: str, eintrag: dict | None) -> None:
+    """Schreibt den In-Memory-Sperrstatus in provider_locks - reine Sichtbarkeit,
+    nie der Pfad, der eine Sperre tatsaechlich durchsetzt (das bleibt
+    _PROVIDER_429/_provider_429_gesperrt, in-memory und pro Prozess)."""
+    with suppress(Exception):
+        with connection() as db:
+            if eintrag is None:
+                db.execute("DELETE FROM provider_locks WHERE provider=?", (provider,))
+                return
+            bis = datetime.fromtimestamp(eintrag["bis"], tz=timezone.utc).isoformat() if eintrag.get("bis") else None
+            grund = "kein Guthaben/Quota" if eintrag.get("tagessperre") else "wiederholte 429"
+            db.execute(
+                "INSERT INTO provider_locks(provider,locked_until,reason,counter,updated_at) VALUES(?,?,?,?,?) "
+                "ON CONFLICT(provider) DO UPDATE SET locked_until=excluded.locked_until,"
+                "reason=excluded.reason,counter=excluded.counter,updated_at=excluded.updated_at",
+                (provider, bis, grund, eintrag.get("zaehler", 0), datetime.now(timezone.utc).isoformat()))
+
+
+def _provider_429_merken(provider: str, war_429: bool, sofort: bool = False) -> None:
     if not war_429:
         _PROVIDER_429.pop(provider, None)
+        _provider_lock_spiegeln(provider, None)
         return
-    eintrag = _PROVIDER_429.setdefault(provider, {"zaehler": 0, "bis": 0})
-    eintrag["zaehler"] += 1
-    if eintrag["zaehler"] >= 2:
-        eintrag["bis"] = time.time() + _SPERRDAUER_S
+    eintrag = _PROVIDER_429.setdefault(provider, {"zaehler": 0, "bis": 0, "tagessperre": False})
+    eintrag["zaehler"] = 2 if sofort else eintrag["zaehler"] + 1
+    if eintrag["zaehler"] < 2:
+        return
+    # Leeres Guthaben lädt sich nicht von selbst wieder auf: einmal geprüft
+    # reicht für den Tag. Ein 429 (Rate-Limit) ist dagegen oft nach Minuten
+    # vorbei und bleibt bei der kurzen Sperre.
+    bis = _tagesende_ts() if sofort else time.time() + _SPERRDAUER_S
+    if bis <= eintrag["bis"]:
+        return                          # laufende Sperre nie verkürzen
+    eintrag["bis"] = bis
+    if sofort and not eintrag.get("tagessperre"):
+        eintrag["tagessperre"] = True
+        logger.warning(
+            "Provider %s bis Mitternacht gesperrt (kein Guthaben/Quota). "
+            "Nach dem Aufladen: Jude neu starten oder provider_sperre_aufheben(%r).",
+            provider, provider)
+    _provider_lock_spiegeln(provider, eintrag)
+
+
+def provider_gesperrt(provider: str) -> bool:
+    """Ist dieser Provider gerade gesperrt (429 oder leeres Guthaben)?"""
+    return _provider_429_gesperrt(provider)
+
+
+def provider_sperre_aufheben(provider: str | None = None) -> None:
+    """Sperre eines Providers (oder aller) manuell aufheben – z. B. nach dem Aufladen."""
+    if provider is None:
+        betroffene = list(_PROVIDER_429)
+        _PROVIDER_429.clear()
+        for name in betroffene:
+            _provider_lock_spiegeln(name, None)
+    else:
+        _PROVIDER_429.pop(provider, None)
+        _provider_lock_spiegeln(provider, None)
+
+
+def provider_sperren_uebersicht() -> list[dict]:
+    """Sperrstatus je Provider, der schon einmal einen 429/Dauerfehler hatte –
+    fuer eine GUI/API-Ansicht, ohne dass irgendwer den Prozess neu starten muss,
+    nur um nachzusehen, was gerade gesperrt ist. Provider ohne jeden Eintrag
+    waren noch nie gesperrt und tauchen hier nicht auf."""
+    now = time.time()
+    ergebnis = []
+    for provider, eintrag in sorted(_PROVIDER_429.items()):
+        gesperrt = bool(eintrag.get("bis", 0) > now and eintrag.get("zaehler", 0) >= 2)
+        ergebnis.append({
+            "provider": provider,
+            "gesperrt": gesperrt,
+            "bis": (datetime.fromtimestamp(eintrag["bis"], tz=timezone.utc).isoformat()
+                    if gesperrt else None),
+            "grund": ("kein_guthaben_oder_quota" if eintrag.get("tagessperre")
+                      else "rate_limit") if gesperrt else None,
+            "zaehler": eintrag.get("zaehler", 0),
+        })
+    return ergebnis
 
 
 @dataclass(frozen=True)
@@ -62,6 +166,13 @@ class ModelSpec:
     weight: float = 1.0
     reasoning_effort: str | None = None
     think: bool | None = None
+    # Wie lange Ollama das Modell nach dem Aufruf im VRAM behält. Ollamas
+    # Standard sind 5 Minuten; danach kostet der nächste Aufruf das erneute
+    # Laden. Gemessen 02.09.2026 für qwen3:8b: kalt 7,50 s Ladezeit (8,93 s
+    # gesamt), warm 0,33 s (1,37 s gesamt). Zahl = Sekunden, -1 = dauerhaft
+    # halten; als String nur mit Einheit ("60s"), sonst lehnt Ollama mit
+    # "time: missing unit in duration" ab.
+    keep_alive: str | int | None = None
 
 
 class ComplexityEstimator:
@@ -83,6 +194,26 @@ class ProviderAdapter(ABC):
     @abstractmethod
     def call(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None) -> dict:
         """Rufe den Provider auf und liefere eine normalisierte Assistentenantwort."""
+
+
+def _antwort_pruefen(response: requests.Response) -> None:
+    """Wirft mit dem Fehlertext aus dem Rumpf, nicht nur dem Statuscode.
+
+    Vier der fuenf Adapter loesten das bereits einzeln (siehe die
+    Kommentare bei OpenAIAdapter/AnthropicAdapter: ein bloßes
+    ``raise_for_status()`` zeigt nur "400 Bad Request", der eigentliche
+    Grund - "insufficient_quota", "credit balance too low" - steht im
+    Rumpf. Ohne ihn erkennt ``_ist_dauerhafter_fehler()`` unten nie eine
+    echte Dauersperre und der Provider wird alle 15 Minuten sinnlos erneut
+    versucht. GoogleAdapter hatte diese Korrektur bisher NICHT erhalten
+    (bloßes ``response.raise_for_status()``) - vereinheitlicht mit dieser
+    Funktion, damit ein neuer Adapter dieselbe Faustregel nicht erneut
+    einzeln lernen muss."""
+    if response.ok:
+        return
+    raise requests.HTTPError(
+        f"{response.status_code} {response.reason} für {response.url}: {response.text[:400]}",
+        response=response)
 
 
 def _werkzeug_text(content: Any) -> str:
@@ -109,8 +240,27 @@ class OllamaAdapter(ProviderAdapter):
         return {item["name"] for item in response.json().get("models", [])}
 
     def call(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None) -> dict:
-        messages = [{**m, "content": _werkzeug_text(m.get("content"))}
-                    if isinstance(m.get("content"), dict) else m for m in messages]
+        # Dieselbe Umwandlung wie im OpenAI-kompatiblen Adapter, hier bisher
+        # gefehlt: kam ein frueherer Zug dieses Gespraechs von einem Anbieter,
+        # der Argumente als JSON-String liefert/speichert, wies Ollama den
+        # Verlauf mit "Value looks like object, but can't find closing '}'
+        # symbol" ab, sobald es als letzte Stufe erreicht wurde (gemessen
+        # 03.09.2026 bei redakteur, 9 Werkzeugaufrufe tief). Tief kopieren,
+        # damit auch hier nichts am geteilten Gespraechsverlauf haengen bleibt.
+        outgoing: list[dict] = []
+        for message in messages:
+            if isinstance(message.get("content"), dict):
+                message = {**message, "content": _werkzeug_text(message["content"])}
+            item = copy.deepcopy(dict(message))
+            for call in item.get("tool_calls", []) or []:
+                arguments = call.get("function", {}).get("arguments")
+                if isinstance(arguments, str):
+                    try:
+                        call["function"]["arguments"] = json.loads(arguments or "{}")
+                    except json.JSONDecodeError:
+                        call["function"]["arguments"] = {}
+            outgoing.append(item)
+        messages = outgoing
         payload: dict[str, Any] = {
             "model": spec.model_name,
             "messages": messages,
@@ -121,14 +271,13 @@ class OllamaAdapter(ProviderAdapter):
             payload["tools"] = tools
         if spec.think is not None:
             payload["think"] = spec.think
+        if spec.keep_alive is not None:
+            payload["keep_alive"] = spec.keep_alive
         last_error: Exception | None = None
         for _ in range(self.retries + 1):
             try:
                 response = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=self.timeout)
-                if response.status_code >= 400:
-                    # Ollama begruendet Ablehnungen im Rumpf; ohne diesen Text war
-                    # aus "400 Bad Request" nicht erkennbar, was am Verlauf stoert.
-                    raise ValueError(f"HTTP {response.status_code}: {response.text[:400]}")
+                _antwort_pruefen(response)
                 data = response.json()
                 message = data.get("message", {})
                 message["usage"] = {
@@ -179,7 +328,7 @@ class OpenAIAdapter(ProviderAdapter):
             self.url, json=payload,
             headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"}, timeout=self.timeout,
         )
-        response.raise_for_status()
+        _antwort_pruefen(response)
         data = response.json()
         text_parts, calls = [], []
         for item in data.get("output", []):
@@ -244,19 +393,7 @@ class OpenAICompatAdapter(ProviderAdapter):
             headers={"Authorization": f"Bearer {os.environ[self.api_key_env]}", **self.extra_headers},
             timeout=self.timeout,
         )
-        # Groq meldet den Rest seines kostenfreien Tageskontingents in den
-        # Kopfzeilen mit – die belastbarste Quelle, weil sie auch Anfragen
-        # kennt, die nicht ueber Jude liefen.
-        if self.api_key_env == "GROQ_API_KEY":
-            with suppress(Exception):
-                from services import kontingent
-                if response.status_code == 429:
-                    kontingent.grenze_merken(response.text[:600])
-                else:
-                    kontingent.kopfzeilen_merken(response.headers)
-        if response.status_code >= 400:
-            # Ohne den Rumpf ist "400 Bad Request" nicht diagnostizierbar.
-            raise ValueError(f"HTTP {response.status_code}: {response.text[:400]}")
+        _antwort_pruefen(response)
         data = response.json()
         message = data.get("choices", [{}])[0].get("message", {})
         result: dict[str, Any] = {"role": "assistant", "content": message.get("content") or ""}
@@ -330,7 +467,7 @@ class AnthropicAdapter(ProviderAdapter):
             "x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }, timeout=self.timeout)
-        response.raise_for_status()
+        _antwort_pruefen(response)
         data = response.json()
         text = "".join(block.get("text", "") for block in data["content"] if block["type"] == "text")
         calls = [{"id": b["id"], "type": "function", "function": {"name": b["name"], "arguments": b["input"]}}
@@ -387,7 +524,7 @@ class GoogleAdapter(ProviderAdapter):
             payload["tools"] = [{"functionDeclarations": [{"name": item["function"]["name"],
                 "description": item["function"]["description"], "parameters": item["function"]["parameters"]} for item in tools]}]
         response = requests.post(url, json=payload, timeout=self.timeout)
-        response.raise_for_status()
+        _antwort_pruefen(response)
         data = response.json()
         parts = data["candidates"][0]["content"].get("parts", [])
         result: dict[str, Any] = {"role": "assistant", "content": "".join(item.get("text", "") for item in parts)}
@@ -422,6 +559,7 @@ class ModelRouter:
                 context_length=int(data["context_length"]), tags=list(data["tags"]),
                 priority=int(data.get("priority", 5)), weight=float(data.get("weight", 1.0)),
                 reasoning_effort=data.get("reasoning_effort"), think=data.get("think"),
+                keep_alive=data.get("keep_alive"),
             ) for name, data in self.config["models"].items()
         }
         self.router_cfg = self.config["router"]
@@ -436,9 +574,18 @@ class ModelRouter:
             if name not in self.adapters and settings.get("api_key_env"):
                 self.adapters[name] = OpenAICompatAdapter(**settings)
         month = datetime.now(timezone.utc).strftime("%Y-%m")
-        with connection() as db:
-            row = db.execute("SELECT COALESCE(SUM(cost_usd),0) AS total FROM model_usage WHERE substr(created_at,1,7)=?", (month,)).fetchone()
-        self.budget_used = float(row["total"])
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        self._route_repo = RouteDecisionRepository()
+        self._usage_repo = ModelUsageRepository()
+        self.budget_used = self._usage_repo.monthly_total(month)
+        # Optionales, zusaetzliches Netz je Provider (Abschnitt 3 des AI-Router-
+        # Plans) - solange kein Provider in providers:<name>.budget_*_usd einen
+        # Wert setzt, greift ausschliesslich das bestehende globale Monatsbudget
+        # oben. self._provider_day_reset_ts wird bei jedem Aufruf geprueft und
+        # setzt _provider_daily_used bei Mitternacht zurueck, ohne Neustart.
+        self._provider_monthly_used: dict[str, float] = self._usage_repo.provider_monthly_totals(month)
+        self._provider_daily_used: dict[str, float] = self._usage_repo.provider_daily_totals(today)
+        self._provider_day_reset_ts = _tagesende_ts()
         self.budget_limit = float(os.getenv(
             "JUDE_CLOUD_BUDGET_USD", self.router_cfg["budget_limit_monthly_usd"]
         ))
@@ -449,6 +596,84 @@ class ModelRouter:
             "1", "true", "yes", "ja", "on",
         }
         self._call_lock = threading.RLock()
+        self._letztes_lokales: ModelSpec | None = None
+
+    def vorwaermen(self, intervall_s: int = 60) -> None:
+        """Dauerhaft gehaltene Ollama-Modelle im Hintergrund ins VRAM laden.
+
+        Ohne das ist erst der erste Aufruf nach dem Start warm und zahlt die
+        7,5 s Ladezeit – ausgerechnet dann, wenn Tino gerade etwas fragt.
+        Der Waechter laedt nur nach, wenn Ollama gar nichts geladen hat: zwei
+        8B-Modelle passen nicht zusammen in 8 GB, ein Nachladen gegen ein
+        gerade benutztes Modell wuerde dieses nur rauswerfen. Zurueck kommt
+        das zuletzt benutzte Modell, beim Start das Standardmodell."""
+        adapter = self.adapters.get("ollama")
+        specs = [spec for spec in self.models.values()
+                 if spec.provider == "ollama" and spec.keep_alive == -1]
+        if not adapter or not specs:
+            return
+        standard = self.models.get(self.router_cfg.get("standard_model", ""))
+
+        def _wunschmodell() -> ModelSpec:
+            for kandidat in (self._letztes_lokales, standard):
+                if kandidat in specs:
+                    return kandidat
+            return specs[0]
+
+        def _geladen() -> list[str]:
+            antwort = requests.get(f"{adapter.base_url}/api/ps", timeout=5)
+            antwort.raise_for_status()
+            return [m.get("name", "") for m in antwort.json().get("models", [])]
+
+        def _laden(spec: ModelSpec) -> None:
+            # Leere Nachrichtenliste laedt das Modell, ohne zu generieren.
+            requests.post(f"{adapter.base_url}/api/chat", timeout=300, json={
+                "model": spec.model_name, "messages": [], "stream": False,
+                "keep_alive": spec.keep_alive,
+                "options": {"num_ctx": spec.context_length},
+            }).raise_for_status()
+            logger.info("Modell %s vorgewaermt.", spec.model_name)
+
+        def _schleife() -> None:
+            while True:
+                try:
+                    if not _geladen():
+                        _laden(_wunschmodell())
+                except Exception as exc:                    # nur Komfort, nie kritisch
+                    logger.warning("Vorwaermen fehlgeschlagen: %s", exc)
+                time.sleep(intervall_s)
+
+        threading.Thread(target=_schleife, name="modell-vorwaermen", daemon=True).start()
+
+    def provider_selbstheilung(self, intervall_s: int = 600) -> None:
+        """Prueft regelmaessig, ob ein wegen leerem Guthaben/Quota gesperrter
+        Provider (_PROVIDER_429-Eintrag mit tagessperre=True) wieder
+        funktioniert, statt auf Mitternacht oder einen manuellen Neustart zu
+        warten (Abschnitt 4.3 des AI-Router-Plans - Zielbild: 'alle vier
+        Provider stundenlang gesperrt' behebt sich selbst). Ein gewoehnlicher
+        429 (Rate-Limit, kurze Sperre) heilt schon von selbst nach
+        _SPERRDAUER_S und wird hier bewusst nicht extra angestossen."""
+        def _schleife() -> None:
+            while True:
+                time.sleep(intervall_s)
+                if not self.paid_models_enabled:
+                    continue
+                for provider, eintrag in list(_PROVIDER_429.items()):
+                    if not eintrag.get("tagessperre"):
+                        continue
+                    kandidaten = [m for m in self.models.values() if m.provider == provider]
+                    if not kandidaten:
+                        continue
+                    spec = min(kandidaten, key=lambda m: m.cost_input + m.cost_output)
+                    try:
+                        self.call_llm(spec, [{"role": "user", "content": "hallo"}])
+                    except Exception as exc:
+                        logger.debug("Selbstheilung fuer %s: weiterhin gesperrt (%s).", provider, exc)
+                        continue
+                    provider_sperre_aufheben(provider)
+                    logger.info("Provider %s antwortet wieder - Sperre selbstaendig aufgehoben.", provider)
+
+        threading.Thread(target=_schleife, name="provider-selbstheilung", daemon=True).start()
 
     # Handlungsabsicht: Verben, die auf eine auszuführende Aktion (Werkzeug) deuten,
     # nicht auf reines Erklären/Plaudern.
@@ -490,13 +715,8 @@ class ModelRouter:
         return "allgemein"
 
     def _learned_adjustment(self, model: ModelSpec, task_type: str) -> float:
-        with connection() as db:
-            row = db.execute(
-                "SELECT COUNT(*) AS n,AVG(user_feedback) AS score FROM route_decisions "
-                "WHERE task_type=? AND final_model=? AND user_feedback IS NOT NULL",
-                (task_type, model.name),
-            ).fetchone()
-        return float(row["score"] or 0) * 4 if int(row["n"]) >= 3 else 0.0
+        stats = self._route_repo.feedback_stats(task_type, model.name)
+        return float(stats["score"] or 0) * 4 if int(stats["n"]) >= 3 else 0.0
 
     def _provider_enabled(self, provider: str) -> bool:
         if provider == "ollama":
@@ -506,17 +726,27 @@ class ModelRouter:
         return key is None or (self.paid_models_enabled and bool(os.getenv(key)))
 
     def select_model(self, prompt: str, allow_uncensored: bool = False, force_local: bool = False,
-                     needs_tools: bool = False) -> ModelSpec:
+                     needs_tools: bool = False, strict_tools: bool = False) -> ModelSpec:
         task_type = self.task_type(prompt)
         candidates = [m for m in self.models.values() if self._provider_enabled(m.provider)]
         if force_local or self.budget_used >= self.budget_limit or self.router_cfg.get("local_first", True):
             candidates = [m for m in candidates if "lokal" in m.tags]
         if allow_uncensored:
             candidates = [m for m in candidates if "unzensiert" in m.tags]
-        elif needs_tools and (task_type != "allgemein" or self._is_actionable(prompt)):
-            # Werkzeuglastige ODER klar handlungsorientierte Anfragen ("führe aus",
-            # "erstelle", "klone" …) erzwingen ein Tools-fähiges Modell, damit der
-            # Assistent handelt statt nur zu erklären. Reines Plaudern bleibt beim Standardmodell.
+        elif strict_tools or (needs_tools and (task_type != "allgemein" or self._is_actionable(prompt))):
+            # strict_tools kommt von Sub-Agenten-Laeufen (core/agent.py: agent_name
+            # != "jude") und erzwingt die Filterung ungeachtet der Heuristik unten -
+            # ein Mitarbeiter-Dispatch ist nie "Plaudern", jeder solche Lauf braucht
+            # echte Werkzeuge. Ohne das galt ein Dispatch-Text wie "Du hast offene
+            # Revisionen - arbeite sie ab" als "allgemein" und nicht "actionable",
+            # die Filterung wurde uebersprungen, local_dolphin (nicht werkzeugfaehig)
+            # gewann per standard_bonus - der Lauf lieferte eine erfundene Antwort
+            # ohne einen einzigen Werkzeugaufruf (content, 05.09.2026, Runde 1 der
+            # ROI-Guide-Revision). Fuer Tinos eigenen Chat (agent_name == "jude")
+            # bleibt needs_tools weiterhin nur ein weicher Hinweis: er hat immer
+            # das volle Werkzeug-Set geladen, auch fuer "wie gehts dir" - reines
+            # Plaudern soll trotzdem beim entspannten Standardmodell bleiben,
+            # nicht bei jedem Toolset-Ladevorgang auf ein Tools-Modell zwangswechseln.
             tool_capable = [m for m in candidates if "tools" in m.tags]
             candidates = tool_capable or candidates
         if not candidates:
@@ -559,63 +789,54 @@ class ModelRouter:
                         result.append(model)
         return result
 
-    @staticmethod
-    def _groq_verfuegbar(spec: ModelSpec, messages: list[dict]) -> bool:
-        """Reicht das freie Tageskontingent noch für diese Anfrage?"""
-        if spec.provider != "groq":
-            return True
-        try:
-            from services import kontingent
-            geschaetzt = (sum(len(_werkzeug_text(m.get("content", ""))) for m in messages) // 4
-                          + min(spec.max_tokens, 2048))
-            frei = kontingent.verfuegbar(geschaetzt)
-            if not frei:
-                logger.warning("Groq uebersprungen – Kontingent: %s", kontingent.stand())
-            return frei
-        except Exception:
-            return True                 # Buchhaltung darf nie blockieren
+    def _provider_budgets_zuruecksetzen_falls_noetig(self) -> None:
+        if time.time() >= self._provider_day_reset_ts:
+            self._provider_daily_used = {}
+            self._provider_day_reset_ts = _tagesende_ts()
 
-    def _cloud_affordable(self, spec: ModelSpec, messages: list[dict]) -> bool:
+    def _provider_affordable(self, spec: ModelSpec, messages: list[dict]) -> bool:
         if spec.provider == "ollama":
+            return True
+        # Ein echtes 0-Kosten-Modell (lokales Ollama UEBER ollama_cloud, alle
+        # fuenf Modelle auf demselben kostenlosen Konto) darf nie am Budget
+        # scheitern - egal wie ausgeschoepft budget_used bereits ist, seine
+        # Grenzkosten sind 0. Ohne diese Pruefung sperrte ein ausgeschoepftes
+        # Budget auch die kostenlose Ollama-Cloud-Stufe mit, weil ihr Provider
+        # ("ollama_cloud") nicht dem obigen "ollama" entspricht - der Fallback
+        # landete dadurch beim quälend langsamen lokalen GPU-Modell statt bei
+        # der genauso kostenlosen, aber ~100x schnelleren Cloud-Stufe (gemessen
+        # 04.09.2026: budget_used 5.003 > budget_limit 5.0 sperrte alle fuenf
+        # gpt-oss/nemotron/gemma-Ollama-Cloud-Modelle trotz cost=0.0).
+        if spec.cost_input <= 0 and spec.cost_output <= 0:
             return True
         approximate_input = sum(len(str(item.get("content", ""))) for item in messages) // 4
         approximate_output = min(spec.max_tokens, 4096)
         estimate = (approximate_input * spec.cost_input + approximate_output * spec.cost_output) / 1000
-        return estimate <= self.request_cost_limit and self.budget_used + estimate <= self.budget_limit
-
-    @staticmethod
-    def _obviously_inadequate(response: dict) -> bool:
-        text = str(response.get("content", "")).strip().casefold()
-        if response.get("tool_calls"):
+        if estimate > self.request_cost_limit or self.budget_used + estimate > self.budget_limit:
             return False
-        markers = ("ich kann dabei nicht", "i can't help", "als ki kann ich", "keine informationen", "fehler:")
-        return not text or any(marker in text for marker in markers)
-
-    def _local_quality_check(self, prompt: str, response: dict, complexity: int) -> bool:
-        if self._obviously_inadequate(response):
+        # Zusaetzliches, optionales Netz je Provider - nur aktiv, wenn
+        # providers:<name> in models.yaml budget_daily_usd/budget_monthly_usd
+        # setzt. Ohne diese Schluessel bleibt das globale Budget oben die
+        # einzige Grenze, exakt wie vor diesem Abschnitt.
+        self._provider_budgets_zuruecksetzen_falls_noetig()
+        provider_cfg = self.config.get("providers", {}).get(spec.provider, {})
+        tageslimit = provider_cfg.get("budget_daily_usd")
+        monatslimit = provider_cfg.get("budget_monthly_usd")
+        if tageslimit is not None and self._provider_daily_used.get(spec.provider, 0.0) + estimate > float(tageslimit):
             return False
-        if complexity < int(self.router_cfg.get("quality_judge_min_complexity", 6)) or response.get("tool_calls"):
-            return True
-        judge = next((model for model in self.models.values() if "routing_judge" in model.tags), None)
-        if not judge:
-            return True
-        request = (
-            "Bewerte, ob die Antwort die Anfrage fachlich ausreichend, vollständig und konkret beantwortet. "
-            "Antworte nur als JSON {\"adequate\":true|false,\"reason\":\"kurz\"}.\n"
-            f"ANFRAGE:\n{prompt[:12000]}\nANTWORT:\n{str(response.get('content', ''))[:18000]}"
-        )
-        try:
-            judged = self.call_llm(judge, [{"role": "user", "content": request}], request_id=None)
-            parsed = json.loads(str(judged.get("content", "")).strip().removeprefix("```json").removesuffix("```").strip())
-            return bool(parsed.get("adequate"))
-        except Exception as exc:
-            logger.warning("Lokale Routing-Qualitätsprüfung fehlgeschlagen: %s", exc)
-            return True
+        if monatslimit is not None and self._provider_monthly_used.get(spec.provider, 0.0) + estimate > float(monatslimit):
+            return False
+        return True
 
     def call_llm(self, spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None,
                  request_id: str | None = None) -> dict:
         with self._call_lock:
             supported_tools = tools if "tools" in spec.tags else None
+            if spec.provider == "ollama":
+                # Wer zuletzt dran war, ist am ehesten gleich wieder dran. Der
+                # Waechter holt genau dieses Modell zurueck – sonst laege nach
+                # einem Dolphin-Gespraech plotzlich qwen3 im VRAM.
+                self._letztes_lokales = spec
             response = self.adapters[spec.provider].call(spec, messages, supported_tools)
             usage = response.pop("usage", {}) or {}
             input_tokens, output_tokens = int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0))
@@ -627,24 +848,42 @@ class ModelRouter:
             cost = ((uncached * spec.cost_input) + (cached * spec.cost_cached_input)
                     + (cache_write * spec.cost_input * 1.25) + (output_tokens * spec.cost_output)) / 1000 * multiplier
             self.budget_used += cost
+            self._provider_budgets_zuruecksetzen_falls_noetig()
+            self._provider_monthly_used[spec.provider] = self._provider_monthly_used.get(spec.provider, 0.0) + cost
+            self._provider_daily_used[spec.provider] = self._provider_daily_used.get(spec.provider, 0.0) + cost
             # Kontextfuellung des letzten Aufrufs: prompt_eval_count ist die
             # exakte Tokenzahl des gesamten Gespraechs, wie es beim Modell ankam.
             if input_tokens:
                 self.last_context = {"model": spec.name, "input_tokens": input_tokens,
                                      "context_length": spec.context_length}
-            with connection() as db:
-                db.execute("INSERT INTO model_usage(created_at,provider,model,input_tokens,output_tokens,cached_input_tokens,"
-                           "cache_write_tokens,reasoning_tokens,service_tier,tariff,cost_multiplier,request_id,cost_usd) "
-                           "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (datetime.now(timezone.utc).isoformat(), spec.provider, spec.model_name, input_tokens, output_tokens,
-                            cached, cache_write, reasoning, str(usage.get("service_tier", "standard")),
-                            str(usage.get("tariff", "standard")), multiplier, request_id, cost))
+            self._usage_repo.insert(
+                datetime.now(timezone.utc).isoformat(), spec.provider, spec.model_name, input_tokens, output_tokens,
+                cached, cache_write, reasoning, str(usage.get("service_tier", "standard")),
+                str(usage.get("tariff", "standard")), multiplier, request_id, cost)
+            # Bis 10.09.2026 lief jeder Modellaufruf - bezahlt oder nicht -
+            # komplett stumm: der Preis landete nur in model_usage (SQLite),
+            # nirgends im Log. Jede Kostenfrage diese Sitzung brauchte eine
+            # SQL-Abfrage statt eines Blicks ins Log. Ab jetzt steht jeder
+            # Aufruf im Log, mit Preis, egal ob 0 oder nicht - sonst faellt ein
+            # teurer Ausreisser erst im naechsten Budget-Check auf, nicht wenn
+            # er passiert.
+            if cost > 0:
+                logger.info("call_llm: %s/%s - %d in / %d out Token, $%.4f (request_id=%s).",
+                            spec.provider, spec.model_name, input_tokens, output_tokens, cost, request_id)
+            else:
+                logger.info("call_llm: %s/%s - %d in / %d out Token, kostenlos (request_id=%s).",
+                            spec.provider, spec.model_name, input_tokens, output_tokens, request_id)
             return response
 
     def call_with_fallback(self, messages: list[dict], tools: list[dict] | None = None,
-                           allow_uncensored: bool = False, force_model: str | None = None) -> dict:
+                           allow_uncensored: bool = False, force_model: str | None = None,
+                           strict_tools: bool = False) -> dict:
         # Routing an der eigentlichen Nutzeranfrage ausrichten, nicht an Tool-Ergebnissen –
         # so bleibt eine Aktion über den gesamten Werkzeug-Loop beim passenden Modell.
+        # strict_tools kommt von core/agent.py (agent_name != "jude"): ein
+        # Sub-Agenten-Dispatch braucht IMMER echte Werkzeuge, unabhaengig davon, wie
+        # "plauderhaft" der Auftragstext klingt. Tinos eigener Chat setzt es nicht -
+        # er hat immer das volle Toolset geladen, auch fuer reines Plaudern.
         user_messages = [m for m in messages if m.get("role") == "user"]
         prompt = str((user_messages[-1] if user_messages else messages[-1]).get("content", ""))
         complexity, task_type = self.estimate_complexity(prompt), self.task_type(prompt)
@@ -659,117 +898,159 @@ class ModelRouter:
             if tools and "tools" not in selected.tags:
                 logger.warning("Modell %s kann keine Werkzeuge – Vorgabe verworfen.", force_model)
                 selected = self.select_model(prompt, allow_uncensored=allow_uncensored,
-                                             needs_tools=True)
+                                             needs_tools=True, strict_tools=strict_tools)
         else:
-            selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools))
+            selected = self.select_model(prompt, allow_uncensored=allow_uncensored, needs_tools=bool(tools),
+                                         strict_tools=strict_tools)
         route_id = uuid.uuid4().hex[:16]
-        started = time.monotonic()
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
-        attempts: list[dict] = []
-        with connection() as db:
-            db.execute("INSERT INTO route_decisions(id,created_at,task_type,complexity,selected_model,prompt_hash) VALUES(?,?,?,?,?,?)",
-                       (route_id, datetime.now(timezone.utc).isoformat(), task_type, complexity, selected.name, prompt_hash))
-        errors: list[str] = []
+        self._route_repo.insert(route_id, datetime.now(timezone.utc).isoformat(), task_type, complexity,
+                                selected.name, prompt_hash)
         chain = self._resolve_fallbacks(selected, allow_uncensored, needs_tools=bool(tools))
+        return self._execute_chain(chain, messages, tools, selected_name=selected.name, route_id=route_id)
 
-        def _has_stronger_tier(index: int) -> bool:
-            return any(self._provider_enabled(chain[j].provider) for j in range(index + 1, len(chain)))
-
+    def _execute_chain(self, chain: list[ModelSpec], messages: list[dict], tools: list[dict] | None,
+                       *, selected_name: str, route_id: str) -> dict:
+        """Arbeitet eine bereits aufgebaute Modellkette ab: ueberspringt gesperrte
+        Provider, schneidet den Verlauf pro Modell auf dessen eigenes Fenster zu,
+        prueft die Kostenschaetzung, ruft auf, protokolliert jeden Versuch nach
+        route_decisions (die Einstiegszeile dafuer legt der Aufrufer bereits an,
+        siehe call_with_fallback). Extrahiert aus call_with_fallback, damit ein
+        spaeterer registry-basierter Aufrufer (AIRouter) dieselbe Retry-/Logging-/
+        Kosten-/Zuschneide-Maschinerie nutzt, statt sie zu duplizieren - nur WIE
+        die Kette zustandekommt (Heuristik hier vs. Registry dort) unterscheidet
+        sich, die Ausfuehrung ist fuer beide identisch."""
+        started = time.monotonic()
+        attempts: list[dict] = []
+        errors: list[str] = []
         for position, spec in enumerate(chain):
-            # 429 von diesem Provider? Dann 15 Minuten gar nicht erst versuchen –
-            # das spart Wartezeit und Tokens.
+            # Provider kürzlich mit 429 oder einem dauerhaften Fehler (kein
+            # Guthaben, gesperrt) gescheitert? Dann gar nicht erst versuchen –
+            # 15 Minuten bei 429, bis Mitternacht bei leerem Guthaben. Auf
+            # debug, weil die Zeile sonst pro Kettenglied ins Log läuft.
             if _provider_429_gesperrt(spec.provider):
-                attempts.append({"model": spec.name, "status": "skipped_429_throttle"})
-                logger.info("Provider %s: 429-Sperre aktiv, Versuch übersprungen.", spec.provider)
+                attempts.append({"model": spec.name, "status": "skipped_provider_gesperrt"})
+                logger.debug("Provider %s: Sperre aktiv, Versuch übersprungen.", spec.provider)
                 continue
-            if not self._cloud_affordable(spec, messages):
+            # Erst zuschneiden, dann rechnen und rufen: die Kostenschaetzung
+            # muss sich auf das beziehen, was wirklich rausgeht, sonst lehnt das
+            # Budget einen Versuch wegen Token ab, die gar nicht gesendet werden.
+            nachrichten = self._zuschneiden(messages, spec)
+            if not self._provider_affordable(spec, nachrichten):
                 attempts.append({"model": spec.name, "status": "skipped_cost_limit"})
-                continue
-            # Kostenfrei heisst nicht unbegrenzt: unterhalb der Reserve wird
-            # Groq uebersprungen, statt das Tageskontingent leerzuraeumen und
-            # danach fuer Stunden ohne dazustehen.
-            if not self._groq_verfuegbar(spec, messages):
-                attempts.append({"model": spec.name, "status": "skipped_kontingent"})
                 continue
             try:
                 attempt_started = time.monotonic()
-                response = self.call_llm(spec, messages, tools, request_id=route_id)
-                adequate = True
-                # Günstige Stufen (lokal, Groq, …) werden bei schweren Anfragen geprüft und
-                # eskalieren zur nächsten Stufe – aber nur, solange es eine stärkere gibt.
-                if (not allow_uncensored and "top_tier" not in spec.tags
-                        and _has_stronger_tier(position)):
-                    adequate = self._local_quality_check(prompt, response, complexity)
-                attempts.append({"model": spec.name, "status": "ok" if adequate else "inadequate",
+                response = self.call_llm(spec, nachrichten, tools, request_id=route_id)
+                # Eine erfolgreiche Antwort wird angenommen, ohne sie von einem
+                # zweiten Modell nachbewerten zu lassen (entfernt 05.09.2026):
+                # eine "inadequate"-Note eskalierte zur naechsten Kettenstufe,
+                # aber wenn davon nur noch gesperrte Provider oder ein schwaecheres
+                # lokales Modell uebrig waren, endete das zuverlaessig in einem
+                # kompletten Fehlschlag statt in der bereits vorliegenden, echten
+                # Antwort - gemessen am ROI-Guide-Lauf 05.09.2026: gpt-5.6-terra
+                # antwortete brauchbar, wurde als "inadequate" verworfen, danach
+                # scheiterten zwei gesperrte Claude-Stufen und ein 45s-Timeout auf
+                # lokal qwen3, obwohl das schon rejizierte Ergebnis vorlag.
+                attempts.append({"model": spec.name, "status": "ok",
                                  "latency_ms": int((time.monotonic() - attempt_started) * 1000)})
-                if not adequate:
-                    continue
                 # Erfolg: Provider freigeben (nicht mehr als gesperrt merken).
                 _provider_429_merken(spec.provider, False)
                 response["_model"] = spec.name
                 response["_route_id"] = route_id
-                with connection() as db:
-                    db.execute("UPDATE route_decisions SET final_model=?,success=1,escalated=?,latency_ms=?,attempts_json=? WHERE id=?",
-                               (spec.name, int(spec != selected), int((time.monotonic() - started) * 1000),
-                                json.dumps(attempts), route_id))
+                self._route_repo.mark_success(route_id, spec.name, int(spec.name != selected_name),
+                                              int((time.monotonic() - started) * 1000), json.dumps(attempts))
                 return response
             except Exception as exc:
-                # War es eine 429-Antwort? Dann merken und nächstes Mal überspringen.
-                war_429 = "429" in str(exc)
-                _provider_429_merken(spec.provider, war_429)
+                # War es eine 429-Antwort oder ein dauerhafter Fehler (kein
+                # Guthaben, Account gesperrt)? Dann merken und überspringen –
+                # bei einem dauerhaften Fehler sofort, ohne zweiten Versuch.
+                dauerhaft = _ist_dauerhafter_fehler(exc)
+                war_429 = dauerhaft or "429" in str(exc)
+                _provider_429_merken(spec.provider, war_429, sofort=dauerhaft)
                 errors.append(f"{spec.name}: {exc}")
                 attempts.append({"model": spec.name, "status": "error", "error": str(exc)[:500]})
                 logger.warning("Modell %s fehlgeschlagen: %s", spec.name, exc)
-        with connection() as db:
-            db.execute("UPDATE route_decisions SET latency_ms=?,attempts_json=?,error=? WHERE id=?",
-                       (int((time.monotonic() - started) * 1000), json.dumps(attempts), " | ".join(errors), route_id))
+        self._route_repo.mark_failure(route_id, int((time.monotonic() - started) * 1000),
+                                      json.dumps(attempts), " | ".join(errors))
         raise RuntimeError("Alle Modellaufrufe fehlgeschlagen: " + " | ".join(errors))
 
     def feedback(self, route_id: str, value: int) -> dict:
         if value not in {-1, 1}:
             raise ValueError("Feedback muss -1 oder 1 sein.")
-        with connection() as db:
-            db.execute("UPDATE route_decisions SET user_feedback=?,feedback_at=? WHERE id=?",
-                       (value, datetime.now(timezone.utc).isoformat(), route_id))
-            row = db.execute("SELECT id,task_type,final_model,user_feedback FROM route_decisions WHERE id=?", (route_id,)).fetchone()
+        self._route_repo.record_feedback(route_id, value, datetime.now(timezone.utc).isoformat())
+        row = self._route_repo.get(route_id)
         if not row:
             raise KeyError("Routing-Entscheidung nicht gefunden.")
-        return dict(row)
+        return row
 
     def context_budget(self) -> int:
-        """Kleinstes Kontextfenster der lokalen Modelle. Der Verlauf muss in
-        jedes Modell der Fallback-Kette passen – die Cloud-Fenster sind riesig,
-        der Engpass ist immer das lokale Basismodell."""
-        local = [spec.context_length for spec in self.models.values() if spec.provider == "ollama"]
-        return min(local) if local else 16384
+        """Groesstes verfuegbares Kontextfenster – der Verlauf wird erst beim
+        einzelnen Modell zugeschnitten (``_zuschneiden``), nicht vorher.
+
+        Vorher stand hier das KLEINSTE Fenster der lokalen Modelle. Das war
+        richtig, solange alles lokal lief, und wurde falsch, als die Kette in
+        die Cloud ging: gemessen 04.09.2026 arbeitete jeder Mitarbeiterlauf mit
+        8192 * 0,75 = 6144 Token Verlauf, auch auf cloud_openai_terra mit einem
+        Fenster von 1.050.000 – 0,6 % davon. Der Auftrag ist die aelteste
+        Nicht-System-Nachricht und flog dadurch als Erstes heraus; danach
+        reagierte der Agent nur noch auf die letzte Werkzeugquittung. Sichtbare
+        Folgen an einem Tag: 38x ``report_to_tino`` hintereinander im selben
+        Lauf, 38x dieselbe Datei gelesen, 6,00 Mio. Eingabe- gegen 121k
+        Ausgabe-Token.
+        """
+        fenster = [spec.context_length for spec in self.models.values()]
+        return max(fenster) if fenster else 16384
+
+    @staticmethod
+    def _nachrichtenkosten(message: dict) -> int:
+        """Grobe Tokenschaetzung einer Nachricht (~3,6 Zeichen je Token im
+        Deutschen). Spiegelt bewusst die Schaetzung in ``Agent._trim_history``;
+        beide muessen dieselbe Groessenordnung liefern, sonst schneidet mal die
+        eine, mal die andere Seite."""
+        content = message.get("content")
+        if isinstance(content, dict) and "_bildbloecke" in content:
+            return 1800                      # ein Bild kostet ~1,5k Token
+        text = (content if isinstance(content, str)
+                else json.dumps(content, ensure_ascii=False) if content else "")
+        return int(len(text) / 3.6) + 8
+
+    def _zuschneiden(self, messages: list[dict], spec: ModelSpec) -> list[dict]:
+        """Verlauf auf das Fenster GENAU DIESES Modells kuerzen.
+
+        Die Kette reicht von 8k (lokal) bis 1.050.000 (cloud_openai_terra).
+        Einmal vorab auf das kleinste Fenster zu kuerzen verschenkt bei jedem
+        groesseren Modell den Kontext; gar nicht zu kuerzen sprengt das
+        kleinste. Deshalb hier, pro Versuch, gegen das tatsaechliche Fenster.
+        25 % bleiben fuer Antwort und Werkzeugdefinitionen frei.
+        """
+        if not messages:
+            return messages
+        budget = int(spec.context_length * 0.75)
+        system, rest = messages[0], messages[1:]
+        gesamt = self._nachrichtenkosten(system)
+        behalten: list[dict] = []
+        for message in reversed(rest):
+            gesamt += self._nachrichtenkosten(message)
+            if gesamt > budget and behalten:
+                break
+            behalten.append(message)
+        behalten.reverse()
+        # Ein Werkzeug-Ergebnis ohne den zugehoerigen Aufruf verwirrt die Modelle.
+        while behalten and behalten[0].get("role") == "tool":
+            behalten.pop(0)
+        if len(behalten) == len(rest):
+            return messages                  # nichts gekuerzt, Original weitergeben
+        logger.debug("Verlauf fuer %s auf %d von %d Nachrichten gekuerzt (Fenster %d).",
+                     spec.name, len(behalten) + 1, len(messages), spec.context_length)
+        return [system, *behalten]
 
     def status(self) -> dict[str, Any]:
         month = datetime.now(timezone.utc).strftime("%Y-%m")
-        with connection() as db:
-            totals = db.execute(
-                "SELECT COALESCE(SUM(input_tokens),0) AS input_tokens,COALESCE(SUM(output_tokens),0) AS output_tokens,"
-                "COALESCE(SUM(cached_input_tokens),0) AS cached_input_tokens,"
-                "COALESCE(SUM(cache_write_tokens),0) AS cache_write_tokens,"
-                "COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens,COALESCE(SUM(cost_usd),0) AS cost_usd "
-                "FROM model_usage WHERE substr(created_at,1,7)=?", (month,)
-            ).fetchone()
-            decisions = db.execute(
-                "SELECT COUNT(*) AS total,COALESCE(SUM(escalated),0) AS escalated,"
-                "SUM(CASE WHEN user_feedback=1 THEN 1 ELSE 0 END) AS positive_feedback,"
-                "SUM(CASE WHEN user_feedback=-1 THEN 1 ELSE 0 END) AS negative_feedback "
-                "FROM route_decisions WHERE substr(created_at,1,7)=?", (month,)
-            ).fetchone()
-            recent = db.execute(
-                "SELECT id,created_at,task_type,complexity,selected_model,final_model,success,escalated,"
-                "latency_ms,user_feedback,error FROM route_decisions ORDER BY created_at DESC LIMIT 25"
-            ).fetchall()
-            by_model = db.execute(
-                "SELECT provider,model,SUM(input_tokens) AS input_tokens,SUM(output_tokens) AS output_tokens,"
-                "SUM(cached_input_tokens) AS cached_input_tokens,SUM(reasoning_tokens) AS reasoning_tokens,"
-                "SUM(cost_usd) AS cost_usd,COUNT(*) AS calls,GROUP_CONCAT(DISTINCT tariff) AS tariffs "
-                "FROM model_usage "
-                "WHERE substr(created_at,1,7)=? GROUP BY provider,model ORDER BY cost_usd DESC", (month,)
-            ).fetchall()
+        totals = self._usage_repo.monthly_usage_summary(month)
+        decisions = self._route_repo.monthly_summary(month)
+        recent = self._route_repo.recent(25)
+        by_model = self._usage_repo.by_model_monthly(month)
         return {
             "paid_models_enabled": self.paid_models_enabled,
             "budget_used_usd": round(self.budget_used, 6),

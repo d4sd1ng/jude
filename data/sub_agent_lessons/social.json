@@ -1,5 +1,26 @@
 [
   {
+    "kern": "wortfilter schlgt wiederholt an keine englischen marketingwoerteranglizismen z b insights",
+    "text": "Wortfilter schlägt wiederholt an: keine englischen Marketing-Woerter/Anglizismen (z. B. insights, tool, report, optimierung, loesung) – immer deutsche, konkrete Formulierungen statt Werbedeutsch.",
+    "quelle": "Jude",
+    "anzahl": 31,
+    "zuletzt": "2026-09-05T14:18:50.320863+00:00"
+  },
+  {
+    "kern": "eine grafikvorlage ohne echte bilddatei wird nicht angenommen  erst generateimage aufrufen",
+    "text": "Eine 'grafik'-Vorlage ohne echte Bilddatei wird nicht angenommen – erst generate_image aufrufen und den Dateipfad als quelle angeben, dann vorlegen.",
+    "quelle": "Jude",
+    "anzahl": 28,
+    "zuletzt": "2026-09-05T20:58:52.024260+00:00"
+  },
+  {
+    "kern": "jude aufrumen 0409 keine echte bilddatei in quelle  alteintrag von vor dem fix der runde3a",
+    "text": "Jude (Aufräumen 04.09.): keine echte Bilddatei in quelle - Alt-Eintrag von vor dem Fix der Runde-3-Ausnahme, wird jetzt konsequent geprüft. generate_image aufrufen und den Dateipfad angeben.",
+    "quelle": "Tino",
+    "anzahl": 9,
+    "zuletzt": "2026-09-04T05:29:41.076118+00:00"
+  },
+  {
     "kern": "werbedeutsch lsung optimieren benutzerfreundlich streichen",
     "text": "Werbedeutsch: 'Lösung', 'optimieren', 'benutzerfreundlich' streichen.",
     "quelle": "Jude",
@@ -33,5 +54,89 @@
     "quelle": "Jude",
     "anzahl": 1,
     "zuletzt": "2026-08-15T17:20:55.018515+00:00"
+  },
+  {
+    "kern": "fehlender korrekter cta kostenlose kipotenzialanalyse exakt im linkedinbeitrag nichtgenehm",
+    "text": "Fehlender korrekter CTA („Kostenlose KI‑Potenzialanalyse“ exakt) im LinkedIn‑Beitrag, nicht‑genehmigte Hashtags, Kurzfassung weicht vom vorgeschriebenen CTA‑Text ab.",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-03T01:22:33.148731+00:00"
+  },
+  {
+    "kern": "score 61100 unter der 70erschwelle der einstieg steht im ersten kommentar fgt einen nichtg",
+    "text": "Score 61/100 unter der 70er-Schwelle. „Der Einstieg steht im ersten Kommentar.“ fügt einen nicht‑genehmigten Call‑to‑Action hinzu (nur „Kostenlose KI‑Potenzialanalyse“ erlaubt); das Bild fehlt (Auftrag verlangt Titel, Text + Bild); das Hashtag „#KI“ ist kein zulässiger Strategie‑Hashtag und dient als Schlagwort ohne erklärten Ablauf (Regel 2 und 3).",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-03T05:09:57.807596+00:00"
+  },
+  {
+    "kern": "unverifizierte zahl bis zu30 in slide3 muss entfernt oder durch zulssige formulierung erse",
+    "text": "unverifizierte Zahl „bis zu 30 %“ in Slide 3 muss entfernt oder durch zulässige Formulierung ersetzt.",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-03T05:11:28.927553+00:00"
+  },
+  {
+    "kern": "zu schwammig keine zahlen oder prozesse benannt und ist auch wieder ein potenzialanalyse p",
+    "text": "zu schwammig keine zahlen oder prozesse benannt und ist auch wieder ein Potenzialanalyse post",
+    "quelle": "Tino",
+    "anzahl": 1,
+    "zuletzt": "2026-09-03T09:37:30.120037+00:00"
+  },
+  {
+    "kern": "score 30100 unter der 70erschwelle statt montag 0800 und vier kanlen ist nur ein linkedink",
+    "text": "Score 30/100 unter der 70er-Schwelle. Statt Montag 08:00 und vier Kanälen ist nur ein „LinkedIn-Karussell“ für „Freitag, 04.09.2026, 08:00 Uhr“ vorgesehen; Text und Bild fehlen hier („stehen vollständig im Notion-Eintrag“), und „verweist regelkonform auf den ersten Kommentar“ wiederholt den bereits beanstandeten zusätzlichen Handlungsaufruf.",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-03T20:06:05.043405+00:00"
+  },
+  {
+    "kern": "wo ist dass erstellte materiual",
+    "text": "wo ist dass erstellte materiual",
+    "quelle": "Tino",
+    "anzahl": 1,
+    "zuletzt": "2026-09-04T05:32:06.150673+00:00"
+  },
+  {
+    "kern": "jude aufrumen 0409 das beschreibt nur dass ein reel existiert umfasst ein skript  kein skr",
+    "text": "Jude (Aufräumen 04.09.): das beschreibt nur, dass ein Reel existiert (\"umfasst ein Skript...\") - kein Skript/keine Caption liegt tatsächlich vor, keine Datei in quelle. Den echten Reel-Inhalt (Skript, Caption) vorlegen, nicht nur seine Existenz melden.",
+    "quelle": "Tino",
+    "anzahl": 1,
+    "zuletzt": "2026-09-04T05:32:43.297626+00:00"
+  },
+  {
+    "kern": "das ist kein beiitrag",
+    "text": "das ist kein beiitrag",
+    "quelle": "Tino",
+    "anzahl": 1,
+    "zuletzt": "2026-09-04T05:32:50.403379+00:00"
+  },
+  {
+    "kern": "score 27100 unter der 70erschwelle plattformpaket und kurzfassungen beschreiben inhalte nu",
+    "text": "Score 27/100 unter der 70er-Schwelle. „Plattformpaket“ und „Kurzfassungen“ beschreiben Inhalte nur; veröffentlichungsfertige Beitragstexte und der wortgleiche CTA sind nicht vorgelegt.",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-04T08:08:11.520717+00:00"
+  },
+  {
+    "kern": "score 20100 unter der 70erschwelle gefordert sind zwei vollstndige berichtbeitrge vorgeleg",
+    "text": "Score 20/100 unter der 70er-Schwelle. Gefordert sind „Zwei vollständige Bericht-Beiträge“; vorgelegt ist nur „Bericht KW 36: Der Bruch zwischen E-Mail und Fachprogramm“ als Beschreibung, ohne ausformulierte Plattformtexte und ohne zweiten Beitrag.",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-04T08:10:45.858689+00:00"
+  },
+  {
+    "kern": "wo ist das karussell",
+    "text": "wo ist das karussell?",
+    "quelle": "Tino",
+    "anzahl": 1,
+    "zuletzt": "2026-09-04T14:43:11.722392+00:00"
+  },
+  {
+    "kern": "ein per generateimage erzeugtes bild schwebende goldene hologrammicons ueber der schulter",
+    "text": "Ein per generate_image erzeugtes Bild (schwebende goldene Hologramm-Icons ueber der Schulter einer Person von hinten, dunkle Serverraum-Kulisse) wurde als fertig vorgelegt, obwohl es genau das VERBOTENE Motiv \"schwebende Hologramme\" zeigt (styleguide.md Abschnitt Bildstil) und wie ein Kino-Poster fuer einen Hacker-Thriller wirkt, nicht wie ein echter Arbeitsmoment. Vor jedem generate_image-Aufruf ",
+    "quelle": "Jude",
+    "anzahl": 1,
+    "zuletzt": "2026-09-05T22:33:52.489393+00:00"
   }
 ]

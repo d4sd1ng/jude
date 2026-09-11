@@ -34,6 +34,22 @@ class SystemMonitorService:
         self._last_cpu = (busy, total)
         return round(percent, 1)
 
+    # -------------------------------------------------------------- GPU
+
+    @staticmethod
+    def _gpu_percent() -> float | None:
+        """AMD-Karten (die im Einsatz ist, RX 580) legen ihre Auslastung unter
+        genau diesem Sysfs-Pfad ab - kein zusaetzliches Tool noetig, passt
+        zum Rest dieser Datei (nur /proc und /sys). Mehrere Karten: die
+        hoechste Auslastung gewinnt, wie bei den Temperaturen oben."""
+        werte = []
+        for pfad in sorted(Path("/sys/class/drm").glob("card*/device/gpu_busy_percent")):
+            try:
+                werte.append(float(pfad.read_text().strip()))
+            except (OSError, ValueError):
+                continue
+        return max(werte) if werte else None
+
     # ---------------------------------------------------------- Speicher
 
     @staticmethod
@@ -116,6 +132,7 @@ class SystemMonitorService:
         load1, load5, load15 = (float(x) for x in Path("/proc/loadavg").read_text().split()[:3])
         return {
             "cpu_percent": self._cpu_percent(),
+            "gpu_percent": self._gpu_percent(),
             "load": {"1m": load1, "5m": load5, "15m": load15},
             "memory": self._memory(),
             "disk": self._disk(),

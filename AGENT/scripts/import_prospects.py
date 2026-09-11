@@ -32,8 +32,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dotenv import load_dotenv  # noqa: E402
+from core.paths import AI_DATA_ROOT  # noqa: E402
 
-QUELLE = Path("/media/d4sd1ng/AI-Data/Projects/company/outreach")
+# War frueher hart auf /media/d4sd1ng/AI-Data kodiert - ueberlebte den Wechsel
+# des Einhaengepunkts auf /mnt/ai-data nicht, weil dieses Skript (anders als
+# der laufende App-Code) nie durch core/paths.py's Erkennung lief. Jetzt
+# dieselbe Wurzel wie der Rest von Jude, statt einer zweiten, eigenen Annahme.
+QUELLE = AI_DATA_ROOT / "Projects" / "company" / "outreach"
 TRACKER = ["outreach_tracker_marburg_100km.csv", "outreach_tracker.csv"]
 
 #: Freitext aus dem Tracker auf die vorhandenen Branchen-Optionen abbilden.

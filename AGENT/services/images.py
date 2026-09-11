@@ -1,4 +1,4 @@
-"""Bilder erzeugen und bearbeiten über die OpenAI-Images-API (gpt-image-1).
+"""Bilder erzeugen und bearbeiten über die OpenAI-Images-API (gpt-image-2.5-flare).
 
 Erzeugte und bearbeitete Bilder werden lokal unter ``Jude/images`` abgelegt, mit
 einer Metadaten-JSON pro Bild (Prompt, Größe, Quelle, Zeit). So bleibt die
@@ -11,6 +11,7 @@ import base64
 import json
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
 from datetime import datetime, timezone
 
 import requests
@@ -20,10 +21,41 @@ from core.paths import IMAGES_DIR
 _API_BASE = "https://api.openai.com/v1/images"
 _ALLOWED_SIZES = {"1024x1024", "1024x1536", "1536x1024", "auto"}
 
+# requests' eigenes 'timeout' ist KEIN echtes Wanduhr-Limit fuer den ganzen
+# Aufruf - es setzt nur eine Frist fuer Verbindungsaufbau UND JEDEN einzelnen
+# Lesevorgang neu, nicht fuer die Gesamtdauer. Solange der Server ueberhaupt
+# irgendwelche Bytes schickt (z.B. periodische Keep-Alive-Daten), verlaengert
+# sich die Wartezeit unbegrenzt weiter. Gemessen 11.09.2026: designer haengte
+# 13+ Minuten in generate_image fest, obwohl self.timeout=180 gesetzt war -
+# kein Fehler, kein Log, einfach ein Lauf, der nie zu Ende ging, bis der
+# gesamte Server neu gestartet wurde. Dieser Wrapper erzwingt eine echte,
+# harte Gesamtfrist ueber einen separaten Thread: die eigentliche Anfrage
+# darf so lange laufen, wie sie will, aber der AUFRUFER wartet hoechstens
+# 'frist' Sekunden und bekommt danach einen klaren Fehler statt eines
+# endlosen Haengers.
+_ausfuehrer = ThreadPoolExecutor(max_workers=8, thread_name_prefix="bild-anfrage")
+
+
+def _mit_harter_frist(funktion, frist: float):
+    future = _ausfuehrer.submit(funktion)
+    try:
+        return future.result(timeout=frist)
+    except _FutureTimeout:
+        raise TimeoutError(
+            f"Keine Antwort innerhalb von {frist:.0f}s - die Anfrage laeuft im "
+            f"Hintergrund evtl. weiter, wird hier aber als fehlgeschlagen "
+            f"gewertet, statt den Aufrufer unbegrenzt warten zu lassen.")
+
 
 class ImageService:
     def __init__(self, model: str | None = None, timeout: int = 180):
-        self.model = model or os.getenv("JUDE_IMAGE_MODEL", "gpt-image-1")
+        # gpt-image-1 (11.09.2026 als veraltet erkannt, developers.openai.com/
+        # api/docs/guides/image-generation nennt gpt-image-2.5-sunburst
+        # (Editierpraezision) und gpt-image-2.5-flare (schnelle Alltags-
+        # generierung) als aktuelle Modelle) - flare passt zu designers
+        # tatsaechlichem Einsatz (laufende Post-/Grafik-Motive, keine
+        # praezise Bildbearbeitung).
+        self.model = model or os.getenv("JUDE_IMAGE_MODEL", "gpt-image-2.5-flare")
         self.timeout = timeout
 
     # --------------------------------------------------------------- intern
@@ -63,17 +95,36 @@ class ImageService:
 
     # ---------------------------------------------------------------- API
 
-    def generate(self, prompt: str, size: str | None = None) -> dict:
+    def generate(self, prompt: str, size: str | None = None, marke: bool = True) -> dict:
         prompt = (prompt or "").strip()
         if not prompt:
             raise ValueError("Für die Bilderzeugung wird ein Prompt benötigt.")
         size = self._norm_size(size)
-        response = requests.post(
+        # Fest angehaengt statt nur dem Mitarbeiter aufgetragen: ein Prompt ohne
+        # diese Zeilen erzeugte zuverlaessig beliebige, markenfremde Bilder.
+        # marke=False nur fuer ausdruecklich private/markenfremde Anfragen.
+        gesendeter_prompt = prompt
+        if marke:
+            from services.marke import BILD_STIL_SUFFIX
+            gesendeter_prompt = prompt + BILD_STIL_SUFFIX
+        response = _mit_harter_frist(lambda: requests.post(
             f"{_API_BASE}/generations",
             headers={"Authorization": f"Bearer {self._require_key()}"},
-            json={"model": self.model, "prompt": prompt, "size": size, "n": 1},
+            # "quality" fehlte hier komplett - die API fiel auf ihren eigenen
+            # Standard zurueck (nicht "high"). Jedes bisher erzeugte Nurovelle-
+            # Bild (06.09.2026, Tino: "not finished and really cheap") lief
+            # ueber genau diesen Aufruf ohne das Feld - unabhaengig von Motiv
+            # oder Prompt-Text guenstiger/flacher gerendert als noetig.
+            # "background" fehlte ebenso: styleguide.md verlangt transparenten
+            # Hintergrund, und ohne dieses Feld verliess sich alles auf "auto" -
+            # der Text im Prompt musste "transparenter Hintergrund" erwaehnen
+            # UND das Modell musste das auch befolgen. Explizit gesetzt ist
+            # zuverlaessiger als implizit erhofft (07.09.2026, dieselbe Lektion
+            # wie bei "quality" oben).
+            json={"model": self.model, "prompt": gesendeter_prompt, "size": size, "n": 1,
+                  "quality": os.getenv("JUDE_IMAGE_QUALITY", "high"), "background": "transparent"},
             timeout=self.timeout,
-        )
+        ), self.timeout + 30)
         response.raise_for_status()
         return self._save(self._first_b64(response.json()), prompt, size, "generiert")
 
@@ -88,13 +139,22 @@ class ImageService:
         files = [("image", (filename, image, "image/png"))]
         if mask:
             files.append(("mask", ("mask.png", mask, "image/png")))
-        response = requests.post(
+        response = _mit_harter_frist(lambda: requests.post(
             f"{_API_BASE}/edits",
             headers={"Authorization": f"Bearer {self._require_key()}"},
-            data={"model": self.model, "prompt": prompt, "size": size, "n": 1},
+            # Dieselben zwei Felder wie in generate() oben fehlten hier ebenso -
+            # ein bearbeitetes Bild lief bislang weder mit expliziter Qualitaet
+            # noch mit explizitem transparentem Hintergrund, sondern auf beider
+            # API-eigenen Vorgaben. Gemessen 07.09.2026: ein per edit()
+            # erzeugtes Bild kam vollstaendig deckend zurueck (kein
+            # Alpha-Kanal), obwohl der Prompt "transparent" nirgends
+            # ausschloss - implizit erhofft ist hier so wenig zuverlaessig wie
+            # bei generate().
+            data={"model": self.model, "prompt": prompt, "size": size, "n": 1,
+                 "quality": os.getenv("JUDE_IMAGE_QUALITY", "high"), "background": "transparent"},
             files=files,
             timeout=self.timeout,
-        )
+        ), self.timeout + 30)
         response.raise_for_status()
         return self._save(self._first_b64(response.json()), prompt, size, "bearbeitet", source_name=filename)
 

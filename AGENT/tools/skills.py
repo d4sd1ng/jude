@@ -168,20 +168,45 @@ def register_notion(registry: ToolRegistry, notion) -> None:
 
     Schemagetrieben: die Agenten holen sich erst die Feldliste, dann schreiben
     sie. Ohne das raten sie Feldnamen und schreiben ins Leere."""
+    # 'name' bedeutet bei ALLEN vier Werkzeugen dasselbe: der Name der DATENBANK
+    # (z.B. 'social_posts', 'content_stuecke'), nie der Titel des einzelnen
+    # Eintrags - der steht in 'fields'. Bis 07.09.2026 hatte 'name' keine
+    # Beschreibung; notion_create schlug seitdem wiederholt, bei mehreren
+    # verschiedenen Mitarbeitern, mit "Pflichtfelder fehlen: name" fehl - das
+    # Modell liess den Datenbanknamen komplett weg, offenbar weil 'name' neben
+    # 'fields' (das selbst haeufig ein 'Titel'/'Name'-Feld enthaelt) mehrdeutig
+    # wirkte. Jetzt an jedem der vier Werkzeuge explizit auseinandergehalten.
+    _DB_NAME_HINWEIS = ("Name der Notion-DATENBANK (z.B. 'social_posts', 'content_stuecke', "
+                        "'kontakte') - NICHT der Titel des einzelnen Eintrags, der gehoert in "
+                        "'fields'.")
     registry.register(Tool("notion_databases", "Zeigt, welche Notion-Datenbanken eingerichtet sind.",
                            notion.databases, _schema({})))
     registry.register(Tool("notion_schema", "Feldnamen, Feldtypen und die erlaubten Werte der Auswahlfelder einer Notion-Datenbank. Vor jedem Schreiben aufrufen.",
-                           notion.schema, _schema({"name": {"type": "string"}}, ["name"])))
+                           notion.schema, _schema({"name": {"type": "string", "description": _DB_NAME_HINWEIS}}, ["name"])))
     registry.register(Tool("notion_query", "Einträge aus einer Notion-Datenbank lesen, optional nach Text gefiltert.",
-                           notion.query, _schema({"name": {"type": "string"}, "limit": {"type": "integer"},
+                           notion.query, _schema({"name": {"type": "string", "description": _DB_NAME_HINWEIS},
+                                                  "limit": {"type": "integer"},
                                                   "search": {"type": "string"}}, ["name"]),
                            untrusted=True))
-    registry.register(Tool("notion_create", "Neuen Eintrag in einer Notion-Datenbank anlegen (Felder als Objekt).",
-                           notion.create, _schema({"name": {"type": "string"}, "fields": {"type": "object"}},
+    registry.register(Tool("notion_create", "Neuen Eintrag in einer Notion-Datenbank anlegen (Felder als Objekt). "
+                           "BEIDE Parameter sind Pflicht, auch wenn nur einer inhaltlich neu wirkt: 'name' ist "
+                           "die Datenbank, 'fields' ist der neue Eintrag selbst (inkl. seines eigenen Titels/Namens-Felds).",
+                           notion.create, _schema({"name": {"type": "string", "description": _DB_NAME_HINWEIS},
+                                                   "fields": {"type": "object", "description":
+                                                             "Die Felder des NEUEN Eintrags als Objekt, inkl. seines "
+                                                             "Titel-/Name-Felds (siehe notion_schema fuer die "
+                                                             "erlaubten Feldnamen dieser Datenbank)."}},
                                                   ["name", "fields"])))
-    registry.register(Tool("notion_update", "Felder eines vorhandenen Notion-Eintrags ändern.",
-                           notion.update, _schema({"name": {"type": "string"}, "page_id": {"type": "string"},
-                                                   "fields": {"type": "object"}}, ["name", "page_id", "fields"])))
+    registry.register(Tool("notion_update", "Felder eines vorhandenen Notion-Eintrags ändern – braucht Tinos "
+                           "ausdrückliche Bestätigung. Gemessen 03.09.2026: ein Mitarbeiter schrieb ein "
+                           "erfundenes Versanddatum in echte Kontakte, ungeprüft direkt in Notion.",
+                           notion.update, _schema({"name": {"type": "string", "description": _DB_NAME_HINWEIS},
+                                                   "page_id": {"type": "string", "description":
+                                                              "id des zu aendernden Eintrags (aus notion_query)."},
+                                                   "fields": {"type": "object", "description":
+                                                             "Nur die zu aendernden Felder als Objekt."}},
+                                                  ["name", "page_id", "fields"]),
+                           confirm_action="notion_write"))
 
 
 def register_backup(registry: ToolRegistry, backup) -> None:

@@ -104,6 +104,15 @@ def initialize_database(path: Path | None = None) -> None:
         CREATE TABLE IF NOT EXISTS memory_blocks (
             fingerprint TEXT PRIMARY KEY, created_at TEXT NOT NULL
         );
+        -- AI-Router-Umbau Teil 2, Abschnitt 3/4: Spiegel des In-Memory-Sperr-
+        -- zustands (_PROVIDER_429), damit GET /api/router/providers den echten
+        -- Stand zeigt, auch nach einem Neustart, ohne dass jemand den Prozess
+        -- danach fragen muss. Der In-Memory-Dict bleibt der heisse Pfad fuer
+        -- jede Routing-Entscheidung - diese Tabelle ist nur die Sichtbarkeit.
+        CREATE TABLE IF NOT EXISTS provider_locks (
+            provider TEXT PRIMARY KEY, locked_until TEXT, reason TEXT NOT NULL DEFAULT '',
+            counter INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+        );
         """)
         columns = {row[1] for row in db.execute("PRAGMA table_info(model_usage)")}
         migrations = {
@@ -127,6 +136,28 @@ def initialize_database(path: Path | None = None) -> None:
         for name, declaration in confirmation_migrations.items():
             if name not in confirmation_columns:
                 db.execute(f"ALTER TABLE confirmations ADD COLUMN {name} {declaration}")
+        # Ohne diese Spalte landeten Hauptchat und alle Sub-Agenten-Läufe in
+        # derselben Tabelle ohne Unterscheidung – ein Neustart hätte beim
+        # Wiederherstellen der Chat-Historie zufällige Mitarbeiter-Läufe in
+        # Judes eigenes Gespräch mit Tino gemischt.
+        turn_columns = {row[1] for row in db.execute("PRAGMA table_info(conversation_turns)")}
+        if "agent" not in turn_columns:
+            db.execute("ALTER TABLE conversation_turns ADD COLUMN agent TEXT NOT NULL DEFAULT 'jude'")
+        # AI-Router-Umbau Teil 2, Abschnitt 3: ohne diese Spalte liess sich in
+        # route_decisions nicht nachvollziehen, welcher Mitarbeiter eine Route
+        # ausgeloest hat - jede Rolle teilte sich denselben task_type.
+        route_columns = {row[1] for row in db.execute("PRAGMA table_info(route_decisions)")}
+        if "agent_name" not in route_columns:
+            db.execute("ALTER TABLE route_decisions ADD COLUMN agent_name TEXT")
+        # Ohne diese Spalte war ein verschachtelter Lauf (z.B. Heinz, von
+        # write_copy aus Mikes Lauf heraus ausgeloest) nicht von einem
+        # eigenstaendigen redakteur-Lauf zu unterscheiden - beide sahen in
+        # agent_runs identisch aus, nur ueber zeitliche Naehe zu erraten
+        # (gemessen 08.09.2026, beim Versuch nachzuvollziehen, welches
+        # Modell Heinz' Text tatsaechlich geschrieben hat).
+        run_columns = {row[1] for row in db.execute("PRAGMA table_info(agent_runs)")}
+        if "parent_agent" not in run_columns:
+            db.execute("ALTER TABLE agent_runs ADD COLUMN parent_agent TEXT")
 
 
 @contextmanager
