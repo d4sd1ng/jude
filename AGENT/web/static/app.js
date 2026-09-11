@@ -197,28 +197,20 @@ $('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){
 }catch(e){toast(e.message)}}
 window.stopWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/stop`,{method:'POST'});toast(`${name}: pausiert – nimmt keinen neuen Auftrag mehr an, bis wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
 window.startWorker=async(name,btn)=>{btn.disabled=true;try{
-  await api(`/api/agents/${encodeURIComponent(name)}/start`,{method:'POST'});
-  // Frueher: ein selbst ausgedachter Pauschaltext ("erledige deine Aufgabe
-  // gemaess QUELLE/ARBEIT/ZIEL..."), der weder Tino noch dem Mitarbeiter
-  // sagte, WAS konkret zu tun ist - der Mitarbeiter musste sich die Arbeit
-  // selbst erfinden statt einen echten, von Renate geprueften Auftrag zu
-  // bekommen. Start dispatcht jetzt gegen den aeltesten echten offenen
-  // Auftrag dieses Mitarbeiters (gleicher Aufruf wie auftrag_erteilen ihn
-  // selbst verwendet); gibt es keinen, wird nichts erfunden - der
-  // Mitarbeiter ist bereit, wartet aber auf einen Auftrag von Renate.
-  const offen=(await api(`/api/auftraege?status=alle&agent=${encodeURIComponent(name)}`))
-    .filter(a=>['offen','in_arbeit'].includes(a.status));
-  if(!offen.length){
+  // Ein einziger Aufruf: der Server sucht jetzt selbst den aeltesten echten
+  // offenen Auftrag im Auftragsbuch und dispatcht direkt damit (siehe
+  // web/routes/agents.py, agents_start). Vorher rief dieser Code SELBST noch
+  // einmal /run mit demselben Auftrag auf, NACHDEM /start bereits ueber
+  // dispatch_now dispatcht hatte - zwei parallele Laeufe pro Klick
+  // (Copilot-PR-Review auf PR #10, 11.09.2026).
+  const ergebnis=await api(`/api/agents/${encodeURIComponent(name)}/start`,{method:'POST'});
+  if(ergebnis.auftrag){
+    toast(`${name}: gestartet – arbeitet an "${ergebnis.auftrag.titel}".`);
+  }else{
     toast(`${name}: gestartet – hat aktuell keinen offenen Auftrag, wartet auf Renate.`);
-    btn.disabled=false;loadAktiv();return;
   }
-  const a=offen[0];
-  toast(`${name}: gestartet – arbeitet an "${a.titel}".`);
-  api(`/api/agents/${encodeURIComponent(name)}/run`,{method:'POST',body:JSON.stringify({task:
-    `AUFTRAG [${a.id}]: ${a.titel}\n${a.beschreibung}\nLege das Ergebnis mit submit_for_review vor und gib auftrag_id='${a.id}' an.`
-  })}).then(()=>loadAktiv()).catch(e=>toast(`${name}: ${e.message}`));
   loadAktiv();
-}catch(e){toast(e.message);btn.disabled=false}};
+}catch(e){toast(e.message)}finally{btn.disabled=false}};
 $('#dispatchForm')&&($('#dispatchForm').onsubmit=async e=>{e.preventDefault();
   const name=$('#dispatchAgent').value;const topic=$('#dispatchTopic').value.trim();const format=$('#dispatchFormat').value;
   if(!name)return toast('Mitarbeiter wählen');

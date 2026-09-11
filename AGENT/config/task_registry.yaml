@@ -59,22 +59,45 @@ task_types:
       - local_qwen_coder
 
   # Selten/hoechstwertig: Gatekeeper-Entscheidungen, bevor Tino etwas sieht.
-  # cloud_openai_astra (11.09.2026, gpt-6-astra, das teuerste/staerkste
-  # verfuegbare Modell) steht bewusst spaet in der Kette, kurz vor dem
-  # letzten Fallback: Renates Entscheidung ist die letzte Instanz vor Tino,
-  # das rechtfertigt den hoechsten Einsatz - aber erst NACHDEM die
-  # guenstigeren Stufen (inkl. sol) schon gescheitert sind, nicht routinemaessig.
+  # Neu geordnet 11.09.2026 (Tino: "quality first ... but check which
+  # employee is better going to use model x" / "she doesnt need astra for
+  # deciding what to keep and what to reject" / "dont drop any of them use
+  # them in wise order"). Eine Freigabe/Revision-Entscheidung ist Abgleich
+  # gegen eine feste Rubrik (Fakten/Quellen/Hook/Branding/... - siehe
+  # Renates eigener Rollentext), kein komplexes Schreiben oder Coden - dafuer
+  # reicht ein solides Mittelfeld-Modell zuverlaessig, das teuerste/
+  # staerkste Modell (astra) ist dafuer nicht noetig. Reihenfolge deshalb:
+  # 1) solide, spuerbar staerker als terra, aber nicht Flaggschiff-Preis
+  #    (sol, gpt55, claude_sonnet, gpt54 - zwei Anbieter gemischt, damit
+  #    nicht ausgerechnet ein einzelner OpenAI-Ausfall die ganze obere
+  #    Haelfte der Kette auf einmal kostet, siehe Ausfall unten);
+  # 2) guenstigere, aber noch brauchbare Stufen (terra, gpt51, ollama_gptoss);
+  # 3) die beiden Flaggschiff-Stufen (astra, claude_fable, beide $0.05/1k
+  #    Output, teuerste im Katalog) NICHT entfernt, aber ans Ende gestellt -
+  #    fuer den seltenen Fall, dass wirklich nichts Guenstigeres mehr geht,
+  #    nicht als Regelfall fuer eine Alltagsentscheidung;
+  # 4) local_qwen_coder als letzte Stufe (11.09.2026 nachtraeglich ergaenzt -
+  #    diese Kette war bis dahin komplett cloud. Gemessen 11.09.2026, ueber
+  #    25 Minuten/5 aufeinanderfolgende Ticks: OpenAI bis Mitternacht
+  #    gesperrt, Anthropic gesperrt, UND Ollama Cloud traf gleichzeitig das
+  #    eigene monatliche Nutzungslimit (429 "you have reached your monthly
+  #    usage limit") - alle Stufen gleichzeitig unerreichbar, Renate lief
+  #    jeden Tick sofort auf 'fehlgeschlagen', ohne je ein Werkzeug
+  #    aufzurufen. Ein einzelner, langsamer, aber lokal laufender Versuch
+  #    ist besser als ein kompletter Stillstand des gesamten Gatekeepers).
   judgment_review:
     requires_tools: true
     tiers:
-      - cloud_openai_terra
-      - cloud_openai_gpt54
-      - cloud_claude_sonnet
-      - cloud_openai_gpt55
-      - cloud_ollama_gptoss
       - cloud_openai_sol
+      - cloud_openai_gpt55
+      - cloud_claude_sonnet
+      - cloud_openai_gpt54
+      - cloud_openai_terra
+      - cloud_openai_gpt51
+      - cloud_ollama_gptoss
       - cloud_openai_astra
       - cloud_claude_fable
+      - local_qwen_coder
 
   # gpt-5.2/5.4 (11.09.2026) als zusaetzliche bezahlte Versuche vor Claude:
   # beide haben genug Reasoning fuer Code, guenstiger als Claude, daher zuerst.

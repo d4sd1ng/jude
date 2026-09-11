@@ -142,7 +142,7 @@ class Agent:
             if self.use_ai_router and self.task_type and self.ai_router is not None:
                 response = self.ai_router.generate(self.task_type, self.conversation_history, tools,
                                                    agent_name=self.agent_name, allow_uncensored=allow_uncensored,
-                                                   eskalieren=self.eskalieren)
+                                                   eskalieren=self.eskalieren, force_model=self.force_model)
             else:
                 response = self.router.call_with_fallback(self.conversation_history, tools, allow_uncensored,
                                                           force_model=self.force_model,

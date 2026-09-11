@@ -80,6 +80,10 @@ class SchedulerService:
         # aber weiterhin "faellige" Aufgabe erneut eingereiht, bis ein Slot frei
         # wird. Ergebnis waeren mehrere gleichzeitige Laeufe derselben Aufgabe.
         self._laufend_ids: set[str] = set()
+        # dispatch_now()-Cooldown: Zeitpunkt der letzten AUSLOESUNG je
+        # Mitarbeiter, nicht der letzte agent_runs-Eintrag - siehe ausfuehrlicher
+        # Kommentar dort, warum das ein wichtiger Unterschied ist.
+        self._letzter_dispatch: dict[str, datetime] = {}
         # Ein threading.Semaphore mit einem Thread pro Aufgabe war NICHT fair:
         # nach einem Neustart mit vielen gleichzeitig fälligen Aufgaben blieben
         # einzelne Mitarbeiter (Coder, designer, engineer) 16+ Minuten lang
@@ -113,44 +117,44 @@ class SchedulerService:
         naechsten eigenen Abschluss ohnehin zu sehen (offene_revisionen()/
         agenten_mit_offenen_revisionen() sind Teil seines Systemprompts).
 
-        COOLDOWN (neu, 11.09.2026 - echte Endlosschleife beobachtet): der
-        deterministische Gate-Check in team_gate.py laeuft SYNCHRON am Ende
-        jedes eigenen Laufs eines Mitarbeiters und ruft bei ungueltigem JSON
-        selbst queue.revision() auf - das loeste dispatch_now() aus, WAEHREND
-        der Mitarbeiter laut agent_runs schon wieder auf 'nicht laufend'
-        stand (sein Lauf war ja gerade fertig). Der obige "laeuft bereits"-
-        Schutz griff darum nicht: scraper wurde binnen 20 Minuten 14 Runden
-        lang sofort erneut gestartet, produzierte praktisch dieselbe defekte
-        Ausgabe erneut und loeste damit die naechste sofortige Ablehnung aus -
-        eine echte Endlosschleife, viel schneller als jeder vorherige Poll-
-        Takt sie je erzeugen konnte. Ein Mitarbeiter, der innerhalb der
-        Cooldown-Zeit schon einen eigenen Lauf beendet hat, wartet stattdessen
-        bis zur naechsten regulaeren Gelegenheit (naechster eigener Trigger,
-        z.B. sein eigener Tagesablauf oder eine neue, spaetere Ablehnung nach
-        Ablauf der Cooldown-Zeit) - kein blindes Sofort-Wiederholen derselben
-        vermutlich unveraenderten Ausgabe.
+        COOLDOWN (neu, 11.09.2026 - echte Endlosschleife beobachtet, dann per
+        Copilot-PR-Review auf PR #10 einen zweiten, schwereren Fehler in der
+        ERSTEN Fassung dieses Schutzes gefunden): der deterministische
+        Gate-Check in team_gate.py laeuft SYNCHRON am Ende jedes eigenen
+        Laufs eines Mitarbeiters und kann selbst queue.revision() ausloesen -
+        das rief dispatch_now() auf, WAEHREND der Mitarbeiter laut agent_runs
+        schon wieder auf 'nicht laufend' stand (sein Lauf war ja gerade
+        fertig). Der "laeuft bereits"-Schutz griff darum nicht: scraper wurde
+        binnen 20 Minuten 14 Runden lang sofort erneut gestartet, produzierte
+        praktisch dieselbe defekte Ausgabe erneut - eine echte Endlosschleife.
+        Die ERSTE Behebung dafuer verglich die Startzeit (created_at) des
+        JUENGSTEN agent_runs-Eintrags gegen die Cooldown-Zeit - das war selbst
+        falsch: dieser juengste Eintrag ist bei einem synchronen dispatch_now-
+        Aufruf IMMER der Lauf, der gerade erst zu Ende ging. Dauerte dieser
+        eigene Lauf unter 120s (der Normalfall), lag seine Startzeit
+        zwangslaeufig unter 120s in der Vergangenheit - die allererste,
+        legitime Sofort-Ausloesung nach einer frischen Ablehnung wurde damit
+        selbst blockiert, nicht nur eine echte Wiederholung. Sofortiges
+        Nachfassen war damit faktisch fuer jeden Lauf unter zwei Minuten
+        lahmgelegt, ohne dass ein Fehler sichtbar wurde - genau das Verhalten,
+        das dieser Mechanismus eigentlich verhindern sollte.
+        Jetzt richtig: eigener Zeitstempel PRO AUSLOESUNG (nicht pro Lauf),
+        in ``_letzter_dispatch`` gefuehrt - unabhaengig davon, wie lange der
+        jeweilige Agentenlauf selbst gedauert hat.
         """
         from services.database import connection
         with connection() as db:
             laufend = db.execute(
                 "SELECT 1 FROM agent_runs WHERE agent=? AND status='laufend' LIMIT 1",
                 (agent_name,)).fetchone()
-            letzter = db.execute(
-                "SELECT created_at FROM agent_runs WHERE agent=? ORDER BY created_at DESC LIMIT 1",
-                (agent_name,)).fetchone()
         if laufend:
             return False
-        if letzter:
-            # agent_runs.created_at steht als Python-isoformat() ('...T...+00:00'),
-            # SQLite's eigenes datetime('now', '-N seconds') liefert ein anderes
-            # Format ('YYYY-MM-DD HH:MM:SS') - ein roher String-Vergleich zwischen
-            # beiden waere IMMER wahr (Groszbuchstabe 'T' sortiert lexikalisch nach
-            # dem Leerzeichen), haette dispatch_now() also fuer immer lahmgelegt,
-            # nicht nur fuer die Cooldown-Zeit. Deshalb hier in Python parsen und
-            # vergleichen statt der SQL-Funktion zu vertrauen.
-            zuletzt = datetime.fromisoformat(letzter["created_at"])
-            if (datetime.now(timezone.utc) - zuletzt).total_seconds() < self.DISPATCH_NOW_COOLDOWN_SEC:
+        jetzt = datetime.now(timezone.utc)
+        with self._lock:
+            zuletzt = self._letzter_dispatch.get(agent_name)
+            if zuletzt is not None and (jetzt - zuletzt).total_seconds() < self.DISPATCH_NOW_COOLDOWN_SEC:
                 return False
+            self._letzter_dispatch[agent_name] = jetzt
         self._warteschlange.put({
             "id": uuid.uuid4().hex[:12],
             "name": f"Revision sofort ({agent_name})",

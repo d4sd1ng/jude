@@ -178,6 +178,14 @@ class ContentGate:
     def _pipeline_feld_fehler(cls, objekt, felder: dict) -> str | None:
         if not isinstance(objekt, dict):
             return "ist kein JSON-Objekt"
+        # Bislang wurden nur fehlende Pflichtfelder erkannt, nie zusaetzliche -
+        # PIPELINE_SCHEMA_TEXT sagt aber ausdruecklich "genau diese Felder"
+        # (11.09.2026, Copilot-PR-Review auf PR #10: ein Objekt mit erfundenen
+        # Extra-Feldern bestand dieses Gate trotzdem, obwohl die naechste
+        # Pipeline-Stufe genau den vereinbarten Vertrag erwartet).
+        unbekannt = set(objekt) - set(felder)
+        if unbekannt:
+            return f"unbekannte(s) Feld(er): {', '.join(sorted(unbekannt))}"
         for feld, art in felder.items():
             if feld not in objekt:
                 return f"fehlendes Feld '{feld}'"
@@ -393,27 +401,24 @@ class ContentGate:
                 # ist selbst schon die Umgehung dieser Pruefung (gemessen
                 # 04.09.2026 - dieselbe Bild-Beschreibung ohne Datei, diesmal
                 # als 'sonstiges' statt 'grafik' vorgelegt).
-                # 'post' von social zaehlt hier mit dazu: PREMIUM-MASSSTAB gilt
-                # auch fuer Beitraege, nicht nur fuer 'grafik' (04.09.2026 -
-                # social legte Post-/Reel-Text ohne jedes Bild vor, obwohl die
-                # eigene Rolle jetzt generate_image dafuer vorschreibt).
-                # Onepager (content, art='dokument') zaehlt seit 11.09.2026
-                # ebenfalls dazu: contents eigene Rolle verlangt seit 07.09.2026
-                # bereits, Heike per inform_colleague zu benachrichtigen, damit
-                # sie grafik_onepager aufruft ("ohne diese Benachrichtigung
-                # bleibt der Onepager ein reiner Text ohne Layout, das ist
-                # NICHT fertig") - das stand aber nur als Prosa-Regel da, ohne
-                # jede deterministische Durchsetzung. Ergebnis (gemessen
-                # 11.09.2026, Tino: "to put just text on it is complete off
-                # from a onepager"): reine Text-Gliederungen kamen unveraendert
-                # bis zu Tino durch, weil niemand die fehlende Bilddatei
-                # zaehlte. Titel-Heuristik statt fixem Art-Wert, weil 'dokument'
-                # auch fuer Blog-Artikel/Whitepaper gilt, die AUSDRUECKLICH
-                # KEIN Bild brauchen (content-Rolle, BILD-Abschnitt).
-                if (voll["art"] == "grafik" or voll["agent"] == "designer"
-                        or (voll["art"] == "post" and voll["agent"] == "social")
-                        or (voll["art"] == "dokument" and voll["agent"] == "content"
-                            and "onepager" in voll["titel"].lower())):
+                # 'post' (social) und die Onepager-Heuristik (content) standen
+                # HIER frueher ebenfalls in dieser Bedingung - RUECKGAENGIG
+                # gemacht 11.09.2026 (Copilot-PR-Review auf PR #10): beide
+                # Rollen legen ihren Text/ihre Gliederung seit der Arbeitsteilungs-
+                # Korrektur vom 07.09.2026 IMMER ZUERST vor, quelle=Notion-URL,
+                # OHNE Bild - Heike/designer erstellt das Bild danach als EIGENE,
+                # SEPARATE 'grafik'-Vorlage (eigene Zeile, eigene review_id),
+                # nicht als Ergaenzung derselben Zeile. Diese Bedingung hier
+                # prueft aber genau EINE Zeile - sie sah social/contents Text-
+                # Zeile nie mit Bild, weil das Bild strukturell nie dort landet,
+                # und wies darum JEDE einzelne korrekte Erstvorlage seit
+                # 07.09.2026 automatisch als 'kein Bild' zurueck. Designers
+                # EIGENE 'grafik'-Zeile (agent=='designer' unten) traegt die
+                # eigentliche Bildpflicht bereits korrekt - ob zu einem Post/
+                # Onepager tatsaechlich ein Bild entsteht, ist Renates
+                # RUECKSTAND-Zaehlung (eigener Rollenabschnitt: "Heike fuer
+                # Bildmotive") vorbehalten, nicht dieser Pro-Zeile-Pruefung.
+                if voll["art"] == "grafik" or voll["agent"] == "designer":
                     quelle_bild = str(voll.get("quelle") or "")
                     # Bis 04.09.2026 pruefte dieses Tor die Zeichenkette, nicht
                     # die Datei: ein korrekt geschriebenes 'Infografik_2.png'
@@ -422,27 +427,15 @@ class ContentGate:
                     hat_bild = bool(self._bilddateien(quelle_bild))
                     if not hat_bild:
                         genannt = re.search(r"\.(png|jpe?g|webp|gif|svg)(\?|$|,)", quelle_bild, re.I)
-                        ist_onepager = voll["art"] == "dokument" and voll["agent"] == "content"
-                        if ist_onepager:
-                            grund = ("Kein Layout vorgelegt: ein Onepager braucht die von Heike per "
-                                     "grafik_onepager erzeugte Bilddatei in quelle, keine reine "
-                                     "Text-Gliederung. Heike per inform_colleague mit Titel/Untertitel/"
-                                     "Abschnitten/Abschluss benachrichtigen (siehe eigene Rolle, "
-                                     "ONEPAGER-LAYOUT), dann mit deren Dateipfad erneut vorlegen.")
-                        else:
-                            grund = ("Keine Bilddatei vorgelegt: 'grafik' braucht ein mit generate_image "
-                                     "erzeugtes Bild samt Dateipfad in quelle, keine Text-Beschreibung des "
-                                     "geplanten Motivs.")
-                            if genannt:
-                                grund = (f"Die angegebene Bilddatei existiert nicht: {quelle_bild[:120]}. "
-                                         f"Einen Dateinamen hinzuschreiben erzeugt kein Bild – erst "
-                                         f"generate_image aufrufen, dann den entstandenen Pfad vorlegen.")
+                        grund = ("Keine Bilddatei vorgelegt: 'grafik' braucht ein mit generate_image "
+                                 "erzeugtes Bild samt Dateipfad in quelle, keine Text-Beschreibung des "
+                                 "geplanten Motivs.")
+                        if genannt:
+                            grund = (f"Die angegebene Bilddatei existiert nicht: {quelle_bild[:120]}. "
+                                     f"Einen Dateinamen hinzuschreiben erzeugt kein Bild – erst "
+                                     f"generate_image aufrufen, dann den entstandenen Pfad vorlegen.")
                         queue.revision(vorlage["id"], f"Jude: {grund}")
                         self._feedback.lehre_merken(agent_name,
-                                          "Ein Onepager ohne die von Heike erzeugte Layout-Datei wird "
-                                          "nicht angenommen - erst per inform_colleague benachrichtigen "
-                                          "und deren Dateipfad als quelle angeben, dann vorlegen."
-                                          if ist_onepager else
                                           "Eine 'grafik'-Vorlage ohne echte Bilddatei wird nicht "
                                           "angenommen – erst generate_image aufrufen und den "
                                           "Dateipfad als quelle angeben, dann vorlegen.")

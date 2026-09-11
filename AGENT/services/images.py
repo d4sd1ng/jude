@@ -11,6 +11,7 @@ import base64
 import json
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
 from datetime import datetime, timezone
 
 import requests
@@ -19,6 +20,31 @@ from core.paths import IMAGES_DIR
 
 _API_BASE = "https://api.openai.com/v1/images"
 _ALLOWED_SIZES = {"1024x1024", "1024x1536", "1536x1024", "auto"}
+
+# requests' eigenes 'timeout' ist KEIN echtes Wanduhr-Limit fuer den ganzen
+# Aufruf - es setzt nur eine Frist fuer Verbindungsaufbau UND JEDEN einzelnen
+# Lesevorgang neu, nicht fuer die Gesamtdauer. Solange der Server ueberhaupt
+# irgendwelche Bytes schickt (z.B. periodische Keep-Alive-Daten), verlaengert
+# sich die Wartezeit unbegrenzt weiter. Gemessen 11.09.2026: designer haengte
+# 13+ Minuten in generate_image fest, obwohl self.timeout=180 gesetzt war -
+# kein Fehler, kein Log, einfach ein Lauf, der nie zu Ende ging, bis der
+# gesamte Server neu gestartet wurde. Dieser Wrapper erzwingt eine echte,
+# harte Gesamtfrist ueber einen separaten Thread: die eigentliche Anfrage
+# darf so lange laufen, wie sie will, aber der AUFRUFER wartet hoechstens
+# 'frist' Sekunden und bekommt danach einen klaren Fehler statt eines
+# endlosen Haengers.
+_ausfuehrer = ThreadPoolExecutor(max_workers=8, thread_name_prefix="bild-anfrage")
+
+
+def _mit_harter_frist(funktion, frist: float):
+    future = _ausfuehrer.submit(funktion)
+    try:
+        return future.result(timeout=frist)
+    except _FutureTimeout:
+        raise TimeoutError(
+            f"Keine Antwort innerhalb von {frist:.0f}s - die Anfrage laeuft im "
+            f"Hintergrund evtl. weiter, wird hier aber als fehlgeschlagen "
+            f"gewertet, statt den Aufrufer unbegrenzt warten zu lassen.")
 
 
 class ImageService:
@@ -81,7 +107,7 @@ class ImageService:
         if marke:
             from services.marke import BILD_STIL_SUFFIX
             gesendeter_prompt = prompt + BILD_STIL_SUFFIX
-        response = requests.post(
+        response = _mit_harter_frist(lambda: requests.post(
             f"{_API_BASE}/generations",
             headers={"Authorization": f"Bearer {self._require_key()}"},
             # "quality" fehlte hier komplett - die API fiel auf ihren eigenen
@@ -98,7 +124,7 @@ class ImageService:
             json={"model": self.model, "prompt": gesendeter_prompt, "size": size, "n": 1,
                   "quality": os.getenv("JUDE_IMAGE_QUALITY", "high"), "background": "transparent"},
             timeout=self.timeout,
-        )
+        ), self.timeout + 30)
         response.raise_for_status()
         return self._save(self._first_b64(response.json()), prompt, size, "generiert")
 
@@ -113,7 +139,7 @@ class ImageService:
         files = [("image", (filename, image, "image/png"))]
         if mask:
             files.append(("mask", ("mask.png", mask, "image/png")))
-        response = requests.post(
+        response = _mit_harter_frist(lambda: requests.post(
             f"{_API_BASE}/edits",
             headers={"Authorization": f"Bearer {self._require_key()}"},
             # Dieselben zwei Felder wie in generate() oben fehlten hier ebenso -
@@ -128,7 +154,7 @@ class ImageService:
                  "quality": os.getenv("JUDE_IMAGE_QUALITY", "high"), "background": "transparent"},
             files=files,
             timeout=self.timeout,
-        )
+        ), self.timeout + 30)
         response.raise_for_status()
         return self._save(self._first_b64(response.json()), prompt, size, "bearbeitet", source_name=filename)
 

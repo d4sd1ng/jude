@@ -14,6 +14,7 @@ nimmt Tino ab, auf 'abgenommen'. Überfällige Aufträge findet der Wächter.
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 
@@ -39,6 +40,16 @@ class Auftragsbuch:
                 status TEXT NOT NULL DEFAULT 'offen',
                 review_id TEXT,
                 runden INTEGER NOT NULL DEFAULT 0)""")
+            # Erzwingt den Dedup auf DB-Ebene: der Check-dann-Insert in erteilen()
+            # ist ein Wettlauf zwischen zwei ueber connection() unabhaengig
+            # geoeffneten Verbindungen (kein gemeinsamer Lock) - zwei nahezu
+            # gleichzeitige Aufrufe koennen beide die SELECT-Pruefung leer sehen
+            # und beide einfuegen. Der partielle Unique-Index macht den zweiten
+            # INSERT unmoeglich, statt sich nur auf den App-seitigen Check zu
+            # verlassen (11.09.2026, Copilot-PR-Review auf PR #10).
+            db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_auftraege_offen_dedup
+                ON auftraege(agent, titel COLLATE NOCASE)
+                WHERE status IN ('offen','in_arbeit','vorgelegt')""")
 
     @staticmethod
     def _jetzt() -> str:
@@ -73,12 +84,29 @@ class Auftragsbuch:
                     "status": row["status"], "faellig_am": row["faellig_am"]}
         eintrag_id = uuid.uuid4().hex[:12]
         jetzt = self._jetzt()
-        with connection() as db:
-            db.execute(
-                "INSERT INTO auftraege(id, created_at, updated_at, titel, beschreibung,"
-                " agent, quelle, faellig_am) VALUES(?,?,?,?,?,?,?,?)",
-                (eintrag_id, jetzt, jetzt, titel, str(beschreibung).strip(),
-                 agent_norm, quelle, faellig_am))
+        try:
+            with connection() as db:
+                db.execute(
+                    "INSERT INTO auftraege(id, created_at, updated_at, titel, beschreibung,"
+                    " agent, quelle, faellig_am) VALUES(?,?,?,?,?,?,?,?)",
+                    (eintrag_id, jetzt, jetzt, titel, str(beschreibung).strip(),
+                     agent_norm, quelle, faellig_am))
+        except sqlite3.IntegrityError:
+            # Der Unique-Index hat zugeschlagen: ein paralleler Aufruf war
+            # schneller. Statt zu scheitern, dessen Auftrag zurueckgeben -
+            # das ist exakt das Verhalten, das die vorab-SELECT-Pruefung
+            # ohnehin liefern sollte, nur race-sicher.
+            with connection() as db:
+                row = db.execute(
+                    "SELECT id, status, faellig_am FROM auftraege "
+                    "WHERE agent=? AND lower(titel)=lower(?) "
+                    "AND status IN ('offen','in_arbeit','vorgelegt') "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (agent_norm, titel)).fetchone()
+            if row is None:
+                raise
+            return {"id": row["id"], "agent": agent, "titel": titel,
+                    "status": row["status"], "faellig_am": row["faellig_am"]}
         return {"id": eintrag_id, "agent": agent, "titel": titel,
                 "status": "offen", "faellig_am": faellig_am}
 

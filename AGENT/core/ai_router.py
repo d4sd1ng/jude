@@ -45,10 +45,15 @@ class AIRouter:
 
     def generate(self, task_type: str, messages: list[dict], tools: list[dict] | None = None,
                 agent_name: str | None = None, allow_uncensored: bool = False,
-                eskalieren: bool = False) -> dict:
+                eskalieren: bool = False, force_model: str | None = None) -> dict:
         if task_type == "jude_chat":
-            # Unveraenderter weicher Pfad - siehe Modulkommentar oben.
-            return self.router.call_with_fallback(messages, tools, allow_uncensored, strict_tools=False)
+            # Unveraenderter weicher Pfad - siehe Modulkommentar oben. force_model
+            # muss durchgereicht werden: Tinos manuelle Modellwahl (chat.py,
+            # agent.force_model) landete hier sonst im Leeren, seit jude_chat
+            # ueber diesen Zweig statt direkt ueber call_with_fallback laeuft
+            # (11.09.2026, Copilot-PR-Review auf PR #10).
+            return self.router.call_with_fallback(messages, tools, allow_uncensored,
+                                                  force_model=force_model, strict_tools=False)
 
         namen = self.registry.tiers_for(task_type)
         braucht_werkzeuge = self.registry.requires_tools(task_type)

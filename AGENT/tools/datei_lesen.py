@@ -155,6 +155,17 @@ def read_project_file(path: str, max_characters: int = 12000) -> str:
 
 def list_project_files(path: str = ".", pattern: str = "*") -> dict:
     """Verzeichnisinhalt einer erlaubten Wurzel – Namen, Größe, Änderungsdatum."""
+    # 'required' im Werkzeug-Schema (siehe tools/skills.py) reicht allein
+    # NICHT - es verhindert nur ein KOMPLETT fehlendes 'path', nicht einen
+    # leeren oder Wurzel-aequivalenten Wert wie '', '.', './' oder '/'. Genau
+    # damit aufgerufen landet man wieder bei der Wurzel einer der erlaubten
+    # Verzeichnisse (z.B. dem ganzen Homepage-Repo, 46+ Eintraege) statt bei
+    # einem konkreten Unterordner - dieselbe Umgehung, nur eine Ebene tiefer
+    # (Copilot-PR-Review auf PR #10, 11.09.2026, direkt im Anschluss an die
+    # erste Haelfte dieses Fixes gefunden).
+    if str(path).strip().rstrip("/") in ("", ".", "./"):
+        raise ValueError("Ein leerer oder Wurzel-Pfad ('', '.', './') ist nicht erlaubt - "
+                         "einen konkreten Unterordner angeben, z.B. 'austausch/an-team/vorlagen/nurovelle'.")
     wurzeln = _wurzeln()
     kandidat = Path(path).expanduser()
     versuche = [kandidat] if kandidat.is_absolute() else [w / path for w in wurzeln]

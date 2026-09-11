@@ -104,12 +104,28 @@ class SubAgentService:
         # bei designer unten - der Tool-Aufruf, den ihr jeweiliges ZIEL
         # tatsaechlich vorschreibt (Notion-Eintrag pflegen), nicht der, den
         # ein anderer Mitarbeiter in ihrem Namen erledigt.
-        "sequencer": ("notion_update",),
+        # notion_update allein war ZU ENG (11.09.2026, Copilot-PR-Review auf
+        # PR #10): sequencer/content/social legen laut eigener Rolle bei
+        # einem WIRKLICH neuen Eintrag notion_create an (notion_update nur,
+        # wenn notion_query zuvor einen bestehenden Eintrag fand) - eine
+        # korrekte, echte Erstvorlage mit notion_create wurde bisher trotzdem
+        # automatisch zurueckgewiesen, weil nur notion_update zaehlte. Ein
+        # inneres Tupel bedeutet ab jetzt "irgendeines davon genuegt" (siehe
+        # team_runner.py, wo dieses Dict ausgewertet wird), ein aeusseres
+        # Tupel-Element weiterhin "das hier ist Pflicht" - beides gleichzeitig
+        # moeglich (siehe scraper unten).
+        "sequencer": (("notion_create", "notion_update"),),
         # scraper (05.09.2026, Pipeline-Umstellung Phase 1): write_copy ist ihm
         # jetzt verboten (Trend Scout, siehe TEXTER oben) - sein tatsaechliches
         # Schreib-Werkzeug ist ingest_document, mit dem er jede neue Meldung
-        # ablegt, bevor er die Rangliste vorlegt.
-        "scraper": ("ingest_document",),
+        # ablegt, bevor er die Rangliste vorlegt. ingest_document ALLEIN war
+        # zu wenig (11.09.2026, Copilot-PR-Review): sein ZIEL verlangt ZWEI
+        # persistierte Ergebnisse - ingest_document UND einen echten
+        # content_stuecke-Notion-Eintrag (notion_create bei neuer Meldung,
+        # notion_update bei bereits vorhandener) - ohne Letzteres kann er eine
+        # Rangliste vorlegen, ohne je einen Notion-Eintrag fuer den Kandidaten
+        # angelegt zu haben.
+        "scraper": ("ingest_document", ("notion_create", "notion_update")),
         # generate_image war hier bis 07.09.2026 mit dabei - widersprach aber
         # der tatsaechlichen Arbeitsteilung (Heike/designer macht ALLE
         # Bildmotive, siehe ihre eigene Rolle: "Du machst die Bildmotive").
@@ -117,9 +133,16 @@ class SubAgentService:
         # gegen diese Pflicht - ein Mitarbeiter, der sie befolgte, bekam sein
         # eigenes Erzeugnis automatisch zur Revision zurueckgeschickt, weil
         # die Pflicht-Werkzeug-Pruefung generate_image vermisste.
-        "content": ("notion_update",),
-        "social": ("notion_update",),
+        "content": (("notion_create", "notion_update"),),
+        "social": (("notion_create", "notion_update"),),
+        # designer aktualisiert laut eigenem ZIEL IMMER einen bereits von
+        # content/social angelegten Eintrag (Bild-URL nachtragen), legt nie
+        # selbst neue Notion-Zeilen an - notion_update bleibt hier bewusst
+        # die einzige Option, kein Create-Faelle.
         "designer": ("notion_update",),
+        # leadmanager aktualisiert laut eigenem ZIEL immer bestehende
+        # 'kontakte'-Zeilen, legt keine neuen an - notion_update bleibt hier
+        # ebenso bewusst die einzige Option.
         "leadmanager": ("notion_update",),
     }
     # 16 war zu knapp: allein die 8 VERBINDLICHEN QUELLEN (project_files/*.md)

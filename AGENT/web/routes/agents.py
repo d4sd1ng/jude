@@ -49,13 +49,33 @@ def agents_start(name: str):
     (Auftrag, Revision, naechster Tick) erreichte. Tino: 'no matter what if
     i hit start on any employee they have to start immediatly with working'
     (11.09.2026) - danach hier zusaetzlich sofort ueber denselben
-    begrenzten Worker-Pool wie eine Revision einreihen (dispatch_now)."""
+    begrenzten Worker-Pool wie eine Revision einreihen (dispatch_now).
+
+    Der eigentliche Auftragstext kommt aus dem Auftragsbuch, nicht aus einer
+    erfundenen Pauschalformulierung - dieselbe Logik, die vorher NUR im
+    Frontend (web/static/app.js, startWorker) stand und dort per separatem
+    /run-Aufruf NACH diesem Endpunkt nachgereicht wurde. Ergebnis: ein
+    einziger Start-Klick loeste zwei parallele Laeufe desselben Mitarbeiters
+    aus (Copilot-PR-Review auf PR #10, 11.09.2026 bestaetigt: zwei
+    'social'-Zeilen in agent_runs mit identischem Zeitstempel). Jetzt
+    einmalig hier zentralisiert - das Frontend ruft nur noch diesen einen
+    Endpunkt auf."""
     ergebnis = team.set_pausiert(name, False)
+    from services.auftraege import Auftragsbuch
+    offene = Auftragsbuch().offene_fuer(name)
+    if offene:
+        auftrag = offene[0]
+        aufgabe = (f"AUFTRAG [{auftrag['id']}]: {auftrag['titel']}\n{auftrag['beschreibung']}\n"
+                   f"Lege das Ergebnis mit submit_for_review vor und gib auftrag_id='{auftrag['id']}' an.")
+    else:
+        aufgabe = ("Beginne sofort mit deiner naechsten anstehenden Aufgabe "
+                   "gemaess deiner Rolle (siehe oben im Systemprompt: QUELLE/ARBEIT) - "
+                   "aktuell liegt kein offener Auftrag im Auftragsbuch vor.")
     from services.scheduler import SchedulerService
     sched = SchedulerService.aktuelle()
-    if sched is not None:
-        sched.dispatch_now(name, "Beginne sofort mit deiner naechsten anstehenden Aufgabe "
-                                  "gemaess deiner Rolle (siehe oben im Systemprompt: QUELLE/ARBEIT).")
+    dispatched = sched.dispatch_now(name, aufgabe) if sched is not None else False
+    ergebnis["auftrag"] = offene[0] if offene else None
+    ergebnis["dispatched"] = dispatched
     return ergebnis
 
 

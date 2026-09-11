@@ -62,4 +62,19 @@ def review_decide(review_id: str, entscheidung: str, payload: dict | None = None
     # derselbe Einwand nicht bei jeder Vorlage aufs Neue kommt.
     with suppress(Exception):
         team.lehre_merken(ergebnis["agent"], anmerkung, quelle="Tino")
+    # Renate bekam bisher NIE mit, wenn Tino eine von ihr bereits freigegebene
+    # Vorlage doch noch ablehnt - die Ablehnung ging direkt und ausschliesslich
+    # an den urspruenglichen Ersteller zurueck, ihre eigene Freigabe-
+    # Entscheidung blieb unkorrigiert stehen (11.09.2026, Tino: "for the
+    # designer maybe but not for content and scraper and so on" / "for sure
+    # renate needs that" - bewusst nur fuer designer/Heike, nicht fuer jede
+    # Rolle, da dort ihre Pruefung am ehesten subjektiv/visuell ist, nicht
+    # rein formal).
+    if ergebnis.get("agent") == "designer":
+        with suppress(Exception):
+            team.lehre_merken(
+                "projektleitung",
+                f"Freigegeben, dann von Tino doch abgelehnt – „{ergebnis.get('titel', '')}“ "
+                f"({ergebnis.get('art', '')}): {anmerkung}",
+                quelle="Tino")
     return ergebnis

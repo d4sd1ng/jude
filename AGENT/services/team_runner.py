@@ -81,6 +81,14 @@ class AgentRunner:
         # 11 von 11 Laeufen standen auf 'abgeschlossen', obwohl 6 nichts
         # zustande gebracht hatten. Deshalb wird hier jeder Rueckgabewert geprueft.
         werkzeuge: list[str] = []
+        # Fuer SCHREIB_PFLICHT ZAEHLT NUR, was tatsaechlich ausgefuehrt wurde -
+        # 'werkzeuge' oben zaehlt jeden VERSUCH mit, auch einen, der nur zur
+        # Bestaetigung vorgemerkt wurde (confirm_action, z.B. notion_update),
+        # aber noch nichts geschrieben hat (11.09.2026, Copilot-PR-Review auf
+        # PR #10: 'notion_update' stand in werkzeuge, obwohl der eigentliche
+        # Schreibvorgang noch auf Tinos Freigabe wartet - die Pflicht-Pruefung
+        # hielt das faelschlich fuer erledigt).
+        erfolgreiche_werkzeuge: list[str] = []
         fehlschlaege: list[str] = []
         # IDs, die submit_for_review in DIESEM Lauf tatsaechlich anlegte oder
         # weiterreichte – ohne die laesst sich eine Vorlage, die ohne die
@@ -127,6 +135,10 @@ class AgentRunner:
             letzter["ergebnis"] = ergebnis
             if self._ist_fehlschlag(ergebnis):
                 fehlschlaege.append(str(ergebnis).strip()[:300])
+            wartet_auf_bestaetigung = (isinstance(ergebnis, str)
+                                       and "wartet auf deine Bestätigung" in ergebnis)
+            if not wartet_auf_bestaetigung:
+                erfolgreiche_werkzeuge.append(werkzeug)
             if werkzeug == "submit_for_review" and isinstance(ergebnis, dict) and ergebnis.get("id"):
                 eingereichte_ids.append(ergebnis["id"])
             return ergebnis
@@ -155,8 +167,18 @@ class AgentRunner:
             status = "teilweise"
             blockers = blockers + [f"Pflicht-Quelle nicht abgefragt: '{pflicht}' fehlt in den "
                                    f"Werkzeugaufrufen – 'nichts zu tun' zaehlt nur nach echter Pruefung."]
+        # Jedes Element ist entweder ein einzelner Werkzeugname (Pflicht) oder
+        # ein Tupel von Alternativen ("irgendeines davon genuegt" - siehe
+        # SCHREIB_PFLICHT in services/team.py, z.B. notion_create ODER
+        # notion_update). Gegen erfolgreiche_werkzeuge geprueft, nicht gegen
+        # werkzeuge - ein nur zur Bestaetigung vorgemerkter, noch nicht
+        # ausgefuehrter Aufruf zaehlt nicht als erledigt.
         schreib_pflicht = svc.SCHREIB_PFLICHT.get(spec["name"], ())
-        fehlende_pflicht = [w for w in schreib_pflicht if w not in werkzeuge]
+        fehlende_pflicht = []
+        for anforderung in schreib_pflicht:
+            optionen = anforderung if isinstance(anforderung, tuple) else (anforderung,)
+            if not any(o in erfolgreiche_werkzeuge for o in optionen):
+                fehlende_pflicht.append(" oder ".join(optionen))
         if status != "abgebrochen" and fehlende_pflicht and eingereichte_ids:
             from services.review import ReviewQueue
             queue = ReviewQueue()

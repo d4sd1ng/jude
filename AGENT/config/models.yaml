@@ -74,7 +74,14 @@ models:
     max_tokens: 24576
     context_length: 1050000
     reasoning_effort: high
-    tags: [cloud, top_tier, analyse, code, agentisch, grosserkontext]
+    # 'tools' fehlte hier (11.09.2026 als Fehler gefunden ueber Copilots PR-
+    # Review auf PR #10 - AIRouter filtert bei requires_tools=true JEDE Stufe
+    # ohne dieses Tag klaglos raus, siehe core/ai_router.py:65. sol stand
+    # damit seit jeher unbrauchbar in judgment_review, ohne dass das je
+    # aufgefallen war - und beim Kopieren dieser Tag-Liste als Vorlage fuer
+    # gpt55/astra unten (11.09.2026) wurde derselbe Fehler zweimal weiter-
+    # vererbt).
+    tags: [cloud, top_tier, analyse, code, agentisch, grosserkontext, tools]
     priority: 10
 
   # Fuenf weitere OpenAI-Modelle (11.09.2026, Tino: von der Preisliste unter
@@ -136,7 +143,7 @@ models:
     max_tokens: 24576
     context_length: 1050000
     reasoning_effort: high
-    tags: [cloud, top_tier, analyse, code, agentisch, grosserkontext]
+    tags: [cloud, top_tier, analyse, code, agentisch, grosserkontext, tools]
     priority: 9
 
   cloud_openai_astra:
@@ -149,7 +156,7 @@ models:
     max_tokens: 32768
     context_length: 1050000
     reasoning_effort: high
-    tags: [cloud, flagship, top_tier, analyse, code, agentisch, grosserkontext]
+    tags: [cloud, flagship, top_tier, analyse, code, agentisch, grosserkontext, tools]
     priority: 11
 
   cloud_claude_sonnet:
