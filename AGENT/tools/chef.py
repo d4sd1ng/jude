@@ -280,12 +280,34 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         # Gleiche Obergrenze und Begruendung wie revisionen_nacharbeiten oben.
         MAX_GLEICHZEITIG = 2
 
-        def _starte(agent_name: str, auftrag: dict) -> None:
+        def _starte(agent_name: str, auftraege: list[dict]) -> None:
             try:
-                dienst.run(agent_name,
-                          f"AUFTRAG [{auftrag['id']}]: {auftrag['titel']}\n{auftrag['beschreibung']}\n"
-                          f"Lege das Ergebnis mit submit_for_review vor und gib "
-                          f"auftrag_id='{auftrag['id']}' an.")
+                if len(auftraege) == 1:
+                    auftrag = auftraege[0]
+                    aufgabe = (f"AUFTRAG [{auftrag['id']}]: {auftrag['titel']}\n{auftrag['beschreibung']}\n"
+                              f"Lege das Ergebnis mit submit_for_review vor und gib "
+                              f"auftrag_id='{auftrag['id']}' an.")
+                else:
+                    # Bisher bekam der Mitarbeiter IMMER nur seinen aeltesten
+                    # offenen Auftrag - haengt der an jemand anderem fest (z.B.
+                    # designer wartet seit Tagen auf Heinz' Skript fuer den
+                    # aeltesten Reel-Auftrag), meldete sie jeden Tick erneut
+                    # denselben Blocker, waehrend zwei andere, tatsaechlich
+                    # bearbeitbare Auftraege (fehlende Bildmotive) nie an die
+                    # Reihe kamen (gemessen 12.09.2026: derselbe Auftrag lief
+                    # ueber 20 Stunden lang bei jedem Tick erneut, ohne
+                    # Fortschritt). Jetzt die ganze Liste, mit der Bitte, den
+                    # zu waehlen, an dem wirklich Fortschritt moeglich ist.
+                    liste = "\n".join(
+                        f"- [{a['id']}] {a['titel']}: {a['beschreibung']}" for a in auftraege)
+                    aufgabe = (
+                        "Du hast mehrere offene Auftraege. Bearbeite den, an dem du JETZT "
+                        "wirklich weiterkommst - ist der aelteste durch jemand anderen blockiert "
+                        "(z.B. fehlendes Skript/Material von einem Kollegen), nimm einen der "
+                        "anderen, statt nur denselben Blocker erneut zu melden:\n" + liste +
+                        "\nLege das Ergebnis mit submit_for_review vor und gib die passende "
+                        "auftrag_id an.")
+                dienst.run(agent_name, aufgabe)
             except Exception as exc:
                 try:
                     from services.notifications import NotificationService
@@ -294,8 +316,20 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                 except Exception:
                     pass
 
+        # Reihenfolge mischen statt der festen Dict-Reihenfolge zu folgen -
+        # sonst gewinnen bei mehr offenen Kandidaten als MAX_GLEICHZEITIG
+        # jedes Mal dieselben zuerst gelisteten Mitarbeiter die beiden Slots,
+        # unbegrenzt (genau der Fehler, der am 11.09.2026 fuer
+        # revisionen_nacharbeiten gefunden und behoben wurde - hier nie
+        # nachgezogen. Gemessen 12.09.2026: content/designer liefen bei jedem
+        # Tick, social/sequencer standen trotz drei offener Auftraege jedes
+        # Mal nur auf 'wartet_auf_naechsten_tick').
+        import random
+        eintraege = list(bekannt.items())
+        random.shuffle(eintraege)
+
         gestartet, uebersprungen, wartet = [], [], []
-        for agent_name, spec in bekannt.items():
+        for agent_name, spec in eintraege:
             if agent_name == SubAgentService.REDAKTEUR or spec.get("pausiert"):
                 continue
             offen = buch.offene_fuer(agent_name)
@@ -307,8 +341,9 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
             if len(gestartet) >= MAX_GLEICHZEITIG:
                 wartet.append(agent_name)
                 continue
-            threading.Thread(target=_starte, args=(agent_name, offen[0]), daemon=True).start()
-            gestartet.append({"agent": agent_name, "auftrag": offen[0]["id"], "titel": offen[0]["titel"]})
+            threading.Thread(target=_starte, args=(agent_name, offen), daemon=True).start()
+            gestartet.append({"agent": agent_name, "auftraege": [a["id"] for a in offen],
+                              "titel": offen[0]["titel"] if len(offen) == 1 else f"{len(offen)} offene Auftraege"})
         return {"gestartet": gestartet, "schon_aktiv_uebersprungen": uebersprungen,
                 "wartet_auf_naechsten_tick": wartet}
 

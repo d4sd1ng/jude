@@ -620,3 +620,139 @@ def test_pipeline_json_gate_laesst_gueltige_rangliste_durch(tmp_path, monkeypatc
 
     assert ergebnis == [{"id": vorlage["id"], "urteil": "gates_bestanden"}]
     assert queue.zeigen(vorlage["id"])["status"] == "pruefung"
+
+
+# --------------------------------- Text ohne passendes Bild/Layout (12.09.2026)
+
+def test_post_ohne_bild_wird_zur_revision(tmp_path, monkeypatch):
+    """social legt einen LinkedIn-Post als reinen Text vor (art='post', wie
+    vorgesehen - Heike legt das Bild als eigene 'grafik'-Vorlage nach). Ohne
+    passende 'grafik' vom gleichen Titel erreichte der Text bisher Tinos
+    Abnahme, obwohl seine eigene Rolle "bildgefuehrt, nicht textgefuehrt"
+    ausdruecklich verlangt."""
+    monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
+    queue = ReviewQueue()
+    vorlage = queue.vorlegen("social", "post", "Nurovelle stellt vor: GPT-6 Astra",
+                             "Kurzer, sauberer Text unter dem Bild.")
+    dienst = SubAgentService.__new__(SubAgentService)
+
+    ergebnis = dienst._chefpruefung("social")
+
+    assert [e["grund"] for e in ergebnis] == ["kein_passendes_bild"]
+    assert queue.zeigen(vorlage["id"])["status"] == "revision"
+    anmerkung = queue.offene_revisionen("social")[0]["anmerkung"]
+    assert "Kein Bild/Layout vorhanden" in anmerkung
+    assert "Text selbst muss dafuer nicht geaendert werden" in anmerkung
+
+
+def test_post_mit_passendem_bild_von_designer_besteht_das_gate(tmp_path, monkeypatch):
+    """Legt Heike unter demselben Titel bereits ein 'grafik'-Stueck vor, ist
+    der Text fertig - die Kette darf nicht erneut wegen eines fehlenden
+    Bildes zurueckgewiesen werden."""
+    monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
+    queue = ReviewQueue()
+    titel = "Nurovelle stellt vor: GPT-6 Astra"
+    vorlage = queue.vorlegen("social", "post", titel, "Kurzer, sauberer Text unter dem Bild.")
+    queue.vorlegen("designer", "grafik", titel, quelle="austausch/bilder/gpt6-astra.png")
+    dienst = SubAgentService.__new__(SubAgentService)
+
+    ergebnis = dienst._chefpruefung("social")
+
+    assert [e["grund"] for e in ergebnis if "grund" in e] != ["kein_passendes_bild"]
+    assert queue.zeigen(vorlage["id"])["status"] != "revision"
+
+
+def test_onepager_dokument_ohne_layout_wird_zur_revision(tmp_path, monkeypatch):
+    """content legt die Gliederung eines Onepagers als reinen Text vor
+    (art='dokument', wie vorgesehen). Ohne Heikes grafik_onepager-Layout
+    (eigene 'grafik'-Vorlage, gleicher Titel) ist das noch kein fertiges
+    Dokument - reproduziert den Fall vom 12.09.2026 (Runde 8, immer noch
+    ohne Layout)."""
+    monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
+    queue = ReviewQueue()
+    vorlage = queue.vorlegen("content", "dokument",
+                             "Onepager – Effizienz im Kundenservice durch KI-gestützte Chatbots",
+                             "Titel: ...\nUntertitel: ...\nAbschnitt 1 - ...")
+    dienst = SubAgentService.__new__(SubAgentService)
+
+    ergebnis = dienst._chefpruefung("content")
+
+    assert [e["grund"] for e in ergebnis] == ["kein_passendes_bild"]
+    assert queue.zeigen(vorlage["id"])["status"] == "revision"
+
+
+def test_blogartikel_dokument_bleibt_von_der_bildpruefung_unberuehrt(tmp_path, monkeypatch):
+    """Blog-Artikel/Whitepaper sind bewusst reiner Text (content's eigene
+    Rolle: kein Bild bei diesen Formaten) - der Titel enthaelt 'Onepager'
+    nicht, die neue Pruefung darf hier nicht zuschlagen (genau der Fehler,
+    der die urspruengliche, breitere Fassung dieser Bedingung am 11.09.2026
+    zurueckrollen liess)."""
+    monkeypatch.setattr("services.team.DATA_DIR", tmp_path)
+    monkeypatch.setattr("services.team_feedback.DATA_DIR", tmp_path)
+    queue = ReviewQueue()
+    vorlage = queue.vorlegen("content", "dokument", "Warum KI-Agenten im Mittelstand jetzt wichtig sind",
+                             "Ein laengerer Blog-Artikel ganz ohne Bildpflicht.")
+    dienst = SubAgentService.__new__(SubAgentService)
+
+    ergebnis = dienst._chefpruefung("content")
+
+    assert "kein_passendes_bild" not in [e.get("grund") for e in ergebnis]
+    assert queue.zeigen(vorlage["id"])["status"] != "revision"
+
+
+# ------------------------------- Auftragsbuch nacharbeiten: alle Auftraege (12.09.2026)
+
+def test_auftraege_nacharbeiten_gibt_alle_offenen_auftraege_statt_nur_den_aeltesten(monkeypatch):
+    """Vorher bekam ein Mitarbeiter mit mehreren offenen Auftraegen IMMER nur
+    den aeltesten zur Bearbeitung - haengt der an jemand anderem fest (z.B.
+    designer wartet auf Heinz' Skript), blieben die anderen, tatsaechlich
+    bearbeitbaren Auftraege liegen. Gemessen 12.09.2026: derselbe blockierte
+    Auftrag lief ueber 20 Stunden lang bei jedem 20-Minuten-Tick erneut,
+    zwei andere offene Auftraege (fehlende Bildmotive) wurden dabei kein
+    einziges Mal erwaehnt."""
+    import threading
+
+    from tools import chef
+    from core.tool_registry import ToolRegistry
+
+    aufrufe: list[tuple[str, str]] = []
+    fertig = threading.Event()
+
+    class FakeDienst:
+        REDAKTEUR = "kein-redakteur-in-diesem-test"
+
+        def __init__(self, *a, **k):
+            pass
+
+        def list(self):
+            return [{"name": "designer", "pausiert": False}]
+
+        def run(self, agent_name, task):
+            aufrufe.append((agent_name, task))
+            fertig.set()
+            return {"status": "abgeschlossen"}
+
+    class FakeBuch:
+        def offene_fuer(self, agent_name):
+            return [
+                {"id": "alt-blockiert", "titel": "Reel KW 36", "beschreibung": "wartet auf Skript"},
+                {"id": "neu-bearbeitbar", "titel": "Bildmotiv fehlt", "beschreibung": "Motiv erstellen"},
+            ]
+
+    monkeypatch.setattr("services.team.SubAgentService", FakeDienst)
+    monkeypatch.setattr("services.auftraege.Auftragsbuch", FakeBuch)
+
+    registry = ToolRegistry()
+    chef.register_context(registry, router=object())  # nur register_context()'s eigener Leerlauf-Schutz; SubAgentService ist oben gefaked
+    werkzeug = registry.tools["auftraege_nacharbeiten"].func
+    ergebnis = werkzeug()
+
+    assert fertig.wait(timeout=2), "dienst.run() wurde nicht aufgerufen"
+    assert len(aufrufe) == 1
+    _, aufgabe = aufrufe[0]
+    assert "alt-blockiert" in aufgabe and "neu-bearbeitbar" in aufgabe
+    assert "Reel KW 36" in aufgabe and "Bildmotiv fehlt" in aufgabe
+    assert ergebnis["gestartet"][0]["auftraege"] == ["alt-blockiert", "neu-bearbeitbar"]

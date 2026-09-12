@@ -449,6 +449,53 @@ class ContentGate:
                         entschieden.append({"id": vorlage["id"], "urteil": "revision",
                                             "grund": "kein_bild"})
                         continue
+                # Text ohne passendes Bild/Layout: mehrere Rollen legen ihren Text
+                # bewusst ZUERST vor, ohne Bild (art='post' bei social - IMMER
+                # bildgefuehrt, siehe ihre eigene Rolle: "if there is a linkedin
+                # post there has to be a strong catching visual image"; art=
+                # 'dokument' bei content, aber NUR wenn der Titel einen Onepager
+                # markiert - Blog-Artikel/Whitepaper/Newsletter bleiben bewusst
+                # reiner Text und sind hier NICHT gemeint). Heike/designer legt
+                # das eigentliche Bild/Layout danach als EIGENE 'grafik'-Vorlage
+                # mit demselben Titel vor. Dafuer gab es bisher keine Pruefung:
+                # der reine Text erreichte Tinos Abnahme, als waere er bereits
+                # das fertige Stueck - "nicht mal fuer das brauchbar, wofuer es
+                # gemacht wurde" (12.09.2026, ein Onepager stand bei Runde 8,
+                # immer noch ohne Layout, nur Ueberarbeitungen desselben
+                # Fliesstexts; Tino: "i guess thats a problem on any tool for
+                # image generation no matter if story onepager or post" - daher
+                # hier fuer 'post' UND Onepager-'dokument' gemeinsam behandelt,
+                # nicht nur fuer Onepager). Deterministisch statt Sprachmodell-
+                # Urteil, weil zaehlbar: existiert eine passende 'grafik'-Vorlage
+                # von designer mit demselben Titel? Der Text selbst braucht
+                # dafuer keine Aenderung - die Revision hier ist ein Warten auf
+                # Heike, keine Beanstandung an die vorlegende Rolle.
+                ist_post_ohne_bild = voll["art"] == "post" and voll["agent"] != "designer"
+                ist_onepager_ohne_layout = (voll["art"] == "dokument" and voll["agent"] == "content"
+                                            and "onepager" in voll["titel"].lower())
+                if ist_post_ohne_bild or ist_onepager_ohne_layout:
+                    titel_norm = voll["titel"].strip().casefold()
+                    hat_layout = any(
+                        g["agent"] == "designer" and g["titel"].strip().casefold() == titel_norm
+                        for g in queue.liste(status="alle", art="grafik", limit=200))
+                    if not hat_layout:
+                        art_bezeichnung = "Onepager" if ist_onepager_ohne_layout else "Beitrag"
+                        grund = (f"Kein Bild/Layout vorhanden: ein {art_bezeichnung} ist ohne das von "
+                                 f"Heike/designer erzeugte Bild (gleicher Titel, art='grafik') noch nicht "
+                                 f"fertig - reiner Text ist noch kein fertiges Stueck. Der Text selbst "
+                                 f"muss dafuer nicht geaendert werden; pruefe per inform_colleague, ob "
+                                 f"Heike informiert wurde, und warte auf ihre Vorlage.")
+                        queue.revision(vorlage["id"], f"Jude: {grund}")
+                        try:
+                            from services.notifications import NotificationService
+                            NotificationService().create("revision",
+                                                         f"Revision (kein Bild/Layout): {voll['titel'][:70]}",
+                                                         grund[:200])
+                        except Exception:
+                            pass
+                        entschieden.append({"id": vorlage["id"], "urteil": "revision",
+                                            "grund": "kein_passendes_bild"})
+                        continue
                 # HTML-Vorlagen von engineer: die Tagline wird wiederholt aus dem
                 # Gedaechtnis angenaehert statt wortgleich uebernommen. Verifizierte
                 # Quelle ist austausch/an-team/vorlagen/nurovelle/launchpost.pdf

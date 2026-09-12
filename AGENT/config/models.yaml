@@ -409,7 +409,14 @@ providers:
   # weder als "lokal/privat" gelten noch am Guthaben-Gate vorbei.
   ollama_cloud:
     base_url: https://ollama.com/v1
-    api_key_env: OLLAMA_API_KEY
+    # OLLAMA_API_KEY (das urspruengliche Konto) hat sein Monatskontingent
+    # komplett aufgebraucht (11./12.09.2026, 429 "monthly usage limit
+    # reached" auf jedes Modell) - erst naechsten Monat wieder nutzbar.
+    # OLLAMA_API_SPARE_KEY ist ein zweites Konto mit eigenem, woechentlichem
+    # Kontingent, live gegen gpt-oss:120b geprueft (echte Antwort erhalten,
+    # nicht nur ein 200er). Bei Bedarf zurueck auf OLLAMA_API_KEY wechseln,
+    # sobald dessen Monatskontingent zurueckgesetzt ist.
+    api_key_env: OLLAMA_API_SPARE_KEY
     timeout_seconds: 180
   deepseek:
     base_url: https://api.deepseek.com/v1

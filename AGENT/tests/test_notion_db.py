@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from unittest.mock import Mock, patch
 
 import pytest
@@ -46,6 +48,68 @@ def test_create_rejects_duplicate_title_instead_of_creating_a_second_page(mock_r
     # Es wurde nur die Suchabfrage abgesetzt, keine Seite angelegt.
     assert mock_requests.post.call_count == 1
     assert "/databases/" in mock_requests.post.call_args[0][0]
+
+
+@patch("services.notion_db.NotionDatabaseService._database_id", return_value="db-id")
+@patch("services.notion_db.requests")
+def test_create_duplicate_check_uses_server_side_title_filter(mock_requests, _db_id):
+    """Vorher lief der Abgleich ueber query(limit=100) - bei mehr als 100
+    Eintraegen in einer Datenbank haette ein Duplikat jenseits der ersten
+    Seite niemand gefunden (12.09.2026, Copilot-PR-Review auf PR #10). Jetzt
+    ein serverseitiger exakter Filter, unabhaengig von der Datenbankgroesse."""
+    svc = _svc()
+    mock_requests.post.side_effect = [
+        _response({"results": []}),
+        _response({"id": "new-page", "url": "https://notion.so/new"}),
+    ]
+    svc.create("social_posts", {"Titel": "Server-Filter-Test", "Status": "Idee"})
+    erste_anfrage = mock_requests.post.call_args_list[0]
+    assert erste_anfrage.kwargs["json"] == {
+        "filter": {"property": "Titel", "title": {"equals": "Server-Filter-Test"}},
+        "page_size": 1,
+    }
+
+
+@patch("services.notion_db.NotionDatabaseService._database_id", return_value="db-id")
+@patch("services.notion_db.requests")
+def test_create_lock_serializes_concurrent_calls_same_process(mock_requests, _db_id):
+    """Pruefung-dann-Anlegen ohne Sperre ist ein reiner Wettlauf: zwei nahezu
+    gleichzeitige Aufrufe mit demselben Titel saehen beide 'kein Duplikat' und
+    legten beide eine Seite an (12.09.2026, Copilot-PR-Review auf PR #10).
+    Ohne die Sperre in create() wuerde dieser Test fehlschlagen - beide
+    Threads erfolgreich, kein ValueError."""
+    svc = _svc()
+    zustand = {"seite_existiert": False}
+    ergebnisse: list[str] = []
+    ergebnisse_sperre = threading.Lock()
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        if "/query" in url:
+            treffer = [{"id": "existing-page"}] if zustand["seite_existiert"] else []
+            return _response({"results": treffer})
+        # Seiten-Anlage: kuenstliche Verzoegerung oeffnet ein reales
+        # Zeitfenster fuer den Wettlauf, wenn die Sperre nicht haelt.
+        time.sleep(0.05)
+        zustand["seite_existiert"] = True
+        return _response({"id": "new-page", "url": "https://notion.so/new"})
+
+    mock_requests.post.side_effect = fake_post
+
+    def _versuch():
+        try:
+            svc.create("social_posts", {"Titel": "Wettlauf-Test", "Status": "Idee"})
+            with ergebnisse_sperre:
+                ergebnisse.append("erfolg")
+        except ValueError:
+            with ergebnisse_sperre:
+                ergebnisse.append("abgelehnt")
+
+    threads = [threading.Thread(target=_versuch) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+    assert sorted(ergebnisse) == ["abgelehnt", "erfolg"]
 
 
 @patch("services.notion_db.NotionDatabaseService._database_id", return_value="db-id")

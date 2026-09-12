@@ -13,6 +13,7 @@ import logging
 import queue
 import threading
 import uuid
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 
 from core.paths import DATA_DIR
@@ -94,6 +95,10 @@ class SchedulerService:
         self._warteschlange: "queue.Queue[dict]" = queue.Queue()
         for _ in range(self.MAX_GLEICHZEITIG):
             threading.Thread(target=self._worker, daemon=True).start()
+        # Schnappschuss des letzten Zustands, den Renates "Chefpruefung
+        # nachholen" (alle 5 Minuten) vorgefunden hat - siehe
+        # _renate_lage_unveraendert() unten.
+        self._letzte_renate_lage: tuple | None = None
 
     #: Mindestabstand zwischen zwei dispatch_now()-Ausloesungen fuer DENSELBEN
     #: Mitarbeiter (siehe Kommentar in dispatch_now unten - Endlosschleifen-
@@ -337,6 +342,44 @@ class SchedulerService:
             return (now - last_dt).total_seconds() >= schedule["every_minutes"] * 60
         return False
 
+    def _renate_lage_unveraendert(self, task: dict) -> bool:
+        """True, wenn Renates naechster Zyklus garantiert dasselbe Ergebnis
+        liefern wuerde wie der letzte - dann lohnt sich der teure Agentenlauf
+        nicht.
+
+        Gemessen 11./12.09.2026: "Chefpruefung nachholen (Renate)" laeuft
+        alle 5 Minuten und zog stundenlang denselben Zyklus durch, weil
+        pruefungsliste() durchgehend leer war UND jeder Versuch, Nachschub
+        zuzuteilen, an derselben Kappung scheiterte (tools/chef.py,
+        MAX_UNERLEDIGT_JE_MITARBEITER=3 - dieselben drei Mitarbeiter, dieselben
+        drei Auftraege, jedes Mal). 152 echte, bezahlte Anfragen in 3 Stunden
+        fuer denselben, bereits bekannten Befund (kaputt_repariert - Renates
+        Diagnose war jedes Mal richtig, nur die Wiederholung war unnoetig).
+        Nicht als generische Bremse fuer alle Intervall-Aufgaben gedacht,
+        nur fuer diesen einen, konkret beobachteten Fall: sobald sich
+        irgendwo etwas aendert (neue Vorlage, ein Auftrag schliesst/wird
+        angelegt), greift die Sperre nicht und Renate laeuft normal."""
+        if task.get("tool") != "delegate_to_agent":
+            return False
+        if (task.get("tool_args") or {}).get("name") != "projektleitung":
+            return False
+        if "pruefungsliste" not in str(task.get("tool_args", {}).get("task", "")):
+            return False
+        with suppress(Exception):
+            from services.review import ReviewQueue
+            from services.auftraege import Auftragsbuch
+            if ReviewQueue().zur_pruefung(limit=1):
+                self._letzte_renate_lage = None
+                return False                     # etwas wartet - immer normal laufen
+            offen = Auftragsbuch().liste(status="alle", limit=200)
+            lage = tuple(sorted(
+                (a["id"], a["status"]) for a in offen
+                if a["status"] in ("offen", "in_arbeit", "vorgelegt")))
+            unveraendert = self._letzte_renate_lage == lage
+            self._letzte_renate_lage = lage
+            return unveraendert
+        return False                             # bei Unsicherheit lieber normal laufen
+
     def _run_task(self, task: dict) -> str:
         action = task["action_type"]
         if action == "briefing" and self.briefing is not None:
@@ -346,6 +389,10 @@ class SchedulerService:
         if action == "tool" and self.agent is not None:
             # Werkzeuge, die lange laufen (z. B. Auftragswächter), können im
             # Hintergrund starten – der Scheduler-Tick blockiert sonst Minuten lang.
+            if self._renate_lage_unveraendert(task):
+                logger.debug("Scheduler: '%s' uebersprungen - Lage seit letztem Zyklus unveraendert.",
+                            task.get("name", task["id"]))
+                return None
             if task.get("tool") in HINTERGRUND_TOOLS:
                 # In die FIFO-Warteschlange einreihen statt einen eigenen
                 # Thread zu starten – MAX_GLEICHZEITIG feste Worker holen sich

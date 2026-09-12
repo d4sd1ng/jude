@@ -117,6 +117,37 @@ def provider_gesperrt(provider: str) -> bool:
     return _provider_429_gesperrt(provider)
 
 
+def _provider_locks_laden() -> None:
+    """_PROVIDER_429 aus provider_locks wiederherstellen.
+
+    _PROVIDER_429 lebt nur im Prozessspeicher - jeder Neustart leerte es,
+    obwohl provider_locks (die Sichtbarkeits-Spiegelung) den Zustand noch
+    kannte. Ergebnis: ein Provider mit leerem Guthaben, schon einmal bis
+    Mitternacht gesperrt, wurde nach JEDEM Neustart erneut angefragt und
+    scheiterte erneut, bevor die Sperre wieder griff - bei mehreren
+    Neustarts pro Nacht (11./12.09.2026: mehrfach fuer Konfigaenderungen
+    neu gestartet, waehrend OpenAI/Anthropic beide ohne Guthaben waren)
+    kostete das jedes Mal einen vergeblichen Versuch samt Wartezeit fuer
+    jede Modellkette, die den Provider enthielt."""
+    with suppress(Exception):
+        with connection() as db:
+            zeilen = db.execute(
+                "SELECT provider, locked_until, reason, counter FROM provider_locks"
+            ).fetchall()
+        jetzt = time.time()
+        for zeile in zeilen:
+            if not zeile["locked_until"]:
+                continue
+            bis = datetime.fromisoformat(zeile["locked_until"]).timestamp()
+            if bis <= jetzt:
+                continue                        # Sperre ist laengst abgelaufen
+            _PROVIDER_429[zeile["provider"]] = {
+                "zaehler": max(int(zeile["counter"] or 0), 2),
+                "bis": bis,
+                "tagessperre": zeile["reason"] == "kein Guthaben/Quota",
+            }
+
+
 def provider_sperre_aufheben(provider: str | None = None) -> None:
     """Sperre eines Providers (oder aller) manuell aufheben – z. B. nach dem Aufladen."""
     if provider is None:
@@ -229,10 +260,40 @@ def _werkzeug_text(content: Any) -> str:
 
 
 class OllamaAdapter(ProviderAdapter):
+    #: Der lokale llama-server bedient nur eine Anfrage gleichzeitig (-np 1
+    #: beim Start). Ohne Kurzschluss wartete jeder Mitarbeiter, der auf diese
+    #: letzte Reserve traf, erneut die volle timeout*retries-Zeit, bevor er
+    #: aufgab - bei mehreren gleichzeitig wartenden Mitarbeitern (z.B. alle
+    #: nach einem Neustart gleichzeitig wach) summierte sich das ueber
+    #: mehrere Minuten pro Mitarbeiter (11.09.2026: Cloud-Budget fast
+    #: erschoepft + Ollama-Cloud-Kontingent fuer den Monat aufgebraucht
+    #: draengten das ganze Team auf dieses eine, ueberlastete Modell).
+    #: Nach einer frischen Zeitueberschreitung wird fuer diese Zeitspanne
+    #: der VERSUCH uebersprungen, WENN die Kette danach noch ein anderes
+    #: Modell hat (die Entscheidung dazu trifft _execute_chain, nicht diese
+    #: Klasse - siehe kuerzlich_ausgefallen() unten). Steht dieses Modell als
+    #: letzte Stufe da, wird NIE uebersprungen: ein sofortiger Fehlschlag
+    #: waere dann kein schnellerer Fehlschlag, sondern ein garantierter statt
+    #: eines moeglichen (wenn auch langsamen) Erfolgs - genau der Fehler, den
+    #: die erste Fassung dieses Kurzschlusses gemacht hat (12.09.2026, Tino:
+    #: "die entiere routing is fucked up if any job fails because of
+    #: exhausted model" - ein voruebergehend ausgelastetes Modell darf nie
+    #: wie ein dauerhaft totes behandelt werden, wenn es die letzte Chance ist).
+    _KUEHLZEIT_NACH_TIMEOUT_SEC = 20.0
+
     def __init__(self, base_url: str, timeout_seconds: int = 60, num_retries: int = 2):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout_seconds
         self.retries = num_retries
+        self._letzter_timeout: float = 0.0
+
+    def kuerzlich_ausgefallen(self) -> bool:
+        """True, wenn der letzte Aufruf innerhalb der Kuehlzeit per
+        Zeitueberschreitung scheiterte - nur eine Auskunft, keine Sperre.
+        _execute_chain entscheidet, ob das reicht, um diesen Versuch zu
+        ueberspringen (siehe Klassenkommentar oben)."""
+        return bool(self._letzter_timeout and
+                   time.monotonic() - self._letzter_timeout < self._KUEHLZEIT_NACH_TIMEOUT_SEC)
 
     def available_models(self) -> set[str]:
         response = requests.get(f"{self.base_url}/api/tags", timeout=3)
@@ -290,6 +351,8 @@ class OllamaAdapter(ProviderAdapter):
                 return message
             except (requests.RequestException, ValueError) as exc:
                 last_error = exc
+                if isinstance(exc, requests.exceptions.Timeout):
+                    self._letzter_timeout = time.monotonic()
         raise RuntimeError(f"Ollama-Aufruf fehlgeschlagen: {last_error}")
 
 
@@ -573,6 +636,7 @@ class ModelRouter:
         for name, settings in providers.items():
             if name not in self.adapters and settings.get("api_key_env"):
                 self.adapters[name] = OpenAICompatAdapter(**settings)
+        _provider_locks_laden()
         month = datetime.now(timezone.utc).strftime("%Y-%m")
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         self._route_repo = RouteDecisionRepository()
@@ -931,6 +995,19 @@ class ModelRouter:
             if _provider_429_gesperrt(spec.provider):
                 attempts.append({"model": spec.name, "status": "skipped_provider_gesperrt"})
                 logger.debug("Provider %s: Sperre aktiv, Versuch übersprungen.", spec.provider)
+                continue
+            # Lokales Ollama kuerzlich per Zeitueberschreitung ausgefallen
+            # (Server bedient nur eine Anfrage gleichzeitig)? Nur ueberspringen,
+            # wenn danach noch etwas anderes in der Kette steht - als letzte
+            # Stufe wird IMMER versucht, egal wie kuerzlich es scheiterte: ein
+            # voruebergehend ausgelastetes Modell ist die letzte Chance auf
+            # Erfolg, kein dauerhaft totes wie ein leeres Guthaben (12.09.2026,
+            # siehe Klassenkommentar bei OllamaAdapter.kuerzlich_ausgefallen()).
+            if (position < len(chain) - 1 and spec.provider == "ollama"
+                    and self.adapters["ollama"].kuerzlich_ausgefallen()):
+                attempts.append({"model": spec.name, "status": "skipped_kuehlzeit"})
+                logger.debug("Lokales Ollama: kuerzlich ausgefallen, Versuch uebersprungen "
+                            "(noch ein weiteres Modell in der Kette).")
                 continue
             # Erst zuschneiden, dann rechnen und rufen: die Kostenschaetzung
             # muss sich auf das beziehen, was wirklich rausgeht, sonst lehnt das
