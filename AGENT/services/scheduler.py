@@ -33,7 +33,15 @@ class SchedulerService:
     #: fälligen Mitarbeiter-Läufe im selben Tick gleichzeitig los (13 auf
     #: einmal, gemessen 03.09.2026) – das darf nie wieder passieren, auch
     #: nicht in diesem Kanten-fall.
-    MAX_GLEICHZEITIG = 3
+    #: Auf 1 gesenkt (12./13.09.2026, Tino: "sure reduce it", gleicher Grund
+    #: wie MAX_GLEICHZEITIG in tools/chef.py): OpenAI, Anthropic und beide
+    #: Ollama-Cloud-Konten gleichzeitig ohne Guthaben/Kontingent liessen
+    #: jede Kette beim lokalen qwen3:8b landen, das nur eine Anfrage
+    #: gleichzeitig bedient - mehrere Worker-Threads stauten sich davor
+    #: gegenseitig, bis keiner mehr innerhalb des 45s-Timeouts durchkam.
+    #: Wieder hochsetzen, sobald ein bezahlter/Cloud-Anbieter wieder
+    #: freigeschaltet ist.
+    MAX_GLEICHZEITIG = 1
 
     #: Die eine laufende Instanz - services/review.py und services/
     #: confirmations.py liegen unterhalb von services/team.py in der

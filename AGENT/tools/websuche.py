@@ -65,11 +65,19 @@ def news_search(query: str, limit: int = 6, language: str = "de") -> str:
             datum = parsedate_to_datetime(datum).astimezone(timezone.utc).strftime("%d.%m.%Y %H:%M")
         except (TypeError, ValueError):
             pass
-        # Google-News-Links sind lange Weiterleitungsketten (~320 Zeichen je
-        # Treffer) und fuer den Agenten wertlos: sie fuehren nicht direkt zum
-        # Artikel. Sie machten drei Viertel der Ausgabe aus und sprengten damit
-        # Groqs Minutenbudget. Weggelassen.
-        treffer.append(f"- {schlagzeile or titel} [{quelle or 'unbekannt'}, {datum}]")
+        # Der Link fehlte hier lange (Google-News-Redirects sind ~320 Zeichen
+        # je Treffer und sprengten frueher Groqs Minutenbudget) - aber genau
+        # dieser Link ist scrapers einzige Quelle fuer die von seiner eigenen
+        # Rolle verlangte "oeffentliche URL" zur Verifizierung. Ohne ihn kann
+        # er die Anforderung nie erfuellen, sucht immer weiter und scheitert
+        # zuverlaessig an "Maximale Anzahl der Tool-Schritte ueberschritten" -
+        # 55% aller Laeufe im September, gefunden 13.09.2026 bei Tinos Audit-
+        # Auftrag. Ein funktionierendes Werkzeug mit langem Link ist besser
+        # als eines, das die eigentliche Aufgabe strukturell unmoeglich macht;
+        # der Redirect loest beim tatsaechlichen Abruf (scrape_public_url)
+        # ganz normal zum echten Artikel auf.
+        link = (item.findtext("link") or "").strip()
+        treffer.append(f"- {schlagzeile or titel} [{quelle or 'unbekannt'}, {datum}] {link}")
         if len(treffer) >= max(1, min(int(limit), 20)):
             break
     if not treffer:

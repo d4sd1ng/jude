@@ -214,7 +214,19 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         # Guthaben in ~3 Minuten verbraucht (Sperre bis Mitternacht). Wer hier
         # nicht drankommt, wartet einfach bis zum naechsten Tick (5 Min.) -
         # kein Datenverlust, nur gestaffelt statt aller auf einmal.
-        MAX_GLEICHZEITIG = 2
+        # Auf 1 gesenkt (12./13.09.2026, Tino: "sure reduce it"): OpenAI,
+        # Anthropic und BEIDE Ollama-Cloud-Konten waren gleichzeitig ohne
+        # Guthaben/Kontingent - jede Kette landete beim lokalen qwen3:8b, das
+        # nur eine Anfrage gleichzeitig bedient (-np 1). Zwei bis drei
+        # gleichzeitige Laeufe stauten sich davor: ein triviales "sag hi"
+        # brauchte gemessen 42 echte Sekunden statt der ueblichen Zeit, und
+        # keiner der gestauten Laeufe kam innerhalb des 45s-Timeouts durch -
+        # alle scheiterten, keiner. Sobald wieder ein bezahlter/Cloud-Anbieter
+        # freigeschaltet ist, darf das wieder hoeher stehen - waehrend ALLES
+        # auf dem einen lokalen Modell laeuft, ist 1 die einzige Zahl, bei
+        # der ueberhaupt jemand fertig wird statt dass alle sich gegenseitig
+        # blockieren.
+        MAX_GLEICHZEITIG = 1
 
         def _starte(agent_name: str) -> None:
             try:
@@ -278,7 +290,7 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         agenten = dienst.list()
         bekannt = {a["name"]: a for a in agenten}
         # Gleiche Obergrenze und Begruendung wie revisionen_nacharbeiten oben.
-        MAX_GLEICHZEITIG = 2
+        MAX_GLEICHZEITIG = 1
 
         def _starte(agent_name: str, auftraege: list[dict]) -> None:
             try:

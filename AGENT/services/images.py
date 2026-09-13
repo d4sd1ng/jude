@@ -21,6 +21,46 @@ from core.paths import IMAGES_DIR
 _API_BASE = "https://api.openai.com/v1/images"
 _ALLOWED_SIZES = {"1024x1024", "1024x1536", "1536x1024", "auto"}
 
+# generate()/edit() riefen die OpenAI-API bisher direkt auf, an
+# ModelRouter.call_llm() (der einzige Ort, der Kosten nach model_usage
+# schreibt und das Monatsbudget fuehrt) komplett vorbei - jedes erzeugte oder
+# bearbeitete Bild war fuer Judes eigene Kostenrechnung unsichtbar. Gefunden
+# 12./13.09.2026: Tinos echte OpenAI-Rechnung zeigte $43.21 in den letzten 13
+# Tagen, Judes eigene Aufzeichnung (model_usage) nur $26.82 - die fehlenden
+# ~$16 waren genau diese Bildkosten, ueber 60 generate_image-Laeufe allein
+# diesen Monat (Tino: "ah fuck off are u serious?"). Preise je 1M Token
+# (developers.openai.com/api/docs/guides/image-cost-calculator, 11.09.2026
+# abgerufen) - dasselbe Token-Modell wie gpt-image-1, "flare"/"sunburst"
+# nicht separat gelistet, daher dieselben Saetze uebernommen.
+_BILD_PREIS_TEXT_INPUT_JE_1M = 5.0
+_BILD_PREIS_BILD_INPUT_JE_1M = 10.0
+_BILD_PREIS_BILD_OUTPUT_JE_1M = 40.0
+
+
+def _bildkosten_erfassen(data: dict, model: str) -> None:
+    """Erfasst die tatsaechlichen Token-Kosten eines Bildaufrufs in
+    model_usage - derselbe Ort, den ModelRouter.budget_used bei jedem
+    Neustart aufsummiert (siehe Kommentar oben, warum das bisher fehlte).
+    Schweigt bei fehlenden Nutzungsdaten oder DB-Fehlern, statt die eigentliche
+    Bildgenerierung wegen einer Nebensache scheitern zu lassen."""
+    from contextlib import suppress
+    usage = data.get("usage") or {}
+    if not usage:
+        return
+    with suppress(Exception):
+        from services.routing_data import ModelUsageRepository
+        details = usage.get("input_tokens_details") or {}
+        text_tokens = int(details.get("text_tokens", 0))
+        bild_input_tokens = int(details.get("image_tokens", 0))
+        output_tokens = int(usage.get("output_tokens", 0))
+        kosten = ((text_tokens * _BILD_PREIS_TEXT_INPUT_JE_1M)
+                 + (bild_input_tokens * _BILD_PREIS_BILD_INPUT_JE_1M)
+                 + (output_tokens * _BILD_PREIS_BILD_OUTPUT_JE_1M)) / 1_000_000
+        ModelUsageRepository().insert(
+            datetime.now(timezone.utc).isoformat(), "openai", model,
+            text_tokens + bild_input_tokens, output_tokens, 0, 0, 0,
+            "standard", "bild", 1.0, None, kosten)
+
 # requests' eigenes 'timeout' ist KEIN echtes Wanduhr-Limit fuer den ganzen
 # Aufruf - es setzt nur eine Frist fuer Verbindungsaufbau UND JEDEN einzelnen
 # Lesevorgang neu, nicht fuer die Gesamtdauer. Solange der Server ueberhaupt
@@ -126,7 +166,9 @@ class ImageService:
             timeout=self.timeout,
         ), self.timeout + 30)
         response.raise_for_status()
-        return self._save(self._first_b64(response.json()), prompt, size, "generiert")
+        data = response.json()
+        _bildkosten_erfassen(data, self.model)
+        return self._save(self._first_b64(data), prompt, size, "generiert")
 
     def edit(self, image: bytes, prompt: str, filename: str = "bild.png",
              mask: bytes | None = None, size: str | None = None) -> dict:
@@ -156,7 +198,9 @@ class ImageService:
             timeout=self.timeout,
         ), self.timeout + 30)
         response.raise_for_status()
-        return self._save(self._first_b64(response.json()), prompt, size, "bearbeitet", source_name=filename)
+        data = response.json()
+        _bildkosten_erfassen(data, self.model)
+        return self._save(self._first_b64(data), prompt, size, "bearbeitet", source_name=filename)
 
     def list_recent(self, limit: int = 24) -> list[dict]:
         if not IMAGES_DIR.is_dir():
