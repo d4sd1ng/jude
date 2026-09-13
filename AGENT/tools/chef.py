@@ -1,6 +1,6 @@
 """Chef- und Betriebswerkzeuge für Jude selbst.
 
-Abnahme, Groq-Kontingent und Team-Läufe gab es bisher nur als GUI-Endpunkte –
+Abnahme und Team-Läufe gab es bisher nur als GUI-Endpunkte –
 im Gespräch konnte Jude die Fragen "gibt es was abzunehmen?", "wer hat die
 Tokens verbraucht?" oder "was hat das Team heute produziert?" gar nicht
 beantworten und schwafelte stattdessen. Diese Werkzeuge schließen die Lücke.
@@ -43,11 +43,6 @@ def abnahme_revision(review_id: str, anmerkung: str) -> dict:
     return ReviewQueue().revision(review_id, anmerkung)
 
 
-def groq_kontingent() -> dict:
-    from services import kontingent
-    return kontingent.stand()
-
-
 def team_laeufe(limit: int = 10) -> list[dict]:
     """Die letzten Läufe der Mitarbeiter: wer, wann, womit, wie teuer."""
     from services.database import connection
@@ -78,9 +73,6 @@ def register(registry: ToolRegistry) -> None:
                            abnahme_revision,
                            _schema({"review_id": {"type": "string"}, "anmerkung": {"type": "string"}},
                                    ["review_id", "anmerkung"])))
-    registry.register(Tool("groq_kontingent",
-                           "Aktuellen Stand des Groq-Tageskontingents anzeigen (Rest, Limit, gemessen am).",
-                           groq_kontingent, _schema({})))
     registry.register(Tool("team_laeufe",
                            "Letzte Läufe der Mitarbeiter anzeigen: wer lief wann, mit welchem Modell, Status, Tokens.",
                            team_laeufe, _schema({"limit": {"type": "integer"}})))
@@ -132,6 +124,14 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
             zugestellt.append(bekannt[schluessel])
         return {"datei": name, "zugestellt": zugestellt, "unbekannt": unbekannt}
 
+    # Wie oft der Wächter denselben Rückstand pro Mitarbeiter re-erkannte und
+    # jedes Mal einen NEUEN Auftrag anlegte, statt den vorhandenen offenen zu
+    # nutzen (beobachtet 07.09.: 45 gleichzeitig offene Aufträge, allein 23
+    # für "social" - u.a. acht separate "Wochen-Beitrag fehlt"-Aufträge für
+    # dieselbe Lücke). Harte Sperre statt Prosa-Hinweis, nach demselben
+    # Muster wie notion_db.create()'s Dopplungssperre.
+    MAX_UNERLEDIGT_JE_MITARBEITER = 3
+
     def auftrag_erteilen(agent: str, titel: str, beschreibung: str = "",
                          faellig_am: str = "", sofort_starten: bool = True) -> dict:
         """Auftrag ins Auftragsbuch UND (standardmäßig) sofort losarbeiten lassen."""
@@ -141,7 +141,27 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         bekannt = {a["name"].casefold() for a in dienst.list()}
         if str(agent).strip().casefold() not in bekannt:
             raise ValueError(f"Kein Mitarbeiter namens {agent!r}. Bekannt: {', '.join(sorted(bekannt))}.")
+        from services.team import SubAgentService as _SAS
+        if str(agent).strip().casefold() == _SAS.REDAKTEUR:
+            raise ValueError(
+                f"{_SAS.REDAKTEUR} legt nie selbst etwas vor (siehe seine Rolle/"
+                "AUSNAHME VON DER ABNAHME-PFLICHT und die fehlende submit_for_review-"
+                "Berechtigung in team_builder.py) - ein direkt an ihn erteilter Auftrag "
+                "kann NIE auf 'vorgelegt' wechseln, egal wie oft er ausgefuehrt wird "
+                "(beobachtet 07.09.2026: Auftrag blieb trotz fertigem Text 'in_arbeit'). "
+                "Erteile den Auftrag stattdessen dem Mitarbeiter, der den Text tatsaechlich "
+                "braucht und vorlegt (z.B. content oder social) - der beauftragt "
+                f"{_SAS.REDAKTEUR} intern per write_copy.")
         buch = Auftragsbuch()
+        unerledigt = buch.unerledigt_fuer(agent)
+        if len(unerledigt) >= MAX_UNERLEDIGT_JE_MITARBEITER:
+            vorhandene = "; ".join(f"[{u['id']}] {u['titel']} ({u['status']})" for u in unerledigt)
+            raise ValueError(
+                f"{agent} hat bereits {len(unerledigt)} unerledigte Aufträge, mehr werden "
+                f"nicht angelegt: {vorhandene}. Prüfe erst per auftraege_liste(agent=..., "
+                "status='alle'), ob einer davon die gleiche Lücke abdeckt - dann brauchst "
+                "du keinen neuen. Ist wirklich alles unabhaengige, laufende Arbeit, zuerst "
+                "einen mit auftrag_abbrechen schliessen oder abwarten, bis einer abgenommen ist.")
         a = buch.erteilen(agent, titel, beschreibung, str(faellig_am).strip() or None)
         if sofort_starten:
             buch.status_setzen(a["id"], "in_arbeit")
@@ -160,33 +180,184 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
         from services.auftraege import Auftragsbuch
         return Auftragsbuch().abbrechen(auftrag_id)
 
-    def auftragswaechter() -> dict:
-        """Für den Scheduler: überfällige Aufträge nachfassen und Tino melden."""
+    def revisionen_nacharbeiten() -> dict:
+        """Jeder Mitarbeiter mit einer offenen Revision (Vorlage oder zurückgewiesene
+        Aktion), der gerade nichts tut, bekommt sie direkt zur Bearbeitung – statt
+        tagelang liegenzubleiben, bis zufällig ein anderer Auftrag ihn ohnehin
+        laufen lässt. Anders als team_tagesrunde läuft hier NICHT jeder Mitarbeiter
+        mit, nur wer wirklich etwas offen hat und gerade frei ist.
+
+        Läuft parallel statt nacheinander: jeder Kandidat startet in einem
+        eigenen Thread, statt einen einzigen Scheduler-Worker-Slot für die
+        gesamte Kette zu blockieren – sonst wartet z. B. content auf sechs
+        fremde Revisionen vor ihm in der Schlange, obwohl zwei weitere
+        Worker-Slots die ganze Zeit frei wären."""
+        import threading
+        from services.review import ReviewQueue
+        from services.team import SubAgentService
+        from services.database import connection
+        with connection() as db:
+            laufend = {r["agent"] for r in db.execute(
+                "SELECT DISTINCT agent FROM agent_runs WHERE status='laufend'")}
+        offen: dict[str, int] = {}
+        for row in ReviewQueue().agenten_mit_offenen_revisionen():
+            offen[row["agent"]] = offen.get(row["agent"], 0) + row["anzahl"]
+        with connection() as db:
+            for row in db.execute(
+                    "SELECT agent, COUNT(*) AS anzahl FROM confirmations "
+                    "WHERE status='revision' AND agent!='' GROUP BY agent"):
+                offen[row["agent"]] = offen.get(row["agent"], 0) + row["anzahl"]
+        dienst = SubAgentService(registry, router)
+        bekannt = {a["name"] for a in dienst.list()}
+        # Obergrenze gleichzeitiger Laeufe aus diesem Tick: drei parallele
+        # cloud_openai_terra-Aufrufe haben am 05.09.2026 das gesamte OpenAI-
+        # Guthaben in ~3 Minuten verbraucht (Sperre bis Mitternacht). Wer hier
+        # nicht drankommt, wartet einfach bis zum naechsten Tick (5 Min.) -
+        # kein Datenverlust, nur gestaffelt statt aller auf einmal.
+        # Auf 1 gesenkt (12./13.09.2026, Tino: "sure reduce it"): OpenAI,
+        # Anthropic und BEIDE Ollama-Cloud-Konten waren gleichzeitig ohne
+        # Guthaben/Kontingent - jede Kette landete beim lokalen qwen3:8b, das
+        # nur eine Anfrage gleichzeitig bedient (-np 1). Zwei bis drei
+        # gleichzeitige Laeufe stauten sich davor: ein triviales "sag hi"
+        # brauchte gemessen 42 echte Sekunden statt der ueblichen Zeit, und
+        # keiner der gestauten Laeufe kam innerhalb des 45s-Timeouts durch -
+        # alle scheiterten, keiner. Sobald wieder ein bezahlter/Cloud-Anbieter
+        # freigeschaltet ist, darf das wieder hoeher stehen - waehrend ALLES
+        # auf dem einen lokalen Modell laeuft, ist 1 die einzige Zahl, bei
+        # der ueberhaupt jemand fertig wird statt dass alle sich gegenseitig
+        # blockieren.
+        MAX_GLEICHZEITIG = 1
+
+        def _starte(agent_name: str) -> None:
+            try:
+                dienst.run(agent_name,
+                          "Du hast offene Revisionen – Vorlagen oder zurückgewiesene Aktionen, "
+                          "die auf deine Überarbeitung warten (siehe oben im Systemprompt). "
+                          "Arbeite sie ab, bevor du etwas Neues beginnst.")
+            except Exception as exc:
+                try:
+                    from services.notifications import NotificationService
+                    NotificationService().create(
+                        "scheduled_error", f"Revisionsnacharbeit {agent_name} fehlgeschlagen", str(exc)[:300])
+                except Exception:
+                    pass
+
+        # Reihenfolge mischen statt der festen Dict-/SQL-Reihenfolge zu
+        # folgen: sonst gewinnen bei mehr offenen Kandidaten als
+        # MAX_GLEICHZEITIG immer dieselben zwei (wer zufaellig zuerst aus der
+        # Abfrage kommt) die beiden Slots - jeden Tick, unbegrenzt. Gemessen
+        # 11.09.2026: engineer und designer standen bei jedem einzelnen Tick
+        # seit ueber einer Stunde auf 'gestartet', scraper/social/sequencer/
+        # content jedes Mal auf 'wartet_auf_naechsten_tick' - kein einziges
+        # Mal drangekommen, obwohl der Tick alle 5 Minuten lief.
+        import random
+        eintraege = list(offen.items())
+        random.shuffle(eintraege)
+        gestartet, uebersprungen, wartet = [], [], []
+        for agent_name, anzahl in eintraege:
+            if agent_name not in bekannt:
+                continue
+            if agent_name in laufend:
+                uebersprungen.append(agent_name)
+                continue
+            if len(gestartet) >= MAX_GLEICHZEITIG:
+                wartet.append(agent_name)
+                continue
+            threading.Thread(target=_starte, args=(agent_name,), daemon=True).start()
+            gestartet.append({"agent": agent_name, "anzahl": anzahl})
+        return {"gestartet": gestartet, "schon_aktiv_uebersprungen": uebersprungen,
+                "wartet_auf_naechsten_tick": wartet}
+
+    def auftraege_nacharbeiten() -> dict:
+        """Jeder Mitarbeiter mit einem echten offenen Auftrag (offen/in_arbeit),
+        der gerade nichts tut, bekommt ihn direkt zur Bearbeitung – sonst
+        bleibt ein Auftrag liegen, bis jemand ihn von Hand anstoesst (beobachtet
+        07.09.2026: alle alten Tagesjobs liefen mit erfundenem Pauschaltext und
+        wurden deaktiviert; seitdem arbeitete niemand mehr automatisch am
+        Auftragsbuch - "still whole bunch of jobs nobody is working omn").
+        Dispatcht mit demselben konkreten Auftragstext wie auftrag_erteilen
+        selbst - kein erfundener Pauschalsatz. redakteur bleibt aussen vor
+        (legt nie selbst vor, siehe auftrag_erteilen's eigene Sperre)."""
+        import threading
         from services.auftraege import Auftragsbuch
         from services.team import SubAgentService
+        from services.database import connection
+        with connection() as db:
+            laufend = {r["agent"] for r in db.execute(
+                "SELECT DISTINCT agent FROM agent_runs WHERE status='laufend'")}
         buch = Auftragsbuch()
-        faellige = buch.ueberfaellig()
-        ergebnisse = []
         dienst = SubAgentService(registry, router)
-        for a in faellige[:3]:  # pro Lauf höchstens drei nachfassen
+        agenten = dienst.list()
+        bekannt = {a["name"]: a for a in agenten}
+        # Gleiche Obergrenze und Begruendung wie revisionen_nacharbeiten oben.
+        MAX_GLEICHZEITIG = 1
+
+        def _starte(agent_name: str, auftraege: list[dict]) -> None:
             try:
-                buch.status_setzen(a["id"], "in_arbeit")
-                lauf = dienst.run(a["agent"],
-                                  f"ÜBERFÄLLIGER AUFTRAG [{a['id']}]: {a['titel']}\n{a['beschreibung']}\n"
-                                  f"Erledige ihn JETZT und lege das Ergebnis mit submit_for_review "
-                                  f"vor (auftrag_id='{a['id']}').")
-                ergebnisse.append({"id": a["id"], "lauf": lauf.get("status")})
+                if len(auftraege) == 1:
+                    auftrag = auftraege[0]
+                    aufgabe = (f"AUFTRAG [{auftrag['id']}]: {auftrag['titel']}\n{auftrag['beschreibung']}\n"
+                              f"Lege das Ergebnis mit submit_for_review vor und gib "
+                              f"auftrag_id='{auftrag['id']}' an.")
+                else:
+                    # Bisher bekam der Mitarbeiter IMMER nur seinen aeltesten
+                    # offenen Auftrag - haengt der an jemand anderem fest (z.B.
+                    # designer wartet seit Tagen auf Heinz' Skript fuer den
+                    # aeltesten Reel-Auftrag), meldete sie jeden Tick erneut
+                    # denselben Blocker, waehrend zwei andere, tatsaechlich
+                    # bearbeitbare Auftraege (fehlende Bildmotive) nie an die
+                    # Reihe kamen (gemessen 12.09.2026: derselbe Auftrag lief
+                    # ueber 20 Stunden lang bei jedem Tick erneut, ohne
+                    # Fortschritt). Jetzt die ganze Liste, mit der Bitte, den
+                    # zu waehlen, an dem wirklich Fortschritt moeglich ist.
+                    liste = "\n".join(
+                        f"- [{a['id']}] {a['titel']}: {a['beschreibung']}" for a in auftraege)
+                    aufgabe = (
+                        "Du hast mehrere offene Auftraege. Bearbeite den, an dem du JETZT "
+                        "wirklich weiterkommst - ist der aelteste durch jemand anderen blockiert "
+                        "(z.B. fehlendes Skript/Material von einem Kollegen), nimm einen der "
+                        "anderen, statt nur denselben Blocker erneut zu melden:\n" + liste +
+                        "\nLege das Ergebnis mit submit_for_review vor und gib die passende "
+                        "auftrag_id an.")
+                dienst.run(agent_name, aufgabe)
             except Exception as exc:
-                ergebnisse.append({"id": a["id"], "fehler": str(exc)[:200]})
-        if faellige:
-            try:
-                from services.notifications import NotificationService
-                NotificationService().create(
-                    "auftraege", f"{len(faellige)} Aufträge überfällig",
-                    ", ".join(a["titel"] for a in faellige[:5]))
-            except Exception:
-                pass
-        return {"ueberfaellig": len(faellige), "nachgefasst": ergebnisse}
+                try:
+                    from services.notifications import NotificationService
+                    NotificationService().create(
+                        "scheduled_error", f"Auftragsnacharbeit {agent_name} fehlgeschlagen", str(exc)[:300])
+                except Exception:
+                    pass
+
+        # Reihenfolge mischen statt der festen Dict-Reihenfolge zu folgen -
+        # sonst gewinnen bei mehr offenen Kandidaten als MAX_GLEICHZEITIG
+        # jedes Mal dieselben zuerst gelisteten Mitarbeiter die beiden Slots,
+        # unbegrenzt (genau der Fehler, der am 11.09.2026 fuer
+        # revisionen_nacharbeiten gefunden und behoben wurde - hier nie
+        # nachgezogen. Gemessen 12.09.2026: content/designer liefen bei jedem
+        # Tick, social/sequencer standen trotz drei offener Auftraege jedes
+        # Mal nur auf 'wartet_auf_naechsten_tick').
+        import random
+        eintraege = list(bekannt.items())
+        random.shuffle(eintraege)
+
+        gestartet, uebersprungen, wartet = [], [], []
+        for agent_name, spec in eintraege:
+            if agent_name == SubAgentService.REDAKTEUR or spec.get("pausiert"):
+                continue
+            offen = buch.offene_fuer(agent_name)
+            if not offen:
+                continue
+            if agent_name in laufend:
+                uebersprungen.append(agent_name)
+                continue
+            if len(gestartet) >= MAX_GLEICHZEITIG:
+                wartet.append(agent_name)
+                continue
+            threading.Thread(target=_starte, args=(agent_name, offen), daemon=True).start()
+            gestartet.append({"agent": agent_name, "auftraege": [a["id"] for a in offen],
+                              "titel": offen[0]["titel"] if len(offen) == 1 else f"{len(offen)} offene Auftraege"})
+        return {"gestartet": gestartet, "schon_aktiv_uebersprungen": uebersprungen,
+                "wartet_auf_naechsten_tick": wartet}
 
     def rolle_aktualisieren(agent: str, neuer_text: str) -> dict:
         """Rollen-Prompt eines Mitarbeiters ersetzen – nur nach Tinos Bestätigung."""
@@ -228,9 +399,6 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
                            "Einen Auftrag abbrechen – nur wenn Tino es sagt.",
                            auftrag_abbrechen,
                            _schema({"auftrag_id": {"type": "string"}}, ["auftrag_id"])))
-    registry.register(Tool("auftragswaechter",
-                           "Überfällige Aufträge nachfassen (nutzt der Scheduler stündlich; manuell aufrufbar).",
-                           auftragswaechter, _schema({})))
     registry.register(Tool("rolle_aktualisieren",
                            "Rollen-Prompt eines Mitarbeiters ersetzen (nach Prompt-Diagnose) – "
                            "erfordert Tinos ausdrückliche Bestätigung.",
@@ -242,3 +410,14 @@ def register_context(registry: ToolRegistry, router=None, **_kontext) -> None:
     registry.register(Tool("chefpruefung_nachholen",
                            "Hängende Chefprüfungen sofort durchführen, damit fertige Vorlagen bei Tino ankommen.",
                            chefpruefung_nachholen, _schema({})))
+    registry.register(Tool("revisionen_nacharbeiten",
+                           "Jeden Mitarbeiter mit offener Revision (Vorlage oder zurückgewiesene Aktion), "
+                           "der gerade nichts tut, direkt daran arbeiten lassen – nur diese, nicht das "
+                           "ganze Team (nutzt der Scheduler periodisch; manuell aufrufbar).",
+                           revisionen_nacharbeiten, _schema({})))
+    registry.register(Tool("auftraege_nacharbeiten",
+                           "Jeden Mitarbeiter mit einem echten offenen Auftrag im Auftragsbuch (offen/"
+                           "in_arbeit), der gerade nichts tut, direkt daran arbeiten lassen – mit dem "
+                           "echten Auftragstext, kein erfundener Pauschalsatz (nutzt der Scheduler "
+                           "periodisch; manuell aufrufbar).",
+                           auftraege_nacharbeiten, _schema({})))

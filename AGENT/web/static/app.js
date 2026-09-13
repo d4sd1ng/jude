@@ -2,22 +2,53 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const pages=$$('section').map(s=>s.dataset.page); const nav=$('#nav');
 pages.forEach((p,i)=>{let b=document.createElement('button');b.textContent=p;b.onclick=()=>show(p);if(!i)b.className='active';nav.append(b)});
 function show(p){$$('section').forEach(s=>s.classList.toggle('active',s.dataset.page===p));[...nav.children].forEach(b=>b.classList.toggle('active',b.textContent===p));if(p==='Märkte')loadICT();if(p==='Werkzeuge')loadImages();
- if(p==='Schreibtisch'){loadReviews();loadConfirmations();loadNotifications();loadAuftraege()}
- if(p==='System'){loadSystem();loadMemory();loadRouting();loadAgents();loadDocs()}};show(pages[0]);
+ if(p==='Schreibtisch'){loadAktiv();loadReviews();loadConfirmations();loadAuftraege()}
+ if(p==='System'){loadSystem();loadMemory();loadRouting();loadAgents();loadDocs();loadNotifications()}};show(pages[0]);
 function fmt(v){const d=new Date(typeof v==='number'?v*1000:v);return isNaN(d)?String(v??''):d.toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function toast(x){let t=$('#toast');t.textContent=x;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500)}
+$('#serverRestart')?.addEventListener('click',async()=>{
+  if(!confirm('Server jetzt neu starten? Laufende Aufträge werden unterbrochen.'))return;
+  const btn=$('#serverRestart');btn.disabled=true;btn.textContent='🔄 startet neu…';
+  try{await fetch('/api/system/restart',{method:'POST'})}catch(e){}
+  const warten=setInterval(async()=>{
+    try{const r=await fetch('/api/status');if(r.ok){clearInterval(warten);location.reload()}}catch(e){}
+  },1500);
+});
 async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let d=await r.json().catch(()=>({error:r.statusText}));if(!r.ok||d.error)throw Error(d.error||r.statusText);return d}
-api('/api/status').then(s=>{$('#health').textContent='lokal bereit';$('#stats').innerHTML=`<div class=stat><b>${s.router.models.length}</b>Modelle</div><div class=stat><b>${s.mail.filter(x=>x.configured).length}/5</b>Mailkonten</div><div class=stat><b>${s.memory.active_memories}</b>Erinnerungen</div><div class=stat><b>${s.ict.scheduler.enabled?'AN':'AUS'}</b>Kill Zones</div>`;$('#mailStatus').innerHTML=s.mail.map(x=>`<div class=source>${esc(x.address)} · ${x.configured?'bereit':'Schlüssel fehlt'}</div>`).join('')}).catch(e=>toast(e.message));
-$('#chatForm').onsubmit=async e=>{e.preventDefault();let x=$('#chatInput'),v=x.value;x.value='';
- const chat=$('#chat');chat.innerHTML+=`<div class="message user">${esc(v)}</div>`;
+api('/api/status').then(s=>{$('#health').textContent='lokal bereit';$('#stats').innerHTML=`<div class=stat><b>${s.router.models.length}</b>Modelle</div><div class=stat><b>${s.mail.filter(x=>x.configured).length}/5</b>Mailkonten</div><div class=stat><b>${s.memory.active_memories}</b>Erinnerungen</div><div class=stat><b>${s.ict.scheduler.enabled?'AN':'AUS'}</b>Kill Zones</div>`;$('#mailStatus').innerHTML=s.mail.map(x=>`<div class=source>${esc(x.address)} · ${x.configured?'bereit':'Schlüssel fehlt'}</div>`).join('');
+ const sel=$('#chatModel');sel.innerHTML='<option value="">Auto (Standard)</option>'+s.router.models.filter(m=>m.enabled).map(m=>`<option value="${esc(m.name)}">${esc(m.name)}${m.local?' · lokal':''}</option>`).join('');
+ api('/api/chat/model').then(c=>{if(c.model)sel.value=c.model}).catch(()=>{})}).catch(e=>toast(e.message));
+$('#chatModel').onchange=async e=>{try{await api('/api/chat/model',{method:'POST',body:JSON.stringify({model:e.target.value})});toast(e.target.value?`Modell fest: ${e.target.value}`:'Zurück auf automatische Auswahl')}catch(x){toast(x.message)}};
+let chatQueue=[],chatBusy=false,chatAbort=null;
+$('#chatForm').onsubmit=e=>{e.preventDefault();let x=$('#chatInput'),v=x.value.trim();if(!v)return;x.value='';
+ const chat=$('#chat'),id='q_'+Math.random().toString(36).slice(2);
+ chatQueue.push({id,text:v});
+ chat.innerHTML+=`<div class="message user${chatBusy?' queued':''}" data-qid="${id}">${esc(v)}${chatBusy?` <button class=ghost onclick="chatBringUp('${id}')">Vorziehen</button>`:''}</div>`;
+ chat.scrollTop=chat.scrollHeight;chatPump()};
+window.chatBringUp=function(id){
+ const i=chatQueue.findIndex(m=>m.id===id);if(i<0)return;
+ const [m]=chatQueue.splice(i,1);chatQueue.unshift(m);
+ const el=document.querySelector(`[data-qid="${id}"]`);if(el){el.classList.remove('queued');const b=el.querySelector('button');if(b)b.remove()}
+ if(chatBusy&&chatAbort)chatAbort.abort();else chatPump()};
+window.chatInterrupt=function(){if(chatAbort)chatAbort.abort()};
+async function chatPump(){
+ if(chatBusy||!chatQueue.length)return;
+ chatBusy=true;const m=chatQueue.shift();
+ const chat=$('#chat');
+ const userEl=document.querySelector(`[data-qid="${m.id}"]`);
+ if(userEl){userEl.classList.remove('queued');const b=userEl.querySelector('button');if(b)b.remove()}
  // Sichtbarer Denk-Zustand: vorher kam 16-60 s lang schlicht nichts.
- const wait=document.createElement('div');wait.className='message thinking';wait.textContent='Jude denkt …';
+ const wait=document.createElement('div');wait.className='message thinking';
+ wait.innerHTML=(chatQueue.length?`Jude denkt … (${chatQueue.length} weitere warten) `:'Jude denkt … ')+'<button class=ghost onclick="chatInterrupt()">Unterbrechen</button>';
  chat.append(wait);chat.scrollTop=chat.scrollHeight;
- const btn=e.target.querySelector('button');btn.disabled=true;
- try{let d=await api('/api/chat',{method:'POST',body:JSON.stringify({text:v})});noteModel(d.model);
+ chatAbort=new AbortController();
+ try{let d=await api('/api/chat',{method:'POST',body:JSON.stringify({text:m.text}),signal:chatAbort.signal});noteModel(d.model);
   wait.outerHTML=`<div class=message>${esc(d.answer)}<small> · ${esc(d.model||'')}</small>${d.route_id?`<div><button onclick="routeFeedback('${d.route_id}',1)">Passt</button> <button onclick="routeFeedback('${d.route_id}',-1)" style="background:#64748b">Unzureichend</button></div>`:''}</div>`}
- catch(err){wait.outerHTML=`<div class="message error">Fehler: ${esc(err.message)}</div>`}
- finally{btn.disabled=false;chat.scrollTop=chat.scrollHeight}};window.routeFeedback=async(id,value)=>{try{await api(`/api/routing/${id}/feedback`,{method:'POST',body:JSON.stringify({value})});toast('Routing-Feedback gespeichert')}catch(e){toast(e.message)}};
+ catch(err){
+  if(err.name==='AbortError'){wait.outerHTML='<div class="message muted small">⏹ Unterbrochen – wieder eingereiht</div>';chatQueue.push(m)}
+  else wait.outerHTML=`<div class="message error">Fehler: ${esc(err.message)}</div>`}
+ finally{chatAbort=null;chatBusy=false;chat.scrollTop=chat.scrollHeight;chatPump()}}
+window.routeFeedback=async(id,value)=>{try{await api(`/api/routing/${id}/feedback`,{method:'POST',body:JSON.stringify({value})});toast('Routing-Feedback gespeichert')}catch(e){toast(e.message)}};
 $('#loadMarket').onclick=async()=>{try{let m=$('#market').value,i=$('#interval').value,d=await api(`/api/market/${encodeURIComponent(m)}?interval=${i}&limit=300`);drawCandles(d.candles);$('#marketMeta').textContent=`${d.source} · ${d.caveat} · ${new Date(d.updated_at).toLocaleString()}`}catch(e){toast(e.message)}};
 function drawCandles(rows){let c=$('#chart'),dpr=devicePixelRatio||1,w=c.clientWidth,h=360;c.width=w*dpr;c.height=h*dpr;let x=c.getContext('2d');x.scale(dpr,dpr);x.clearRect(0,0,w,h);if(!rows.length)return;
  const padL=10,padR=74,padT=12,padB=26;
@@ -97,16 +128,158 @@ async function loadCalendar(){try{let d=await api('/api/calendar');$('#calendarE
 $('#calendarForm').onsubmit=async e=>{e.preventDefault();let p={title:$('#calendarTitle').value,starts_at:$('#calendarStart').value,ends_at:$('#calendarEnd').value,location:$('#calendarLocation').value,description:$('#calendarDescription').value};try{await requestConfirmation('calendar_create',`Termin erstellen: ${p.title} am ${p.starts_at}`,p);toast('Termin wartet auf Bestätigung')}catch(x){toast(x.message)}};loadCalendar();
 $('#reposRun').onclick=async()=>{try{let d=await api('/api/coding/repositories');$('#repos').innerHTML=d.map((r,i)=>`<div class=source><b>${esc(r.path)}</b><br><small>${esc(r.branch)} · ${r.dirty?'geändert':'sauber'}</small><br><button onclick="repoTest(${i})">Tests</button></div>`).join('');window.repoData=d}catch(e){toast(e.message)}};window.repoTest=async i=>{toast('Tests laufen…');try{let d=await api('/api/coding/test',{method:'POST',body:JSON.stringify({repo:repoData[i].path})});toast(`Tests: ${d.status}`)}catch(e){toast(e.message)}};
 $('#loadConfirmations').onclick=loadConfirmations;
+function confirmPayloadHtml(p){
+  const s=JSON.stringify(p,null,2);
+  if(s.length<=220) return `<pre class=auszug>${esc(s)}</pre>`;
+  const kurz=p&&typeof p.path==='string'?`Datei: ${esc(p.path)} (${(p.content||'').length.toLocaleString('de-DE')} Zeichen)`:esc(s.slice(0,200))+'…';
+  return `<p class="muted small">${kurz}</p><details><summary class=small>Volltext anzeigen</summary><pre class="auszug" style="max-height:40vh">${esc(s)}</pre></details>`;
+}
 function confirmHtmlBtn(payload){const vals=Object.values(payload||{});const html=vals.find(v=>typeof v==='string'&&(v.trimStart().toLowerCase().startsWith('<!doctype')||v.trimStart().startsWith('<html')||v.includes('<body')));if(!html)return '';const id='htmlprev_'+Math.random().toString(36).slice(2);window._htmlPreviews=window._htmlPreviews||{};window._htmlPreviews[id]=html;return ` <button onclick="openHtmlPreview('${id}')">Im Browser öffnen</button>`}
 window.openHtmlPreview=function(id){const html=window._htmlPreviews&&window._htmlPreviews[id];if(!html)return;const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener')};
-async function loadConfirmations(){try{let d=await api('/api/confirmations');$('#confirmations').innerHTML=d.map(c=>`<article class=card><span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3><pre>${esc(JSON.stringify(c.payload,null,2))}</pre><div class=agentrun><button onclick="decide('${c.id}','approve')">Bestätigen</button> <button onclick="decide('${c.id}','reject')" style="background:#64748b">Ablehnen</button>${c.agent?`<input id="an_conf_${c.id}" placeholder="Anmerkung – nötig für eine Revision"><button class=ghost onclick="confirmRevision('${c.id}')">Zurück damit</button>`:''}${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>'}catch(e){toast(e.message)}}window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};window.confirmRevision=async id=>{const a=($('#an_conf_'+id)?.value||'').trim();if(!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter.');loadConfirmations()}catch(e){toast(e.message)}};
-$('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.map(n=>`<article class=card><span class=eyebrow>${esc(n.kind||'')}</span><h3>${esc(n.title||'')}</h3><p>${esc(n.message||'')}</p><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></article>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
+// Eine notion_write-Bestätigung wie 'Bild-URL: /pfad/bild.png' zeigte bisher nur
+// den rohen Payload als Text - man musste dem Pfad blind vertrauen, um zu
+// bestätigen oder abzulehnen (06.09.2026: genau das führte dazu, dass ein
+// falsches Bild fast unbesehen an einen Beitrag angehängt worden wäre). Sucht
+// rekursiv nach dem ersten Bildpfad im Payload, exakt wie es die Abnahme-Liste
+// schon für 'quelle' tut.
+function _findeBildpfad(wert){
+  if(typeof wert==='string') return /\.(png|jpe?g|webp|gif)$/i.test(wert.trim())?wert.trim():null;
+  if(wert&&typeof wert==='object'){for(const v of Object.values(wert)){const t=_findeBildpfad(v);if(t)return t}}
+  return null;
+}
+function confirmImageHtml(payload){const bild=_findeBildpfad(payload);return bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}
+let _confirmCache=[];
+async function loadConfirmations(){try{let d=await api('/api/confirmations');_confirmCache=d;$('#confirmations').innerHTML=d.map(c=>`<article class="card agentcard">${confirmImageHtml(c.payload)}<span class=eyebrow>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</span><h3>${esc(c.summary)}</h3>${confirmPayloadHtml(c.payload)}<div class=agentrun><button class=ghost onclick="openConfirmation('${c.id}')">Ansehen</button><button onclick="decide('${c.id}','approve')">Bestätigen</button> <input id="can_${c.id}" placeholder="Grund – nötig zum Ablehnen"><button onclick="decideReject('${c.id}')" style="background:#64748b">Ablehnen</button>${confirmHtmlBtn(c.payload)}</div></article>`).join('')||'<p>Keine offenen Bestätigungen.</p>';
+$('#confirmations').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
+window.openConfirmation=async id=>{const c=_confirmCache.find(x=>x.id===id);if(!c)return toast('Bestätigung nicht mehr gefunden – Liste neu geladen?');
+ $('#overlayTitle').textContent=c.summary||c.action_type||'';
+ const bild=_findeBildpfad(c.payload);
+ const tabs=[{name:'Details',html:`<p class=muted small>${esc(c.action_type)}${c.agent?' · '+esc(c.agent):''}${c.runde>1?' · Runde '+c.runde:''}</p><pre class="auszug" style="max-height:60vh">${esc(JSON.stringify(c.payload,null,2))}</pre>`}];
+ if(bild)tabs.push(quelleTab(bild));
+ $('#overlayTabs').innerHTML=tabs.map((t,i)=>`<button class="${i?'ghost':''}" data-tab="${i}">${esc(t.name)}</button>`).join('');
+ const zeig=async i=>{[...$('#overlayTabs').children].forEach((b,j)=>b.className=j==i?'':'ghost');
+  const t=tabs[i];$('#overlayBody').innerHTML=t.html??await t.lazy().catch(e=>`<p>${esc(String(e))}</p>`)};
+ [...$('#overlayTabs').children].forEach((b,i)=>b.onclick=()=>zeig(i));
+ $('#overlayActions').innerHTML=`<input id="ovAn" placeholder="Grund – nötig zum Ablehnen"><button onclick="overlayConfirmDecide('${esc(c.id)}','approve')">Bestätigen</button><button class=ghost onclick="overlayConfirmDecide('${esc(c.id)}','reject')">Ablehnen</button>`;
+ zeig(0);overlayShow()};
+window.overlayConfirmDecide=async(id,was)=>{
+ try{if(was==='approve'){await api(`/api/confirmations/${id}/approve`,{method:'POST'});toast('Bestätigt.')}
+  else{const a=($('#ovAn')?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');
+   await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.')}
+  overlayHide();loadConfirmations()}catch(e){toast(e.message)}};
+window.decide=async(id,d)=>{try{await api(`/api/confirmations/${id}/${d}`,{method:'POST'});loadConfirmations()}catch(e){toast(e.message)}};
+window.decideReject=async(id)=>{const a=($('#can_'+id)?.value||'').trim();if(!a)return toast('Ohne Grund weiß der Mitarbeiter nicht, was zu ändern ist – bitte kurz eintragen.');try{await api(`/api/confirmations/${id}/revision`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast('Zurück an den Mitarbeiter mit Begründung.');loadConfirmations()}catch(e){toast(e.message)}};
+const WORKER_FORMATE=['Standard-Beitrag','Karussell','Reel','Story','Newsletter','Onepager','Infografik','Recherche','E-Mail','Sonstiges'];
+let _aktivCache=[];
+function workerStatusLine(a){
+  if(a.status==='aktiv'){let sek=Math.max(0,Math.round((Date.now()-new Date(a.seit))/1000));let dauer=sek<60?sek+'s':Math.round(sek/60)+'min';
+    const werkzeugteil=a.aktuelles_werkzeug?` · gerade: ${esc(a.aktuelles_werkzeug)}`:'';
+    return `🟢 läuft seit ${dauer}${werkzeugteil}`}
+  if(a.status==='idle')return `⚪ zuletzt ${esc(a.letzter_status)} · ${fmt(a.letzter_lauf_am)}`;
+  return `⚪ noch nie gelaufen`;
+}
+function workerCardHTML(a){
+  const buttons=`<button class=ghost onclick="startWorker('${esc(a.agent)}',this)">▶ Start</button>
+    <button class=ghost onclick="stopWorker('${esc(a.agent)}',this)">⏸ Stop</button>`;
+  return `<article class="card workercard">
+    <div class=workerhead><h3>${esc(a.person||a.agent)} <span class=small>· ${esc(a.agent)}</span></h3></div>
+    <small>${workerStatusLine(a)}${a.pausiert?' · <span class=badge>pausiert</span>':''}</small>
+    <div class=workeractions>${buttons}</div>
+  </article>`;
+}
+function dispatchSelectHTML(){
+  const opts=_aktivCache.map(a=>`<option value="${esc(a.agent)}"${a.pausiert?' disabled':''}>${esc(a.person||a.agent)} · ${esc(a.agent)}${a.pausiert?' (pausiert)':''}</option>`).join('');
+  return `<option value="">Mitarbeiter wählen…</option>${opts}`;
+}
+$('#loadAktiv')?.addEventListener('click',loadAktiv);async function loadAktiv(){try{let d=await api('/api/agents/aktiv');_aktivCache=d;
+  $('#aktiv').innerHTML=d.map(workerCardHTML).join('')||'<p class="muted small">Kein Team angelegt.</p>';
+  const sel=$('#dispatchAgent');if(sel){const prev=sel.value;sel.innerHTML=dispatchSelectHTML();if([...sel.options].some(o=>o.value===prev))sel.value=prev}
+}catch(e){toast(e.message)}}
+window.stopWorker=async(name,btn)=>{btn.disabled=true;try{await api(`/api/agents/${encodeURIComponent(name)}/stop`,{method:'POST'});toast(`${name}: pausiert – nimmt keinen neuen Auftrag mehr an, bis wieder gestartet.`);loadAktiv()}catch(e){toast(e.message);btn.disabled=false}};
+window.startWorker=async(name,btn)=>{btn.disabled=true;try{
+  // Ein einziger Aufruf: der Server sucht jetzt selbst den aeltesten echten
+  // offenen Auftrag im Auftragsbuch und dispatcht direkt damit (siehe
+  // web/routes/agents.py, agents_start). Vorher rief dieser Code SELBST noch
+  // einmal /run mit demselben Auftrag auf, NACHDEM /start bereits ueber
+  // dispatch_now dispatcht hatte - zwei parallele Laeufe pro Klick
+  // (Copilot-PR-Review auf PR #10, 11.09.2026).
+  const ergebnis=await api(`/api/agents/${encodeURIComponent(name)}/start`,{method:'POST'});
+  if(ergebnis.auftrag){
+    toast(`${name}: gestartet – arbeitet an "${ergebnis.auftrag.titel}".`);
+  }else{
+    toast(`${name}: gestartet – hat aktuell keinen offenen Auftrag, wartet auf Renate.`);
+  }
+  loadAktiv();
+}catch(e){toast(e.message)}finally{btn.disabled=false}};
+$('#dispatchForm')&&($('#dispatchForm').onsubmit=async e=>{e.preventDefault();
+  const name=$('#dispatchAgent').value;const topic=$('#dispatchTopic').value.trim();const format=$('#dispatchFormat').value;
+  if(!name)return toast('Mitarbeiter wählen');
+  if(!topic)return toast('Thema eingeben');
+  const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;
+  try{await api(`/api/agents/${encodeURIComponent(name)}/run`,{method:'POST',body:JSON.stringify({task:`Thema: ${topic}. Erstelle dazu: ${format}.`})});
+    toast(`${name} beauftragt.`);$('#dispatchTopic').value='';loadAktiv()}
+  catch(x){toast(x.message)}finally{btn.disabled=false}});
+setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active'))loadAktiv()},8000);
+// Bestaetigungen/Abnahme aktualisierten sich vorher NUR beim Tab-Wechsel oder
+// Knopfdruck - eine neue Freigabe-Anfrage blieb unsichtbar, bis von Hand neu
+// geladen wurde. Gleicher 8s-Rhythmus wie das Team oben.
+// Das Neuladen ersetzt die Karten komplett (innerHTML) - lief das mitten im
+// Tippen einer Anmerkung, verschwand der Text, weil das Eingabefeld neu
+// gebaut wurde. Darum: ueberspringen, solange der Fokus in einem Anmerkungs-
+// oder Ablehnungsfeld innerhalb Bestaetigungen/Abnahme/Overlay liegt.
+function _tippendGerade(){
+  const el=document.activeElement;
+  if(!el||!['INPUT','TEXTAREA'].includes(el.tagName))return false;
+  return !!(el.closest('#confirmations')||el.closest('#reviews')||el.id==='ovAn');
+}
+setInterval(()=>{if($('[data-page="Schreibtisch"]')?.classList.contains('active')&&!_tippendGerade()){loadConfirmations();loadReviews()}},8000);
+$('#loadNotifications')?.addEventListener('click',loadNotifications);async function loadNotifications(){try{let d=await api('/api/notifications');$('#notifications').innerHTML=d.slice(0,5).map(n=>`<div class=row><span>${esc(n.message||'')}</span><span><small>${esc((n.created_at||'').slice(0,16).replace('T',' '))}</small> <button onclick="markNotificationRead('${esc(n.id)}')">Gelesen</button></span></div>`).join('')||'<p>Keine ungelesenen Meldungen.</p>'}catch(e){toast(e.message)}}
 window.markNotificationRead=async id=>{try{await api(`/api/notifications/${id}/read`,{method:'POST'});loadNotifications()}catch(e){toast(e.message)}};
+$('#readAllNotifications')?.addEventListener('click',async()=>{try{let r=await api('/api/notifications/read_all',{method:'POST'});toast(`${r.markiert} als gelesen markiert.`);loadNotifications()}catch(e){toast(e.message)}});
 let reviewArt='';
-$$('.toggle.rev').forEach(b=>b.onclick=()=>{reviewArt=reviewArt===b.dataset.art?'':b.dataset.art;show('System');$('#reviews')?.scrollIntoView({behavior:'smooth'})});
-$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews'+(reviewArt?'?art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.map(v=>`<article class="card agentcard"><span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun><button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button></div></article>`).join('')||`<p>${reviewArt?'Nichts zur Abnahme in dieser Art.':'Nichts zur Abnahme.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art)}catch(e){toast(e.message)}}
+// Die Abnahme-Liste (#reviews) steht auf dem Schreibtisch, nicht im System-Tab.
+// Der Klick fuehrte frueher nach 'System' und scrollte zu einem Element, das
+// dort gar nicht liegt – die Liste blieb ungeladen und unsichtbar.
+function revToggle(art){reviewArt=reviewArt===art?'':art;show('Schreibtisch');
+  loadReviews().then(()=>$('#reviews')?.scrollIntoView({behavior:'smooth'}))}
+$$('.toggle.rev').forEach(b=>b.onclick=()=>revToggle(b.dataset.art));
+// Solange das Team nicht zuverlaessig arbeitet: Tino sieht ALLES (status=alle) -
+// auch was Renate noch nicht entschieden hat (pruefung) oder zurueckgewiesen
+// hat (revision), nicht nur was sie freigegeben hat (offen). Ihre Entscheidung
+// filtert hier bewusst nichts weg.
+// entschieden_von unterscheidet, WER status='revision'/'offen' gesetzt hat -
+// Renates Zurueckweisung sieht in status/anmerkung sonst identisch aus wie
+// Tinos eigene. Vorher gab es dafuer nur ein rein clientseitiges Set, das bei
+// jedem Reload wieder leer war ("every bullshit is again in my queue",
+// 07.09.2026) - jetzt steht es in der DB (services/review.py) und ueberlebt
+// einen Reload.
+function revLabel(v){
+  if(v.status==='revision')return v.entschieden_von==='tino'?'↩ von dir zurückgewiesen':'↩ von Renate zurückgewiesen';
+  if(v.status==='offen')return '✅ von Renate freigegeben';
+  if(v.status==='pruefung')return '⏳ bei Renate';
+  if(v.status==='abgenommen')return '✔ abgenommen';
+  if(v.status==='abgebrochen')return '✕ abgebrochen';
+  return v.status;
+}
+$('#loadReviews').onclick=()=>{reviewArt='';loadReviews()};async function loadReviews(){try{let d=await api('/api/reviews?status=aktiv'+(reviewArt?'&art='+encodeURIComponent(reviewArt):''));$('#reviews').innerHTML=d.vorlagen.filter(v=>v.entschieden_von!=='tino').map(v=>{
+  const bild=(v.quelle||'').split(',').map(s=>s.trim()).find(s=>/\.(png|jpe?g|webp|gif)$/i.test(s));
+  const statuslabel=revLabel(v);
+  const aktionen=`<button onclick="openReview('${v.id}')">Ansehen</button><input id="an_${v.id}" placeholder="Anmerkung – nötig für eine Revision"><button onclick="reviewDecide('${v.id}','abnehmen')">Abnehmen</button><button class=ghost onclick="reviewDecide('${v.id}','revision')">Zurück damit</button>`;
+  return `<article class="card agentcard" data-review-id="${esc(v.id)}">${bild?`<img class="review-thumb" data-src="${esc(bild)}" alt="">`:''}<span class=eyebrow>${esc(v.art)} · ${esc(v.person||v.agent)}${v.runde>1?' · Runde '+v.runde:''} · ${esc(statuslabel)}</span><h3>${esc(v.titel)}</h3><pre class="auszug">${esc(v.auszug)||'<ohne Text>'}</pre><div class=agentrun>${aktionen}</div></article>`
+}).join('')||`<p>${reviewArt?'Nichts in dieser Art.':'Nichts offen.'}</p>`;tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
+$('#reviews').querySelectorAll('img.review-thumb[data-src]').forEach(async img=>{try{const r=await fetch(dateiUrl(img.dataset.src));if(!r.ok)return;img.src=URL.createObjectURL(await r.blob())}catch(e){}})}catch(e){toast(e.message)}}
 /* Ampeln zeigen nur den aktuellen Zustand: grün wenn etwas anliegt, sonst rot. */
-function ampeln(nachArt){if(!nachArt)return;$$('.toggle.rev').forEach(b=>{let n=nachArt[b.dataset.art]||0;b.classList.toggle('hat',n>0);b.classList.toggle('on',b.dataset.art===reviewArt);b.title=n?`${n} ${b.dataset.art} zur Freigabe`:`Nichts ${b.dataset.art} zur Freigabe`})}
+const REV_FEST=['grafik','post','email','newsletter'];
+function ampeln(nachArt){if(!nachArt)return;
+  // Arten ohne feste Ampel (dokument, recherche, sequenz, sonstiges) bekommen
+  // eine, sobald etwas offen ist – sonst faellt genau die Art durch, die keine
+  // Lampe hat. Nichts Offenes darf ohne sichtbaren Weg dorthin bleiben.
+  const extra=$('#revExtra');
+  if(extra)extra.innerHTML=Object.entries(nachArt).filter(([a,n])=>n>0&&!REV_FEST.includes(a))
+    .map(([a,n])=>`<button class="toggle rev" data-art="${esc(a)}" title="${n} ${esc(a)} zur Freigabe"><span class="lamp"></span><small>${esc(a[0].toUpperCase()+a.slice(1))}</small></button>`).join('');
+  $$('.toggle.rev').forEach(b=>{b.onclick=()=>revToggle(b.dataset.art);
+    let n=nachArt[b.dataset.art]||0;b.classList.toggle('hat',n>0);b.classList.toggle('on',b.dataset.art===reviewArt);
+    b.title=n?`${n} ${b.dataset.art} zur Freigabe`:`Nichts ${b.dataset.art} zur Freigabe`})}
 /* ---- Vorschau-Overlay: Texte formatiert, Bilder inline, Seiten gerendert ---- */
 function mdRender(t){const z=esc(t||'');const zeilen=z.split('\n');let html='',inList=false,inTable=false;
  const flush=()=>{if(inList){html+='</ul>';inList=false}if(inTable){html+='</table>';inTable=false}};
@@ -164,12 +337,21 @@ window.overlayDecide=async(id,was)=>{const a=($('#ovAn')?.value||'').trim();if(w
  try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');overlayHide();loadReviews()}catch(e){toast(e.message)}};
 /* ---- Aufträge ---- */
 $('#loadAuftraege').onclick=()=>loadAuftraege();
+window.toggleAuftrag=(idx,btn)=>{const row=document.getElementById('au-desc-'+idx);row.hidden=!row.hidden;btn.textContent=row.hidden?'Details':'Weniger'};
 async function loadAuftraege(){try{const d=await api('/api/auftraege');const offen=d.filter(a=>!['abgenommen','abgebrochen'].includes(a.status));
- $('#auftraege').innerHTML=offen.map(a=>`<article class=card><span class=eyebrow>${esc(a.agent)} · ${esc(a.status)}${a.faellig_am?' · fällig '+esc(a.faellig_am.slice(0,10)):''}</span><h3>${esc(a.titel)}</h3><details><summary class=small>Details</summary><p class=small>${esc(a.beschreibung||'')}</p></details></article>`).join('')||'<p>Keine offenen Aufträge.</p>'}catch(e){toast(e.message)}}
+  if(!offen.length){$('#auftraege').innerHTML='<p>Keine offenen Aufträge.</p>';return}
+  const rows=offen.map((a,i)=>`<tr><td>${esc(a.person||a.agent)}</td><td><span class=badge>${esc(a.status)}</span></td><td class=au-faellig>${a.faellig_am?esc(a.faellig_am.slice(0,10)):'–'}</td><td class=au-titel title="${esc(a.titel)}">${esc(a.titel)}</td><td><button class="ghost au-toggle" onclick="toggleAuftrag(${i},this)">Details</button></td></tr>
+    <tr class=au-desc id="au-desc-${i}" hidden><td colspan=5>${esc(a.beschreibung||'Keine Beschreibung.')}</td></tr>`).join('');
+  $('#auftraege').innerHTML=`<table class=auftragtable><thead><tr><th>Mitarbeiter</th><th>Status</th><th>Fällig</th><th>Titel</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}catch(e){toast(e.message)}}
 window.reviewDecide=async(id,was)=>{let a=($('#an_'+id)?.value||'').trim();if(was==='revision'&&!a)return toast('Für eine Revision brauche ich eine Anmerkung – sonst kommt dasselbe zurück.');try{await api(`/api/reviews/${id}/${was}`,{method:'POST',body:JSON.stringify({anmerkung:a})});toast(was==='abnehmen'?'Abgenommen.':'Zurück an den Verfasser.');loadReviews()}catch(e){toast(e.message)}};
 function tickReview(z){z=z||{};let n=z.offen||0,r=z.revision||0,p=z.pruefung||0,e=$('#tickReview');
  if(e)e.textContent=[n?`${n} offen`:'',p?`${p} bei Jude`:'',r?`${r} in Revision`:''].filter(Boolean).join(' · ')||'nichts offen'}
-async function pollReviews(){try{let d=await api('/api/reviews?limit=1');tickReview(d.zusammenfassung);ampeln(d.offen_nach_art)}catch(e){}finally{setTimeout(pollReviews,60000)}}pollReviews();
+async function pollReviews(){try{let d=await api('/api/reviews?limit=1');tickReview(d.zusammenfassung);ampeln(d.offen_nach_art);
+  // Liegt der Schreibtisch offen, auch die Liste nachziehen: sonst zeigt eine
+  // stundenlang offene Seite den Stand vom Seitenwechsel.
+  if(document.querySelector('section.active')?.dataset.page==='Schreibtisch')loadReviews()}
+  catch(e){}finally{setTimeout(pollReviews,60000)}}pollReviews();
 $('#loadMemory').onclick=loadMemory;async function loadMemory(){try{let d=await api('/api/memory'),s=d.stats;$('#memoryStats').textContent=`${s.active_memories} bestätigt · ${s.memory_candidates} Kandidaten · ${s.training_turns} lokal gespeicherte Trainingsturns · ${s.excluded_turns} ausgeschlossen`;$('#memoryItems').innerHTML=d.items.map(x=>`<article class=card><span class=eyebrow>${esc(x.status)} · ${esc(x.source)}</span><p>${esc(x.content)}</p><small>${x.occurrences}× erkannt · ${fmt(x.updated_at)}</small><div>${x.status==='candidate'?`<button onclick="approveMemory('${x.id}')">Übernehmen</button> `:''}<button onclick="forgetMemory('${x.id}')" style="background:#64748b">Vergessen</button></div></article>`).join('')||'<p>Noch keine Erinnerungen.</p>'}catch(e){toast(e.message)}}
 $('#memoryForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/memory',{method:'POST',body:JSON.stringify({content:$('#memoryContent').value})});$('#memoryContent').value='';loadMemory()}catch(x){toast(x.message)}};window.approveMemory=async id=>{try{await api(`/api/memory/${id}/approve`,{method:'POST'});loadMemory()}catch(e){toast(e.message)}};window.forgetMemory=async id=>{try{await api(`/api/memory/${id}`,{method:'DELETE'});loadMemory()}catch(e){toast(e.message)}};
 $('#loadRouting').onclick=loadRouting;async function loadRouting(){try{let s=(await api('/api/status')).router,u=s.usage,t=s.routing_training;$('#routingStats').innerHTML=`<div class=stat><b>$${Number(s.budget_used_usd).toFixed(4)} / $${Number(s.budget_limit_usd).toFixed(2)}</b>Monatsbudget</div><div class=stat><b>${Number(u.input_tokens).toLocaleString('de-DE')}</b>Input-Tokens</div><div class=stat><b>${Number(u.output_tokens).toLocaleString('de-DE')}</b>Output-Tokens</div><div class=stat><b>${t.escalated}/${t.total}</b>Eskalationen</div>`;$('#routingUsage').innerHTML=s.usage_by_model.map(x=>`<div class=source><b>${esc(x.model)}</b> · ${x.calls} Aufrufe · $${Number(x.cost_usd).toFixed(5)}<br><small>${Number(x.input_tokens).toLocaleString('de-DE')} in · ${Number(x.output_tokens).toLocaleString('de-DE')} out · ${Number(x.cached_input_tokens).toLocaleString('de-DE')} Cache · Tarif ${esc(x.tariffs||'standard')}</small></div>`).join('')||'Noch kein Verbrauch.';$('#routingHistory').innerHTML=s.recent_routes.map(x=>`<div class=source><b>${esc(x.final_model||x.selected_model)}</b> · ${esc(x.task_type)} · Stufe ${x.complexity}<br><small>${x.escalated?'eskaliert':'lokal/erste Wahl'} · ${x.latency_ms} ms · ${x.user_feedback===1?'passt':x.user_feedback===-1?'unzureichend':'ohne Feedback'}</small></div>`).join('')||'Noch keine Entscheidungen.'}catch(e){toast(e.message)}}
@@ -194,6 +376,7 @@ async function pollSystem(){try{const s=await api('/api/system');
   if(t.gpu!=null)setGauge('#gGpuTemp',t.gpu,110,`${t.gpu.toFixed(0)}`);
   if(t.nvme!=null)setGauge('#gNvme',t.nvme,90,`${t.nvme.toFixed(0)}`);
   setGauge('#gCpu',s.cpu_percent,100,`${s.cpu_percent.toFixed(0)}`);
+  if(s.gpu_percent!=null)setGauge('#gGpu',s.gpu_percent,100,`${s.gpu_percent.toFixed(0)}`);
 }catch(e){}finally{setTimeout(pollSystem,2500)}}
 async function pollWeather(){try{const w=await api('/api/weather');
   $('#hudWeather').innerHTML=`<b>${w.temperature!=null?w.temperature.toFixed(1):'–'}°C</b> <span class=cond>${esc(w.condition)}</span><br><span class=small>gefühlt ${w.feels_like??'–'}° · ${w.min??'–'}°/${w.max??'–'}° · Wind ${w.wind_kmh??'–'} km/h · ${esc(w.location.split(',')[1]||'')}</span>`
@@ -225,9 +408,8 @@ async function pollTokens(){try{const s=await api('/api/status'),u=s.router.usag
   if(c&&c.context_length){const p=Math.min(100,c.input_tokens/c.context_length*100);
     const cls=p>=88?'hot':(p>=70?'warn':'');
     ctx=`<div class="row ctx ${cls}" title="${c.model}: ${c.input_tokens.toLocaleString('de-DE')} von ${c.context_length.toLocaleString('de-DE')} Token"><span>Kontext</span><b>${p.toFixed(0)}%</b><i class=ctxbar><i style="width:${p.toFixed(1)}%"></i></i></div>`}
-  let gq='';if(s.groq){const g=s.groq,p=g.anteil,cls=g.gesperrt?'hot':(p>=70?'warn':'');
-  const t=g.gesperrt?`gesperrt bis ${new Date(g.frei_ab).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`:`${Number(g.rest).toLocaleString('de-DE')} frei`;
-  gq=`<div class="row ctx ${cls}" title="Groq kostenfrei: ${Number(g.verbraucht).toLocaleString('de-DE')} von ${Number(g.limit).toLocaleString('de-DE')} Token heute, Reserve ${Number(g.reserve).toLocaleString('de-DE')}"><span>Groq</span><b>${t}</b><i class=ctxbar><i style="width:${Math.min(100,p)}%"></i></i></div>`}
+  // Groq-Anzeige am 02.09.2026 entfernt, zusammen mit dem Provider selbst.
+  const gq='';
   $('#hudTokens').innerHTML=`<div class=row><span>Input</span><b>${Number(u.input_tokens).toLocaleString('de-DE')}</b></div><div class=row><span>Output</span><b>${Number(u.output_tokens).toLocaleString('de-DE')}</b></div><div class=row><span>Budget</span><b>$${Number(s.router.budget_used_usd).toFixed(3)} / $${Number(s.router.budget_limit_usd).toFixed(0)}</b></div>`+ctx+gq
 }catch(e){}finally{setTimeout(pollTokens,15000)}}
 async function pollTicker(){if(toggles.market){try{const x=await api('/api/market/XAU%2FUSD?interval=1h&limit=2&refresh=true');const c=x.candles.at(-1),pr=x.candles.at(-2);if(c)$('#tickXau').innerHTML=`<span class="${!pr||c.close>=pr.close?'up':'down'}">${c.close.toFixed(2)}</span>`}catch(e){}

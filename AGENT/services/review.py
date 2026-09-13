@@ -35,8 +35,10 @@ from services.database import connection
 ARTEN = {"post", "email", "newsletter", "sequenz", "dokument", "recherche",
          "grafik", "sonstiges"}
 
-#: Die vier Arten, die im Cockpit eine eigene Ampel bekommen – alles andere
-#: sammelt sich in der Abnahme-Liste im System-Tab.
+#: Diese vier Ampeln stehen im Cockpit immer da, auch mit 0 – sie sollen rot
+#: leuchten, nicht verschwinden. Alle übrigen Arten bekommen eine Ampel, sobald
+#: etwas von ihnen offen ist (siehe ``offen_nach_art``); vorher wären es acht
+#: Lampen, von denen die Hälfte dauerhaft aus ist.
 COCKPIT_ARTEN = ("grafik", "post", "email", "newsletter")
 
 
@@ -61,6 +63,14 @@ class ReviewQueue:
                 db.execute("ALTER TABLE reviews ADD COLUMN verlauf TEXT NOT NULL DEFAULT ''")
             if "score" not in spalten:
                 db.execute("ALTER TABLE reviews ADD COLUMN score INTEGER")
+            if "entschieden_von" not in spalten:
+                # Ohne dieses Feld ist 'revision' nicht von 'wer hat das
+                # entschieden' zu unterscheiden: Renates Zurueckweisung und
+                # Tinos eigene sehen in status/anmerkung identisch aus. Die
+                # Oberflaeche behalf sich bisher mit einem rein clientseitigen,
+                # nicht dauerhaften Ausschluss (verschwand bei jedem Reload
+                # wieder - 07.09.2026, "every bullshit is again in my queue").
+                db.execute("ALTER TABLE reviews ADD COLUMN entschieden_von TEXT NOT NULL DEFAULT ''")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_agent ON reviews(agent)")
 
@@ -99,31 +109,109 @@ class ReviewQueue:
                 "ORDER BY created_at ASC LIMIT ?",
                 (limit,))]
 
-    def freigeben(self, review_id: str, anmerkung: str = "") -> dict:
+    def freigeben(self, review_id: str, anmerkung: str = "", akteur: str = "") -> dict:
         """Jude reicht nach oben durch – ab jetzt sichtbar für Tino."""
-        return self._entscheiden(review_id, "offen", anmerkung)
+        return self._entscheiden(review_id, "offen", anmerkung, akteur)
 
     def offene_revisionen(self, agent: str) -> list[dict]:
-        """Was dieser Mitarbeiter überarbeiten soll — kommt in seinen Prompt."""
+        """Was dieser Mitarbeiter überarbeiten soll — kommt in seinen Prompt.
+
+        ``verlauf`` (die bisherige Beanstandungs-Historie) fehlte hier bis
+        07.09.2026 komplett - bei einem Stueck in Runde 11 sah der Mitarbeiter
+        beim naechsten Lauf nur die eine Zeile der aktuellen Anmerkung ('zu
+        wenig'), nichts von den zehn Runden davor. Ohne die Historie liess
+        sich nicht erkennen, ob derselbe Einwand wiederholt uebersehen wird
+        oder ob jede Runde etwas anderes bemaengelt."""
         with connection() as db:
             return [dict(row) for row in db.execute(
-                "SELECT id,art,titel,anmerkung,runde,substr(inhalt,1,3000) AS inhalt FROM reviews "
+                "SELECT id,art,titel,anmerkung,runde,verlauf,"
+                "substr(inhalt,1,3000) AS inhalt FROM reviews "
                 "WHERE agent=? AND status='revision' ORDER BY created_at", (agent,))]
+
+    def offene_gleiche(self, agent: str, art: str, titel: str) -> dict | None:
+        """Liegt von diesem Mitarbeiter dieselbe Sache schon in der Schlange?
+
+        Ohne diese Abfrage legte jeder Wiederholungslauf eine neue Zeile an,
+        statt an die vorhandene anzuknuepfen: gemessen 04.09.2026 lagen 69 mal
+        dieselbe E-Mail 'Kostenlose KI-Potenzialanalyse' und 41 mal dieselbe
+        'Infografik 2 fuer KW 36' in der Pruefung, alle in Runde 1. Die
+        Wiedervorlage-Automatik griff nicht, weil sie nur ``status='revision'``
+        kannte – zum Zeitpunkt des erneuten Einreichens stand die Vorgaengerin
+        aber noch auf ``pruefung``.
+
+        ``'offen'`` (bereits von Renate freigegeben, wartet auf Tino) fehlte
+        hier bis 11.09.2026 ebenfalls: eine bereits freigegebene, gleichnamige
+        Vorlage wurde von einem spaeteren Lauf desselben Mitarbeiters NICHT
+        gefunden, weil ihr Status inzwischen 'offen' statt 'pruefung'/
+        'revision' war - Folge war eine zweite, komplett eigenstaendige Zeile
+        mit identischem Titel, die getrennt durch Renates Pruefung lief und am
+        Ende ALS DUPLIKAT NEBEN der ersten in Tinos Abnahme-Warteschlange
+        landete (beobachtet bei scraper: zwei 'Trend-Rangliste 11.09.2026'-
+        Karten gleichzeitig bei Renate/Tino). 'abgenommen' bleibt bewusst
+        aussen vor: ein bereits von Tino abgeschlossenes Stueck soll ein
+        spaeterer, echter neuer Tagesbericht NICHT stillschweigend ueberschreiben.
+        """
+        titel = str(titel).strip()[:300]
+        if not titel:
+            return None
+        with connection() as db:
+            row = db.execute(
+                "SELECT id,art,titel,status,runde FROM reviews "
+                "WHERE agent=? AND art=? AND lower(titel)=lower(?) "
+                "AND status IN ('pruefung','revision','offen') ORDER BY created_at LIMIT 1",
+                (agent, str(art).strip().lower(), titel)).fetchone()
+        return dict(row) if row else None
+
+    def anzahl_wortgleich(self, agent: str, art: str, ausser_id: str, inhalt: str,
+                         status_liste: tuple[str, ...] = ("offen", "abgenommen", "pruefung")) -> int:
+        """Wie oft liegt genau dieser Text schon von diesem Mitarbeiter vor,
+        ausser der gerade geprueften Zeile selbst? Zieht ``_chefpruefung``s
+        Dubletten-Erkennung (services/team.py) aus roher SQL hierher - dieselbe
+        Verkapselung, die diese Klasse fuer 'reviews' sonst schon durchgaengig
+        hat."""
+        platzhalter = ",".join("?" for _ in status_liste)
+        with connection() as db:
+            return db.execute(
+                f"SELECT COUNT(*) FROM reviews WHERE agent=? AND art=? "
+                f"AND id!=? AND inhalt=? AND status IN ({platzhalter})",
+                (agent, art, ausser_id, inhalt, *status_liste)).fetchone()[0]
+
+    def agenten_mit_offenen_revisionen(self) -> list[dict]:
+        """Für den Auftragswächter: wer hat liegengebliebene Revisionen?
+
+        Ohne diesen Aufruf sah ein Mitarbeiter seine Revision erst beim
+        nächsten TÄGLICHEN Lauf wieder – eine mittags zurückgewiesene
+        Vorlage blieb bis zum nächsten Morgen unbearbeitet liegen, obwohl
+        der Auftragswächter stündlich für genau diesen Zweck läuft."""
+        with connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT agent, COUNT(*) AS anzahl, MIN(created_at) AS aeltestes FROM reviews "
+                "WHERE status='revision' GROUP BY agent ORDER BY aeltestes")]
 
     # ---------------------------------------------------------------- Tino
 
     def liste(self, status: str = "offen", limit: int = 50, art: str | None = None) -> list[dict]:
         art = (art or "").strip().lower() or None
+        # 'aktiv' = alles, was noch eine Entscheidung braucht (pruefung/offen/
+        # revision) - NICHT abgenommen/abgebrochen. Ohne diese eigene Stufe
+        # holte 'alle' bei jedem 8s-Refresh saemtliche jemals abgenommenen
+        # Vorlagen mit (43 von 55 gemessen 07.09.2026) - reine Ballastfracht,
+        # die Tino nie wieder etwas angeht, aber jedes Mal neu gerendert wurde
+        # ("cleaner? yeah right...").
+        status_filter = "status IN ('pruefung','offen','revision')" if status == "aktiv" else "(?='alle' OR status=?)"
+        params = (art, art, max(1, min(int(limit), 200))) if status == "aktiv" else \
+            (status, status, art, art, max(1, min(int(limit), 200)))
         with connection() as db:
             # Auszug statt Volltext: bei 50 Vorlagen à 12.000 Zeichen waere die
             # Liste sonst ein halbes Megabyte. Den Rest holt die Oberflaeche
             # ueber ``zeigen`` nach, wenn Tino ihn aufklappt.
             return [dict(row) for row in db.execute(
                 "SELECT id,created_at,agent,person,art,titel,quelle,status,anmerkung,runde,score,"
+                "entschieden_von,"
                 "substr(inhalt,1,700) AS auszug, length(inhalt) AS laenge "
-                "FROM reviews WHERE (?='alle' OR status=?) AND (? IS NULL OR art=?) "
+                f"FROM reviews WHERE {status_filter} AND (? IS NULL OR art=?) "
                 "ORDER BY created_at DESC LIMIT ?",
-                (status, status, art, art, max(1, min(int(limit), 200))))]
+                params)]
 
     def zeigen(self, review_id: str) -> dict:
         with connection() as db:
@@ -132,8 +220,8 @@ class ReviewQueue:
             raise KeyError("Unbekannte Vorlage.")
         return dict(row)
 
-    def abnehmen(self, review_id: str, anmerkung: str = "") -> dict:
-        result = self._entscheiden(review_id, "abgenommen", anmerkung)
+    def abnehmen(self, review_id: str, anmerkung: str = "", akteur: str = "") -> dict:
+        result = self._entscheiden(review_id, "abgenommen", anmerkung, akteur)
         try:
             from services.auftraege import Auftragsbuch
             Auftragsbuch().sync_von_review(review_id, "abgenommen")
@@ -141,26 +229,47 @@ class ReviewQueue:
             pass
         return result
 
-    def revision(self, review_id: str, anmerkung: str) -> dict:
+    def revision(self, review_id: str, anmerkung: str, akteur: str = "") -> dict:
         """Zurück an den Mitarbeiter. Die Anmerkung ist Pflicht — ohne sie weiß
         er nicht, was zu ändern ist, und liefert dasselbe noch einmal."""
         if not str(anmerkung).strip():
             raise ValueError("Für eine Revision wird eine Anmerkung benötigt.")
-        result = self._entscheiden(review_id, "revision", anmerkung)
+        result = self._entscheiden(review_id, "revision", anmerkung, akteur)
         try:
             from services.auftraege import Auftragsbuch
             Auftragsbuch().sync_von_review(review_id, "revision")
         except Exception:
             pass
+        # Sofort nachfassen statt auf den naechsten Poll-Tick zu warten
+        # (11.09.2026 - Tino: eine Revision soll nicht liegen bleiben).
+        try:
+            from services.scheduler import SchedulerService
+            sched = SchedulerService.aktuelle()
+            if sched is not None:
+                sched.dispatch_now(result["agent"],
+                                   "Du hast eine offene Revision - siehe oben im Systemprompt. "
+                                   "Arbeite sie ab, bevor du etwas Neues beginnst.")
+        except Exception:
+            pass
         return result
 
     def erledigt(self, review_id: str, inhalt: str | None = None,
-                 titel: str | None = None) -> dict:
+                 titel: str | None = None, quelle: str | None = None) -> dict:
         """Der Mitarbeiter hat die Revision eingearbeitet.
 
         Zurück auf ``pruefung``, nicht direkt zu Tino: auch die zweite Fassung
         sieht Jude zuerst. Es entsteht keine neue Zeile – dieselbe wandert eine
         Runde weiter, damit nachvollziehbar bleibt, wie oft etwas zurückkam.
+
+        ``quelle`` fehlte hier bis 06.09.2026 komplett - eine Ueberarbeitung
+        konnte ``inhalt``/``titel`` aendern, aber nie die Quelle/Datei, egal
+        was der Mitarbeiter tatsaechlich neu erzeugt hatte. Eine zweite oder
+        dritte Bildfassung (neuer Dateipfad von generate_image) landete damit
+        nie in der Vorlage - sie zeigte weiter auf die erste, oft bereits
+        zurueckgewiesene Datei. Das faellt nicht nur optisch auf: die
+        automatische Bildpruefung (services/team.py, ``_chefpruefung``) liest
+        genau dieses Feld, um zu pruefen, ob ein Bild vorliegt - sie pruefte
+        damit staendig die falsche, alte Datei.
         """
         with connection() as db:
             zeile = db.execute("SELECT id, status, runde, anmerkung FROM reviews WHERE id=?",
@@ -175,20 +284,23 @@ class ReviewQueue:
                 "THEN verlauf || '— Runde ' || runde || ': ' || anmerkung || char(10) "
                 "ELSE verlauf END, "
                 "status='pruefung', runde=runde+1, anmerkung='', "
-                "inhalt=COALESCE(?,inhalt), titel=COALESCE(?,titel), entschieden_am=NULL "
+                "inhalt=COALESCE(?,inhalt), titel=COALESCE(?,titel), "
+                "quelle=COALESCE(?,quelle), entschieden_am=NULL, entschieden_von='' "
                 "WHERE id=?",
                 (str(inhalt)[:12000] if inhalt else None,
-                 str(titel)[:300] if titel else None, review_id))
+                 str(titel)[:300] if titel else None,
+                 str(quelle)[:500] if quelle else None, review_id))
         return self.zeigen(review_id)
 
-    def _entscheiden(self, review_id: str, status: str, anmerkung: str) -> dict:
+    def _entscheiden(self, review_id: str, status: str, anmerkung: str, akteur: str = "") -> dict:
         with connection() as db:
             treffer = db.execute("SELECT id FROM reviews WHERE id=?", (review_id,)).fetchone()
             if treffer is None:
                 raise KeyError("Unbekannte Vorlage.")
-            db.execute("UPDATE reviews SET status=?, anmerkung=?, entschieden_am=? WHERE id=?",
+            db.execute("UPDATE reviews SET status=?, anmerkung=?, entschieden_am=?, "
+                       "entschieden_von=? WHERE id=?",
                        (status, str(anmerkung)[:2000], datetime.now(timezone.utc).isoformat(),
-                        review_id))
+                        str(akteur).strip(), review_id))
         return self.zeigen(review_id)
 
     def score_setzen(self, review_id: str, score: int) -> None:
@@ -204,11 +316,15 @@ class ReviewQueue:
     def offen_nach_art(self) -> dict:
         """Wie viel je Art auf Tino wartet – speist die Ampeln im Cockpit.
 
-        Jede Art ist immer enthalten, auch mit 0: die Ampel soll rot leuchten,
-        nicht verschwinden.
+        **Alle** Arten sind enthalten, nicht nur die vier festen. Vorher zählte
+        diese Funktion ausschließlich ``COCKPIT_ARTEN``; ein offenes
+        ``dokument`` – genau der Fall vom 17.08. – tauchte damit in keiner Ampel
+        auf und war im Cockpit unsichtbar. Die vier festen stehen immer da (auch
+        mit 0), die übrigen erscheinen, sobald etwas von ihnen offen ist.
         """
         with connection() as db:
             zeilen = db.execute(
                 "SELECT art, COUNT(*) c FROM reviews WHERE status='offen' GROUP BY art").fetchall()
         gezaehlt = {row["art"]: row["c"] for row in zeilen}
-        return {art: gezaehlt.get(art, 0) for art in COCKPIT_ARTEN}
+        return {art: gezaehlt.get(art, 0)
+                for art in (*COCKPIT_ARTEN, *sorted(ARTEN - set(COCKPIT_ARTEN)))}

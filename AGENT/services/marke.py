@@ -12,28 +12,80 @@ ohne das Bild neu zu erzeugen.
 
 from __future__ import annotations
 
+import base64
+import mimetypes
 from html import escape
 
 #: Farbwerte der Marke.
-SCHWARZ = "#1a1a1a"
-SCHWARZ_MATT = "#1d1d1d"
-GRUEN_TIEF = "#0f241c"
-GRUEN_SMARAGD = "#112a20"
-GRUEN_FOREST = "#10412e"
-GRUEN_AKZENT = "#55863f"
+# Exakte Werte aus project_files/nurovelle-tokens.css (kanonische Quelle,
+# gespiegelt aus styleguide.md) – die vorherigen Werte hier waren am
+# 14.08. von der Live-Seite abgelesen und wichen an mehreren Stellen ab.
+SCHWARZ = "#050706"
+SCHWARZ_MATT = "#080b09"
+GRUEN_TIEF = "#0a1913"
+GRUEN_SMARAGD = "#112b21"
+GRUEN_FOREST = "#163a26"  # entspricht --color-emerald-bright
+GRUEN_AKZENT = "#163a26"  # kein eigener heller Akzentgruen-Ton im Styleguide – bislang erfunden, hier auf Emerald Bright vereinheitlicht
+GUNMETAL = "#252b2c"
+GUNMETAL_DUNKEL = "#15191a"
 GOLD_KANTE = "#a55d07"
 GOLD_GLANZ = "#fae385"
 GOLD_MITTE = "#b47e11"
-HELL = "#e4e0d6"
+# Bestätigt von Tino (03.09.): so ist es live auf der Homepage umgesetzt,
+# unabhängig davon, wie die Semantic-Mapping-Kommentare in nurovelle-tokens.css
+# es beschreiben – Rahmen bekommen den 2-Farben-Verlauf, das goldene Wort in
+# Überschriften den 4-Farben-Verlauf.
+GOLD_RAHMEN_VERLAUF = ("#dfbd69", "#926f34")           # Rahmen/Karten-Frames (2 Farben)
+GOLD_WORT_VERLAUF = ("#ae8625", "#f7ef8a", "#d2ac47", "#edc967")  # das eine goldene Wort (4 Farben)
+GOLD_DOKUMENT_VERLAUF = ("#c5a059", "#fdf0cd", "#d4af37")  # Rückfall für Medien ohne CSS-Verlauf (E-Mail-Volltext)
+HELL = "#f5f7f4"
 HELL_GEDECKT = "#b9c3bd"
 
 #: Schriften. Exo 2 für Überschriften, Inter für Fließtext – wie auf der Seite.
 SCHRIFT_TITEL = "'Exo 2', 'Trebuchet MS', sans-serif"
 SCHRIFT_TEXT = "Inter, 'DejaVu Sans', sans-serif"
 
-CLAIM = "Building intelligent System"
+CLAIM = "Building intelligent systems"
 
-BRAND_BRIEF = f"""NUROVELLE-BRAND-REGELN – VERBINDLICH FÜR JEDES ERZEUGNIS
+# An JEDEN generate_image-Aufruf angehaengt, nicht nur dem Mitarbeiter als
+# Anweisung mitgegeben: ein Prompt ohne diese Zeilen erzeugte zuverlaessig
+# beliebige Bilder, weil die Marke nur in der Rolle stand, nicht im
+# tatsaechlichen API-Aufruf (gemessen 03.09.2026, "branding isnt really
+# considered on generating anything"). Aus styleguide.md Abschnitt 17.
+BILD_STIL_SUFFIX = (
+    # Frueher standen Schwarz/Smaragdgruen mit Hex-Wert nebeneinander und
+    # "Gunmetal-Flaechen" ganz ohne eigenen Hex-Wert, ohne Mengen-/Rangangabe.
+    # Ergebnis (wiederholt beobachtet, u.a. Angebotsuebergabe-Post und
+    # Infografik 2, je ueber 5 Revisionsrunden): Bilder wurden ueberwiegend
+    # gruen statt Gunmetal-dominiert, weil Smaragdgruen der einzige Farbwert
+    # mit praeziser Zahl war und das Modell sich daran verankerte. Fix: jede
+    # Flaeche bekommt einen Hex-Wert UND einen expliziten Rang/Mengenanteil,
+    # aus styleguide.md Abschnitt 6/9 ("Gunmetal als technische Flaeche",
+    # "dunkles Gunmetal / Smaragd / Gold-Highlights" - Gunmetal zuerst).
+    f" Bildstil, in dieser Rangfolge nach Flaechenanteil: (1) Gunmetal "
+    f"({GUNMETAL}, dunkler Uebergang zu {GUNMETAL_DUNKEL}) ist die dominante "
+    "Flaeche und das Hauptmaterial - metallisch, technisch, nimmt den groessten "
+    f"Teil des Bildes ein. (2) mattes Schwarz ({SCHWARZ}) als Tiefe/Grund "
+    f"dahinter. (3) dunkles Smaragdgruen ({GRUEN_SMARAGD}) NUR als Schatten, "
+    "Unterton oder schwacher Reflex innerhalb der Gunmetal-Flaechen - niemals "
+    "eine eigene grosse Flaeche, niemals die Hauptfarbe, niemals mehr Flaeche "
+    f"als Gunmetal. (4) Gold ({GOLD_MITTE}) ganz zuletzt und nur sparsam als "
+    "einzelner Akzent (Kante, Lichtsaum oder Detail) - kein zweiter Akzent, "
+    "kein Farbverlauf quer durchs Bild. Raeumliche Form, technische "
+    "Glas-/Metallwirkung, ruhiges gerichtetes Licht - wirkt wie eine teure "
+    "Manufaktur, nicht wie eine Werbeanzeige. Kein Text, keine Labels, keine "
+    "Logos im Bild, sofern nicht ausdruecklich verlangt. Ausgeschlossen: "
+    "grossflaechiges oder dominantes Gruen, Cyan, Blau als Hauptfarbe, Violett, "
+    "Neon, Regenbogenverlaeufe, generische KI-Roboter, Stockfoto-Buerowelt, "
+    "Sci-Fi-Konsolen, Gaming- oder Casino-Anmutung."
+)
+
+BRAND_BRIEF = f"""NUROVELLE-BRAND-REGELN – VERBINDLICH FÜR JEDES KUNDEN-/ÖFFENTLICHKEITSGERICHTETE ERZEUGNIS
+Gilt für: Landingpages, Social-Posts, Banner, Newsletter, Dokumente/Grafiken, die Tino oder ein Kunde zu sehen bekommt.
+Gilt NICHT für: interne Status-/Tagesreports an Tino (z.B. "heute nichts zu tun", Lead-Zahlen, Fehlermeldungen). Ein
+interner Report bekommt KEINE Tagline, KEINEN CTA, KEIN Gold-Wort und KEINE Marken-Textbausteine – er berichtet nur,
+was passiert ist. Diese Regeln auf einen internen Report zu pressen (gemessen 03.09.2026 bei outreach: ein "heute
+nichts zu tun"-Report bekam Tagline und CTA angehängt) ist selbst ein Fehler, kein Pflichtprogramm.
 Marke: Nurovelle.
 Wortmarke: Nurovelle.
 Tagline: {CLAIM}.
@@ -41,22 +93,31 @@ Kurz-Claim: Klarheit. Prozesse. Zukunft.
 Schriften: {SCHRIFT_TITEL} für Überschriften und {SCHRIFT_TEXT} für Fließtext.
 Farben: matter schwarzer/graphitfarbener Grund ({SCHWARZ}, {SCHWARZ_MATT}), tiefes Grün ({GRUEN_TIEF}, {GRUEN_SMARAGD}, {GRUEN_FOREST}), Emerald-Akzent ({GRUEN_AKZENT}) und Gold nur sparsam ({GOLD_KANTE}, {GOLD_MITTE}, {GOLD_GLANZ}).
 Verläufe: den vorhandenen Goldverlauf für Wortmarke, feine Linien und einzelne Hervorhebungen; den vorhandenen Grundverlauf von tiefem Grün zu mattem Schwarz für Flächen. Keine neuen Verläufe erfinden.
-Karten: matte dunkle Flächen, klare Kanten, ruhige hochwertige Abstände; Emerald für Zustände und Akzente, Gold sparsam für Titel oder eine tragende Hervorhebung.
+Karten: matte dunkle Flächen, klare Kanten, ruhige hochwertige Abstände. Jede Karte ist entweder eine Gold-Karte oder eine Grün(Smaragd)-Karte – fester Kontrast, nie beliebig kombiniert: eine Gold-Karte bekommt IMMER einen Smaragd-Rahmen, eine Grün-Karte bekommt IMMER einen Gold-Verlaufsrahmen. Diese Zuordnung ist systemweit fix, nicht pro Erzeugnis neu entscheiden.
+Goldwort-Regel (aus dem Styleguide, medienabhängig!): Auf der Website trägt die ganze Überschrift den Goldverlauf. Überall sonst (Dokumente, Angebote, Social-Beiträge, Newsletter) trägt GENAU EIN Wort pro Überschrift/Unterzeile den Goldverlauf – das inhaltlich tragende, nie zwei, nie die ganze Zeile; findet sich kein tragendes Wort, wird die Überschrift gekürzt statt ein beliebiges Wort einzufärben. Das Wort "Nurovelle" wird IMMER in Gold gesetzt, unabhängig vom Medium.
+Drei Gold-Verläufe, nicht austauschbar (so live auf der Homepage umgesetzt): Rahmen/Karten-Frames bekommen den 2-Farben-Verlauf ({GOLD_RAHMEN_VERLAUF[0]} → {GOLD_RAHMEN_VERLAUF[1]}). Das eine goldene Wort in Überschriften bekommt den 4-Farben-Verlauf ({', '.join(GOLD_WORT_VERLAUF)}). Nur wenn kein CSS-Verlauf möglich ist (z. B. reiner E-Mail-Text ohne background-clip-Unterstützung): Vollton {GOLD_MITTE} oder ersatzweise der 3-Farben-Dokumentverlauf ({', '.join(GOLD_DOKUMENT_VERLAUF)}).
+Verbindliche Quelle: project_files/styleguide.md (mit read_project_file lesen) – bei Widerspruch zu diesem Kurzbrief gilt der Styleguide.
 Bevorzugter Vorlagenordner: austausch/an-team/vorlagen/nurovelle/.
 Logo: austausch/an-team/vorlagen/nurovelle/nurovelle_logo_gold.png.
 Wortmarke: austausch/an-team/vorlagen/nurovelle/Nurovelle_schrift_gold.png.
 Freigegebene Referenzen: launchpost.png, Potentialanalyse_post.png, karussell_5_wege.zip und Karrussell_7_Prozesse,.zip in diesem Ordner. ZIP-Dateien vor Verwendung vollständig prüfen und nicht als einzelne ungeprüfte Bilder interpretieren.
 Weitere Logos, Icons und Karten: ausschließlich freigegebene Dateien aus diesem Vorlagenordner und data/marke/assets/ verwenden. Keine Ersatzlogos, generischen KI-Symbole oder erfundenen Icons.
-Dokumente und Grafiken: Wortmarke Nurovelle und die Tagline sichtbar nach freigegebener Vorlage einsetzen; Farben, Verläufe, Karten und Icons vor der Abgabe prüfen.
+CTA: Haupt-CTA ist ausschließlich "Kostenlose KI-Potenzialanalyse" mit Link nurovelle.de/analyse.html – wortgleich verwenden, nicht umformulieren. Sekundär-CTAs (z. B. KI-Quick-Start) nur wortgleich aus austausch/an-team/09_monetarisierung.md übernehmen, sonst weglassen. Keine neuen Angebote, Rabatte, Buttons oder CTA-Texte erfinden.
+CTA-Umsetzung ist NICHT frei gestaltbar: die Pfeil-Wechsel/Gold-Fill-Interaktion aus austausch/an-team/vorlagen/nurovelle/cta-vorlage.html ist wortgleich das komplette Markup und CSS, das jeder Nurovelle-CTA verwendet. Bei einem HTML/CSS-Erzeugnis mit CTA IMMER zuerst diese Datei mit read_project_file lesen und Markup+CSS 1:1 übernehmen (nur href/Text anpassen) – ein aus der Beschreibung nachgebauter CTA sieht zuverlässig anders aus als das Original.
+Dokumente und Grafiken: Wortmarke Nurovelle, die Tagline und die freigegebene CTA sichtbar nach freigegebener Vorlage einsetzen; Farben, Verläufe, Karten, Icons und CTA vor der Abgabe prüfen.
+PREMIUM-MASSSTAB, bisher regelmäßig verfehlt: reiner Fließtext ohne Bilder, Icons, Karten oder Formen ist NICHT premium und wird nicht abgenommen. Jedes Dokument/jede Grafik/Landingpage braucht sichtbare visuelle Elemente – Bilder aus dem Vorlagenordner, Icons, Karten mit Rahmen, das Cube-/Glas-Bildstil aus §17 des Styleguides. Ein Text mit Überschrift und Absätzen, aber ohne echte Grafik-/Bildkomponente, gilt als unfertig, unabhängig davon, wie gut der Text selbst ist.
 Nie verwenden: Blau als Markenfarbe, alte Marken wie Autonova oder Politara, beliebige Stock-/Roboteroptik oder nicht belegte Logos."""
 
 #: Gemeinsame Grundlage: Verlauf, Goldkante, Schriftimport.
 _DEFS = f"""
   <defs>
     <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#a54e07"/><stop offset="35%" stop-color="{GOLD_MITTE}"/>
-      <stop offset="55%" stop-color="#fef1a2"/><stop offset="75%" stop-color="#bc881b"/>
-      <stop offset="100%" stop-color="#a54e07"/>
+      <stop offset="0%" stop-color="{GOLD_RAHMEN_VERLAUF[0]}"/>
+      <stop offset="100%" stop-color="{GOLD_RAHMEN_VERLAUF[1]}"/>
+    </linearGradient>
+    <linearGradient id="goldwort" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="{GOLD_WORT_VERLAUF[0]}"/><stop offset="35%" stop-color="{GOLD_WORT_VERLAUF[1]}"/>
+      <stop offset="65%" stop-color="{GOLD_WORT_VERLAUF[2]}"/><stop offset="100%" stop-color="{GOLD_WORT_VERLAUF[3]}"/>
     </linearGradient>
     <linearGradient id="grund" x1="0" y1="0" x2="0.6" y2="1">
       <stop offset="0%" stop-color="{GRUEN_TIEF}"/><stop offset="60%" stop-color="{SCHWARZ}"/>
@@ -94,30 +155,74 @@ def _umbruch(text: str, zeichen: int) -> list[str]:
     return zeilen
 
 
+def _icon_daturi(pfad: str) -> str | None:
+    """Ein Icon aus dem Homepage-Repo (assets.md Abschnitt 4) als data:-URI,
+    damit es direkt im SVG steht statt als externer Verweis - Chromium
+    rasterisiert das SVG spaeter isoliert (services/rasterizer.py), ein
+    relativer Dateipfad waere dort nicht aufloesbar.
+
+    Fehlt die Datei oder ist kein Pfad angegeben: ``None``, still - ein
+    fehlendes Icon soll die ganze Grafik nicht zum Absturz bringen, die
+    Karte faellt dann auf den reinen Text-/Balken-Aufbau zurueck.
+    """
+    if not pfad:
+        return None
+    from tools.datei_lesen import _homepage_repo_wurzel
+    wurzel = _homepage_repo_wurzel()
+    if wurzel is None:
+        return None
+    ziel = (wurzel / str(pfad).strip().lstrip("/")).resolve()
+    if wurzel not in ziel.parents or not ziel.is_file():
+        return None
+    typ = mimetypes.guess_type(ziel.name)[0] or "image/png"
+    daten = base64.b64encode(ziel.read_bytes()).decode("ascii")
+    return f"data:{typ};base64,{daten}"
+
+
 def infografik(kicker: str, titel: str, kennzahlen: list[dict],
                fussnote: str = "", breite: int = 1080, hoehe: int = 1350) -> str:
     """Eine Infografik mit bis zu vier Kennzahlen.
 
-    ``kennzahlen``: ``[{"wert": "8 h", "label": "Dokumentation pro Woche"}, …]``
+    ``kennzahlen``: ``[{"wert": "8 h", "label": "Dokumentation pro Woche",
+    "icon": "assets/icons/icons_vorteile/icon3.png"}, …]`` – ``icon`` ist
+    optional, ein Pfad relativ zum Homepage-Repo (siehe assets.md Abschnitt 4).
     Die Werte stehen in Gold, die Erläuterung darunter gedeckt – Gold bleibt der
     einzige Akzent, sonst kippt der Auftritt ins Werbliche.
     """
+    titel_zeilen = _umbruch(titel, 26)[:3]
+    eintraege = kennzahlen[:4]
+    # Die Fusszeile steht auf einer festen Position relativ zu 'hoehe', die
+    # Kennzahlen-Kacheln wachsen von oben mit fester Kachelhoehe (148px) je
+    # Eintrag - eine zu klein gewaehlte 'hoehe' liess die letzte Kachel bislang
+    # direkt in die Fusszeile hineinlaufen (gemessen 10.09.2026: Aufruf mit
+    # hoehe=800 bei vier Kennzahlen ueberlappte "Nurovelle" mit der letzten
+    # Kachel - fuer den Aufrufer unsichtbar, sichtbar erst im fertigen PNG).
+    # Die Canvas waechst deshalb automatisch mit, statt eine zu kleine Vorgabe
+    # unveraendert und ungeprueft zu uebernehmen.
+    y_ende = 210 + len(titel_zeilen) * 74 + 40 + len(eintraege) * 148
+    hoehe = max(int(hoehe), y_ende + 190)
     teile = [_kopf(breite, hoehe)]
-    teile.append(f'<text x="56" y="130" fill="{GRUEN_AKZENT}" font-size="20" '
+    teile.append(f'<text x="56" y="130" fill="url(#goldwort)" font-size="20" '
                  f'font-weight="600" letter-spacing="3.4">{escape(kicker.upper())}</text>')
     y = 210
-    for zeile in _umbruch(titel, 26)[:3]:
+    for zeile in titel_zeilen:
         teile.append(f'<text x="56" y="{y}" fill="{HELL}" font-family="{SCHRIFT_TITEL}" '
                      f'font-size="62" font-weight="700">{escape(zeile)}</text>')
         y += 74
     y += 40
-    for eintrag in kennzahlen[:4]:
-        teile.append(f'<rect x="56" y="{y-4}" width="4" height="86" fill="url(#gold)"/>')
-        teile.append(f'<text x="86" y="{y+48}" fill="url(#gold)" '
+    for eintrag in eintraege:
+        icon_uri = _icon_daturi(eintrag.get("icon", ""))
+        text_x = 86
+        if icon_uri:
+            teile.append(f'<image href="{icon_uri}" x="56" y="{y-4}" width="52" height="52"/>')
+            text_x = 124
+        else:
+            teile.append(f'<rect x="56" y="{y-4}" width="4" height="86" fill="url(#gold)"/>')
+        teile.append(f'<text x="{text_x}" y="{y+48}" fill="url(#goldwort)" '
                      f'font-family="{SCHRIFT_TITEL}" font-size="58" font-weight="800">'
                      f'{escape(str(eintrag.get("wert","")))}</text>')
         for i, zeile in enumerate(_umbruch(eintrag.get("label", ""), 44)[:2]):
-            teile.append(f'<text x="86" y="{y+78+i*24}" fill="{HELL_GEDECKT}" '
+            teile.append(f'<text x="{text_x}" y="{y+78+i*24}" fill="{HELL_GEDECKT}" '
                          f'font-size="21">{escape(zeile)}</text>')
         y += 148
     if fussnote:
@@ -130,24 +235,47 @@ def infografik(kicker: str, titel: str, kennzahlen: list[dict],
 
 def onepager(titel: str, untertitel: str, abschnitte: list[dict],
              abschluss: str = "", breite: int = 1240, hoehe: int = 1754) -> str:
-    """Ein Onepager in A4-Verhältnis. ``abschnitte``: ``[{"kopf":…, "text":…}]``"""
+    """Ein Onepager in A4-Verhältnis.
+
+    ``abschnitte``: ``[{"kopf":…, "text":…, "icon": "assets/icons/icons_service/icon2.png"}]``
+    – ``icon`` ist optional, ein Pfad relativ zum Homepage-Repo (siehe
+    assets.md Abschnitt 4). Mit Icon wirkt jeder Abschnitt als eigene
+    Aufzaehlungs-Karte statt als reiner Fliesstextblock.
+    """
+    titel_zeilen = _umbruch(titel, 30)[:2]
+    untertitel_zeilen = _umbruch(untertitel, 62)[:3]
+    eintraege = abschnitte[:5]
+    # Dieselbe Ursache wie in infografik() oben: die Abschluss-Box haengt an
+    # einer festen Position relativ zu 'hoehe', der Inhalt waechst von oben -
+    # bei zu klein gewaehlter 'hoehe' lief der letzte Abschnitt in die Box
+    # bzw. die Fusszeile hinein. Canvas waechst deshalb mit dem tatsaechlichen
+    # Inhalt mit, statt eine zu kleine Vorgabe unveraendert zu uebernehmen.
+    y_ende = 200 + len(titel_zeilen) * 68 + len(untertitel_zeilen) * 34 + 60 + 56
+    for abschnitt in eintraege:
+        y_ende += 40 + len(_umbruch(abschnitt.get("text", ""), 74)[:5]) * 30 + 34
+    hoehe = max(int(hoehe), y_ende + (230 if abschluss else 170))
     teile = [_kopf(breite, hoehe)]
-    teile.append(f'<text x="72" y="128" fill="{GRUEN_AKZENT}" font-size="19" '
+    teile.append(f'<text x="72" y="128" fill="url(#goldwort)" font-size="19" '
                  f'font-weight="600" letter-spacing="3.4">NUROVELLE</text>')
     y = 200
-    for zeile in _umbruch(titel, 30)[:2]:
+    for zeile in titel_zeilen:
         teile.append(f'<text x="72" y="{y}" fill="{HELL}" font-family="{SCHRIFT_TITEL}" '
                      f'font-size="56" font-weight="700">{escape(zeile)}</text>')
         y += 68
-    for zeile in _umbruch(untertitel, 62)[:3]:
+    for zeile in untertitel_zeilen:
         teile.append(f'<text x="72" y="{y+14}" fill="{HELL_GEDECKT}" font-size="24">'
                      f'{escape(zeile)}</text>')
         y += 34
     y += 60
     teile.append(f'<rect x="72" y="{y}" width="{breite-144}" height="2" fill="url(#gold)"/>')
     y += 56
-    for abschnitt in abschnitte[:5]:
-        teile.append(f'<text x="72" y="{y}" fill="url(#gold)" font-family="{SCHRIFT_TITEL}" '
+    for abschnitt in eintraege:
+        icon_uri = _icon_daturi(abschnitt.get("icon", ""))
+        kopf_x = 72
+        if icon_uri:
+            teile.append(f'<image href="{icon_uri}" x="72" y="{y-32}" width="40" height="40"/>')
+            kopf_x = 124
+        teile.append(f'<text x="{kopf_x}" y="{y}" fill="url(#goldwort)" font-family="{SCHRIFT_TITEL}" '
                      f'font-size="30" font-weight="700">{escape(abschnitt.get("kopf",""))}</text>')
         y += 40
         for zeile in _umbruch(abschnitt.get("text", ""), 74)[:5]:

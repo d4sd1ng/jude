@@ -1,0 +1,122 @@
+# task_type -> {requires_tools, tiers}. tiers ist eine Liste von Modellnamen
+# aus config/models.yaml `models:`, in Eskalationsreihenfolge - dieselbe Idee
+# wie der bestehende router.fallback_chain, nur pro Aufgabentyp statt einer
+# einzigen globalen Kette fuer alle Aufrufer.
+#
+# requires_tools: true heisst, die Filterung auf werkzeugfaehige Modelle ist
+# unbedingt (kein Ermessen mehr) - das ist die deklarative Fassung des
+# strict_tools-Parameters aus core/model_router.py/core/agent.py.
+#
+# jude_chat ist die EINZIGE Ausnahme: Tinos eigener Chat hat immer das volle
+# Werkzeug-Set geladen, auch fuer reines Plaudern - dort bleibt die bestehende
+# weiche Heuristik (_is_actionable/Komplexitaetsschaetzung) aktiv, siehe
+# core/ai_router.py.
+task_types:
+  jude_chat:
+    requires_tools: false
+    tiers: [local_dolphin, cloud_openrouter_dolphin, cloud_openrouter_hermes]
+
+  # Haeufig/geringwertig: Buchhaltung, Scraping, Auflisten, Status-Updates.
+  # Freie Ollama-Cloud-Stufe zuerst (echte $0-Kosten, keine GPU-Konkurrenz mit
+  # anderen laufenden Mitarbeitern). cloud_openai_terra VOR local_qwen_coder,
+  # nicht danach: lokal ist zwar auch kostenlos, aber gemessen wiederholt
+  # unzuverlaessig genau beim "wurde zurueckgewiesen, ueberarbeite und lege
+  # erneut vor"-Ablauf (scraper, Pipeline-Pilot, 05.09.2026 - zwei Laeufe in
+  # Folge auf local_qwen_coder liefen in eine submit_for_review+read_project_file-
+  # Schleife bis zum Schritt-Deckel, ohne die Revision je abzuschliessen).
+  # Ein bezahlter, aber zuverlaessiger Versuch ist besser als ein kostenloser,
+  # der strukturell haengen bleibt.
+  # gpt-5.1 (11.09.2026) haengt hier NACH cloud_openai_terra, nicht davor:
+  # dieselbe Rolle wie ein zweiter bezahlter Versuch, wenn terra selbst
+  # gesperrt/nicht erreichbar ist, bevor auf lokal (unzuverlaessig, siehe
+  # Kommentar unten) zurueckgefallen wird - fuer die haeufigen/geringwertigen
+  # Rollen reicht das guenstigste bezahlte Modell, kein hoeherer Rang noetig.
+  routine_dispatch:
+    requires_tools: true
+    tiers:
+      - cloud_ollama_gptoss
+      - cloud_ollama_nemotron_ultra
+      - cloud_ollama_nemotron_super
+      - cloud_ollama_gptoss20
+      - cloud_ollama_gemma
+      - cloud_openai_terra
+      - cloud_openai_gpt51
+      - local_qwen_coder
+
+  # Selten/hochwertig: endgueltiger, kundengerichteter Text unter Markenregeln.
+  # gpt-5.4/5.5 (11.09.2026) haengen um claude_sonnet herum als weitere echte
+  # Versuche, bevor auf lokal zurueckgefallen wird - Heinz' Text geht direkt
+  # zu Tino, ein zusaetzlicher bezahlter Versuch ist hier eher gerechtfertigt
+  # als bei routine_dispatch.
+  content_drafting:
+    requires_tools: true
+    tiers:
+      - cloud_ollama_gptoss
+      - cloud_openai_terra
+      - cloud_openai_gpt54
+      - cloud_claude_sonnet
+      - cloud_openai_gpt55
+      - local_qwen_coder
+
+  # Selten/hoechstwertig: Gatekeeper-Entscheidungen, bevor Tino etwas sieht.
+  # Neu geordnet 11.09.2026 (Tino: "quality first ... but check which
+  # employee is better going to use model x" / "she doesnt need astra for
+  # deciding what to keep and what to reject" / "dont drop any of them use
+  # them in wise order"). Eine Freigabe/Revision-Entscheidung ist Abgleich
+  # gegen eine feste Rubrik (Fakten/Quellen/Hook/Branding/... - siehe
+  # Renates eigener Rollentext), kein komplexes Schreiben oder Coden - dafuer
+  # reicht ein solides Mittelfeld-Modell zuverlaessig, das teuerste/
+  # staerkste Modell (astra) ist dafuer nicht noetig. Reihenfolge deshalb:
+  # 1) solide, spuerbar staerker als terra, aber nicht Flaggschiff-Preis
+  #    (sol, gpt55, claude_sonnet, gpt54 - zwei Anbieter gemischt, damit
+  #    nicht ausgerechnet ein einzelner OpenAI-Ausfall die ganze obere
+  #    Haelfte der Kette auf einmal kostet, siehe Ausfall unten);
+  # 2) guenstigere, aber noch brauchbare Stufen (terra, gpt51, ollama_gptoss);
+  # 3) die beiden Flaggschiff-Stufen (astra, claude_fable, beide $0.05/1k
+  #    Output, teuerste im Katalog) NICHT entfernt, aber ans Ende gestellt -
+  #    fuer den seltenen Fall, dass wirklich nichts Guenstigeres mehr geht,
+  #    nicht als Regelfall fuer eine Alltagsentscheidung;
+  # 4) local_qwen_coder als letzte Stufe (11.09.2026 nachtraeglich ergaenzt -
+  #    diese Kette war bis dahin komplett cloud. Gemessen 11.09.2026, ueber
+  #    25 Minuten/5 aufeinanderfolgende Ticks: OpenAI bis Mitternacht
+  #    gesperrt, Anthropic gesperrt, UND Ollama Cloud traf gleichzeitig das
+  #    eigene monatliche Nutzungslimit (429 "you have reached your monthly
+  #    usage limit") - alle Stufen gleichzeitig unerreichbar, Renate lief
+  #    jeden Tick sofort auf 'fehlgeschlagen', ohne je ein Werkzeug
+  #    aufzurufen. Ein einzelner, langsamer, aber lokal laufender Versuch
+  #    ist besser als ein kompletter Stillstand des gesamten Gatekeepers).
+  judgment_review:
+    requires_tools: true
+    tiers:
+      - cloud_openai_sol
+      - cloud_openai_gpt55
+      - cloud_claude_sonnet
+      - cloud_openai_gpt54
+      - cloud_openai_terra
+      - cloud_openai_gpt51
+      - cloud_ollama_gptoss
+      - cloud_openai_astra
+      - cloud_claude_fable
+      - local_qwen_coder
+
+  # gpt-5.2/5.4 (11.09.2026) als zusaetzliche bezahlte Versuche vor Claude:
+  # beide haben genug Reasoning fuer Code, guenstiger als Claude, daher zuerst.
+  code_engineering:
+    requires_tools: true
+    tiers:
+      - local_qwen_coder
+      - cloud_ollama_gptoss
+      - cloud_openai_terra
+      - cloud_openai_gpt52
+      - cloud_claude_sonnet
+      - cloud_openai_gpt54
+
+  # gpt-5.2 (11.09.2026) zwischen terra und Claude - ausreichend fuer
+  # Bewertungs-/Score-Aufgaben, ohne gleich auf Claude zu eskalieren.
+  data_analysis:
+    requires_tools: true
+    tiers:
+      - cloud_ollama_gptoss
+      - cloud_openai_terra
+      - cloud_openai_gpt52
+      - cloud_claude_sonnet

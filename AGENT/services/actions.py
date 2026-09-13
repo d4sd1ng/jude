@@ -9,6 +9,7 @@ from services.database import audit
 from services.filesystem import write_external_after_confirmation
 from services.home_assistant import HomeAssistantService
 from services.mail import MailService
+from services.notion_db import NotionDatabaseService
 from services.remote import SSHService
 
 
@@ -23,6 +24,7 @@ class ActionExecutor:
         self.calendar = CalendarService()
         self.home = HomeAssistantService()
         self.ssh = SSHService()
+        self.notion = NotionDatabaseService()
         self.team = team  # SubAgentService, für bestätigte Sub-Agent-Erstellung
 
     def __call__(self, action_type: str, payload: dict) -> str:
@@ -45,6 +47,8 @@ class ActionExecutor:
             return str(self.home.run_profile(**payload))
         if action_type == "mail_archive":
             return str(self.mail.archive(**payload))
+        if action_type == "notion_write":
+            return str(self.notion.update(**payload))
         if action_type == "code_write":
             return str(self.coding.write(**payload))
         if action_type == "code_commit":

@@ -1,1 +1,1 @@
-/media/d4sd1ng/AI-Data/Projects/homepage_repo/Social_Media/facebook.md
+../../../homepage_repo/Social_Media/facebook.md

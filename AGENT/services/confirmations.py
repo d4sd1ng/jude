@@ -1,20 +1,47 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Callable
 
 from services.database import audit, connection
 
+logger = logging.getLogger(__name__)
+
 Executor = Callable[[str, dict], str]
+
+
+def _identitaet(action_type: str, payload: dict):
+    """Woran zwei Bestaetigungsanfragen erkennbar sind, dieselbe Aktion zu
+    meinen (fuer den Revisions-Abgleich in ``request`` unten) - je Aktionstyp
+    verschieden, weil die Payload-Form verschieden ist. ``None`` heisst: kein
+    bekannter Schluessel, also NIE mit einer bestehenden Zeile zusammenlegen.
+
+    War frueher ein einziger Pfad-Vergleich mit einem blinden Auffangfall
+    ("kein 'path'? dann die neueste offene Zeile nehmen") - der traf fuer
+    notion_write (Payload hat 'name'/'page_id'/'fields', kein 'path') und
+    praktisch jeden anderen Aktionstyp ohne Dateipfad IMMER zu, egal ob es
+    wirklich dieselbe Aktion war. Gemessen 06.09.2026: eine einzige
+    designer/notion_write-Zeile stand bei Runde 6, obwohl es in der ganzen
+    Historie nur diese eine Zeile gibt - fuenf fruehere, tatsaechlich
+    unterschiedliche Bild-URL-Schreibvorgaenge wurden dabei stillschweigend
+    ueberschrieben, bevor Tino sie je zu sehen bekam.
+    """
+    if action_type == "notion_write":
+        return ("notion_write", payload.get("name"), payload.get("page_id"))
+    pfad = payload.get("path")
+    if pfad is not None:
+        return ("path", pfad)
+    return None
 
 
 class ConfirmationQueue:
     ALLOWED_ACTIONS = {"mail_send", "mail_delete", "git_merge", "file_delete", "external_write", "calendar_create",
                        "home_switch", "home_action", "mail_archive", "code_write", "code_commit",
                        "code_push", "code_pr", "code_branch", "code_clone", "code_pull",
-                       "shell_command", "create_agent", "ssh_command", "scp_transfer"}
+                       "shell_command", "create_agent", "ssh_command", "scp_transfer", "notion_write"}
 
     def request(self, action_type: str, summary: str, payload: dict, agent: str = "") -> dict:
         if action_type not in self.ALLOWED_ACTIONS:
@@ -27,20 +54,24 @@ class ConfirmationQueue:
         # Ein Mitarbeiter, der eine Revision überarbeitet, ruft dasselbe Werkzeug
         # einfach erneut auf – ohne diesen Abgleich häufte sich pro Runde eine
         # weitere Zeile an, und die alte Revision blieb für immer offen im Prompt.
+        # Galt bisher nur für 'revision': eine noch UNENTSCHIEDENE ('pending')
+        # Anfrage wurde nie abgeglichen, darum haeufte jeder stuendliche
+        # Auftragswaechter-Lauf eine weitere Zeile fuer dieselbe Datei an, ohne
+        # dass Tino je entschieden hatte – 73 haengende Bestaetigungen fuer
+        # 3 Dateien, gemessen 03.09.2026.
         if agent:
             with connection() as db:
                 laufend = db.execute(
                     "SELECT id, payload_json FROM confirmations WHERE agent=? AND action_type=? "
-                    "AND status='revision' ORDER BY created_at DESC", (agent, action_type),
+                    "AND status IN ('revision','pending') ORDER BY created_at DESC", (agent, action_type),
                 ).fetchall()
-            pfad = payload.get("path")
+            schluessel = _identitaet(action_type, payload)
             treffer = None
-            for row in laufend:
-                if pfad is not None and json.loads(row["payload_json"]).get("path") == pfad:
-                    treffer = row["id"]
-                    break
-            if treffer is None and pfad is None and laufend:
-                treffer = laufend[0]["id"]
+            if schluessel is not None:
+                for row in laufend:
+                    if _identitaet(action_type, json.loads(row["payload_json"])) == schluessel:
+                        treffer = row["id"]
+                        break
             if treffer is not None:
                 with connection() as db:
                     db.execute(
@@ -49,6 +80,7 @@ class ConfirmationQueue:
                         (summary, payload_json, created, treffer),
                     )
                 audit("confirmation_requested", treffer, {"action_type": action_type, "summary": summary, "ueberarbeitet": True}, True)
+                logger.info("Bestaetigung %s (%s, %s) erneut vorgelegt: %s", treffer, action_type, agent or "?", summary[:150])
                 try:
                     from services.notifications import NotificationService
                     NotificationService().create("bestaetigung", f"Freigabe nötig: {action_type}", summary[:200])
@@ -62,6 +94,7 @@ class ConfirmationQueue:
                 (action_id, action_type, summary, payload_json, created, agent),
             )
         audit("confirmation_requested", action_id, {"action_type": action_type, "summary": summary}, True)
+        logger.info("Bestaetigung %s (%s, %s) angelegt: %s", action_id, action_type, agent or "?", summary[:150])
         # Ohne Meldung wartete die Schleuse stumm: Joanas Landingpage-Schreib-
         # vorgänge lagen hier, ohne dass Tino je davon erfuhr (16.08.).
         try:
@@ -118,6 +151,18 @@ class ConfirmationQueue:
                 (str(anmerkung)[:2000], now, action_id),
             )
         audit("confirmation_revision", action_id, {"anmerkung": anmerkung}, True)
+        # Sofort nachfassen statt auf den naechsten Poll-Tick zu warten
+        # (11.09.2026 - Tino: eine Revision soll nicht liegen bleiben).
+        if row["agent"]:
+            try:
+                from services.scheduler import SchedulerService
+                sched = SchedulerService.aktuelle()
+                if sched is not None:
+                    sched.dispatch_now(row["agent"],
+                                       "Du hast eine offene Revision - siehe oben im Systemprompt. "
+                                       "Arbeite sie ab, bevor du etwas Neues beginnst.")
+            except Exception:
+                pass
         return {"id": action_id, "status": "revision", "agent": row["agent"]}
 
     def decide(self, action_id: str, approve: bool, executor: Executor) -> dict:
@@ -140,6 +185,7 @@ class ConfirmationQueue:
                 action_type = row["action_type"]
         if rejected:
             audit("confirmation_rejected", action_id, {"action_type": action_type}, True)
+            logger.info("Bestaetigung %s (%s) abgelehnt.", action_id, action_type)
             return {"id": action_id, "status": "rejected", "result": "Vom Nutzer abgelehnt"}
         try:
             result = executor(action_type, payload)
@@ -147,8 +193,10 @@ class ConfirmationQueue:
             with connection() as db:
                 db.execute("UPDATE confirmations SET status='failed',result=? WHERE id=?", (str(exc), action_id))
             audit("confirmation_execution", action_id, {"action_type": action_type, "error": str(exc)}, False)
+            logger.warning("Bestaetigung %s (%s) fehlgeschlagen bei Ausfuehrung: %s", action_id, action_type, exc)
             raise
         with connection() as db:
             db.execute("UPDATE confirmations SET status='approved',decided_at=?,result=? WHERE id=?", (now, result, action_id))
         audit("confirmation_execution", action_id, {"action_type": action_type}, True)
+        logger.info("Bestaetigung %s (%s) ausgefuehrt: %s", action_id, action_type, str(result)[:200])
         return {"id": action_id, "status": "approved", "result": result}

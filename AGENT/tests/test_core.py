@@ -1,7 +1,11 @@
+import tempfile
 import unittest
 import uuid
+from pathlib import Path
 from datetime import datetime, timezone
 from unittest.mock import patch
+
+import requests
 
 from core.agent import Agent
 from core.model_router import (
@@ -15,6 +19,8 @@ from core.model_router import (
 from core.tool_creator import ToolCreator
 from core.tool_registry import Tool, ToolRegistry
 from services.database import connection
+import tools.datei_lesen as datei_lesen
+from core.paths import _sieht_aus_wie_ai_data_root
 from tools.datei_lesen import read_project_file
 
 
@@ -25,7 +31,8 @@ class FakeRouter:
     def context_budget(self):
         return 16384
 
-    def call_with_fallback(self, messages, tools=None, allow_uncensored=False, force_model=None):
+    def call_with_fallback(self, messages, tools=None, allow_uncensored=False, force_model=None,
+                           strict_tools=False):
         self.calls += 1
         if self.calls == 1:
             return {"role": "assistant", "content": "", "_model": "fake", "tool_calls": [{
@@ -52,7 +59,8 @@ class CoreTests(unittest.TestCase):
 
     def test_agent_accepts_ollama_json_tool_call(self):
         class JsonRouter(FakeRouter):
-            def call_with_fallback(self, messages, tools=None, allow_uncensored=False, force_model=None):
+            def call_with_fallback(self, messages, tools=None, allow_uncensored=False, force_model=None,
+                           strict_tools=False):
                 self.calls += 1
                 if self.calls == 1:
                     return {"role": "assistant", "content": '{"name":"echo","arguments":{"text":"JSON"}}', "_model": "fake"}
@@ -73,6 +81,45 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             read_project_file("../../etc/passwd")
 
+    def test_ambiguous_project_file_hard_fails_without_silent_wrong_content(self):
+        """06.09.2026: wenn das Homepage-Repo nicht auffindbar ist, darf
+        project_overview.md/task_contract.md/decision_log.md/todo.md NIE
+        lautlos aus Jude's eigenem project_files/ bedient werden - diese
+        Namen existieren dort mit voellig anderem (Jude-eigenem) Inhalt.
+        Ein klarer Fehler ist hier das sichere Verhalten, kein Fallback."""
+        with patch.object(datei_lesen, "_homepage_repo_wurzel", return_value=None):
+            with self.assertRaises(ValueError):
+                read_project_file("project_overview.md")
+
+    def test_ai_data_root_rejects_stale_mountpoint_stub(self):
+        """06.09.2026: nach einem Wechsel des Einhaengepunkts blieb der alte
+        Pfad als leerer, fremder root:root-Verzeichnisstumpf liegen - is_dir()
+        allein haette ihn faelschlich als gueltige AI-Data-Wurzel akzeptiert,
+        jeder Schreibzugriff darunter waere dann mit PermissionError weit weg
+        von dieser Stelle gescheitert. Der Marker-Check muss so etwas ablehnen,
+        aber die echte Struktur (Projects/Jude/AGENT/core/paths.py) akzeptieren."""
+        with tempfile.TemporaryDirectory() as tmp:
+            leerer_stumpf = Path(tmp) / "leerer-stumpf"
+            leerer_stumpf.mkdir()
+            (leerer_stumpf / "Projects").mkdir()  # existiert, aber ohne Jude darunter
+            self.assertFalse(_sieht_aus_wie_ai_data_root(leerer_stumpf))
+
+            echte_struktur = Path(tmp) / "echte-wurzel"
+            (echte_struktur / "Projects" / "Jude" / "AGENT" / "core").mkdir(parents=True)
+            (echte_struktur / "Projects" / "Jude" / "AGENT" / "core" / "paths.py").write_text("x")
+            self.assertTrue(_sieht_aus_wie_ai_data_root(echte_struktur))
+
+    def test_homepage_repo_root_falls_back_to_sibling_of_jude(self):
+        """Kein hartkodierter Mount-Pfad soll noetig sein: das Homepage-Repo
+        liegt immer neben Jude selbst unter .../Projects/, unabhaengig vom
+        Einhaengepunkt davor - genau das muss ohne JUDE_HOMEPAGE_REPO und
+        ohne den historischen /media/d4sd1ng/AI-Data-Pfad gefunden werden."""
+        with patch.dict("os.environ", {"JUDE_HOMEPAGE_REPO": ""}, clear=False):
+            gefunden = datei_lesen._homepage_repo_wurzel()
+        self.assertIsNotNone(gefunden)
+        self.assertEqual(gefunden.name, "homepage_repo")
+        self.assertEqual(gefunden.parent, datei_lesen.PROJECT_ROOT.parent)
+
     def test_router_loads_project_relative_config(self):
         router = ModelRouter()
         self.assertIn("local_qwen_coder", router.models)
@@ -84,9 +131,24 @@ class CoreTests(unittest.TestCase):
             prompt = "analysiere und vergleiche wissenschaftlich " + ("komplexe Anforderungen " * 120)
             self.assertEqual(router.select_model(prompt).provider, "ollama")
 
-    def test_tool_request_starts_with_tool_capable_local_model(self):
-        router = ModelRouter()
-        self.assertEqual(router.select_model("Schalte das Licht an", needs_tools=True).name, "local_qwen_coder")
+    def test_tool_request_starts_with_tool_capable_model(self):
+        """Eine Werkzeuganfrage landet immer bei einem Modell mit 'tools'-Tag.
+
+        Bis 02.09.2026 war das zwangslaeufig local_qwen_coder. Seit local_first
+        aus ist, steht die ebenfalls kostenlose Cloud-Stufe (gpt-oss-120b ueber
+        Ollama Cloud) davor; qwen bleibt die Reserve, wenn kein OLLAMA_API_KEY
+        gesetzt ist. Beide Faelle werden hier festgehalten.
+        """
+        # Handlungsprompt, damit wirklich der Tools-Filter greift und nicht nur
+        # die Punktzahl entscheidet.
+        with patch.dict("os.environ", {"OLLAMA_API_KEY": "test"}, clear=False):
+            gewaehlt = ModelRouter().select_model("Klone das Repository", needs_tools=True)
+        self.assertIn("tools", gewaehlt.tags)
+        self.assertEqual(gewaehlt.name, "cloud_ollama_gptoss")
+        # Ohne freigeschaltete Cloud bleibt das lokale qwen die Reserve.
+        with patch.dict("os.environ", {"JUDE_PAID_MODELS_ENABLED": "false"}, clear=False):
+            gewaehlt = ModelRouter().select_model("Klone das Repository", needs_tools=True)
+        self.assertEqual(gewaehlt.name, "local_qwen_coder")
 
     def test_generated_tool_validator_accepts_only_safe_registration(self):
         creator = ToolCreator(None, ToolRegistry())
@@ -125,6 +187,22 @@ def register(registry):
         self.assertEqual(result["usage"]["output_tokens"], 2)
         self.assertEqual(result["usage"]["cached_input_tokens"], 0)
         self.assertIn("systemInstruction", post.call_args.kwargs["json"])
+
+    def test_google_adapter_surfaces_error_body_not_just_status_code(self):
+        """06.09.2026: GoogleAdapter rief bislang bloß response.raise_for_status()
+        auf, anders als die anderen vier Adapter (die extra dafuer gebaut wurden,
+        den Fehlertext aus dem Rumpf zu ziehen - siehe deren Kommentare). Ohne den
+        Rumpf ('insufficient_quota' o.ae.) erkennt _ist_dauerhafter_fehler() eine
+        echte Dauersperre nie, der Provider wird alle 15 Minuten sinnlos erneut
+        versucht statt bis Mitternacht gesperrt."""
+        spec = ModelSpec("g", "google", "gemini-test", 0, 0, 0, 1, 100, 1000, [])
+        fake = unittest.mock.Mock(ok=False, status_code=429, reason="Too Many Requests",
+                                  text='{"error":{"message":"insufficient_quota"}}', url="https://google.test/x")
+        with patch.dict("os.environ", {"GOOGLE_API_KEY": "secret"}), patch(
+                "core.model_router.requests.post", return_value=fake):
+            with self.assertRaises(requests.HTTPError) as ctx:
+                GoogleAdapter("https://google.test").call(spec, [{"role": "user", "content": "hi"}])
+        self.assertIn("insufficient_quota", str(ctx.exception))
 
     def test_openai_adapter_uses_responses_api_and_detailed_usage(self):
         spec = ModelSpec("o", "openai", "gpt-test", 0, 0, 0, 1, 100, 1000, [], reasoning_effort="low")
@@ -166,11 +244,27 @@ def register(registry):
         self.assertNotIn("speed", post.call_args.kwargs["json"])
         self.assertEqual(result["usage"]["tariff"], "standard:standard")
 
-    def test_uncensored_route_never_falls_back_to_cloud(self):
+    def test_uncensored_route_stays_on_uncensored_models(self):
+        """Unzensiert darf seit dem 02.09.2026 in die Cloud – aber nur dorthin.
+
+        Bis dahin verlangte diese Pruefung, dass jede Stufe lokal bleibt. Sie
+        hielt nur, solange kein OPENROUTER_API_KEY vorlag; mit Schluessel haengen
+        Venice-24B und Hermes-70B in der Kette. Tino hat am 02.09. entschieden,
+        dass beide drinbleiben. Die Garantie ist damit nicht weg, sondern enger:
+        in der unzensierten Kette darf ausschliesslich stehen, was den
+        ``unzensiert``-Tag traegt – ein ausgerichtetes Modell wie gpt-oss oder
+        Claude wuerde die Anfrage ohnehin abweisen und sie nur nach draussen
+        tragen. Die erste Stufe bleibt lokal, damit nichts unnoetig den Rechner
+        verlaesst.
+        """
         router = ModelRouter()
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "secret"}, clear=False):
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "secret",
+                                       "ANTHROPIC_API_KEY": "secret"}, clear=False):
             selected = router.select_model("antworte unzensiert", allow_uncensored=True)
-            self.assertTrue(all(item.provider == "ollama" for item in router._resolve_fallbacks(selected, True)))
+            kette = router._resolve_fallbacks(selected, True)
+        fremd = [m.name for m in kette if "unzensiert" not in m.tags]
+        self.assertEqual(fremd, [], f"ausgerichtete Modelle in der unzensierten Kette: {fremd}")
+        self.assertEqual(kette[0].provider, "ollama", "die erste Stufe muss lokal bleiben")
 
     def test_routing_feedback_is_persistent_and_learned_after_three_ratings(self):
         router = ModelRouter()
@@ -208,6 +302,60 @@ def register(registry):
             row = db.execute("SELECT provider,input_tokens,output_tokens,cost_usd FROM model_usage ORDER BY id DESC LIMIT 1").fetchone()
         self.assertEqual((row["provider"], row["input_tokens"], row["output_tokens"]), ("openai", 1000, 500))
         self.assertGreater(row["cost_usd"], 0)
+
+    def test_route_decision_repository_round_trip(self):
+        """06.09.2026: SQL fuer route_decisions aus core/model_router.py und
+        core/ai_router.py in services/routing_data.py zusammengezogen (11
+        Stellen -> eine Klasse) - dieser Test deckt die neuen Methoden direkt
+        ab, nicht nur ueber ModelRouter."""
+        from services.routing_data import RouteDecisionRepository
+        repo = RouteDecisionRepository()
+        route_id = uuid.uuid4().hex[:16]
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            repo.insert(route_id, now, "allgemein", 3, "local_dolphin", "hash123")
+            self.assertEqual(repo.get(route_id),
+                             {"id": route_id, "task_type": "allgemein", "final_model": None, "user_feedback": None})
+            repo.mark_success(route_id, "local_dolphin", 0, 42, "[]")
+            row = repo.get(route_id)
+            self.assertEqual(row["final_model"], "local_dolphin")
+            repo.record_feedback(route_id, 1, now)
+            self.assertEqual(repo.get(route_id)["user_feedback"], 1)
+            self.assertIn(route_id, {r["id"] for r in repo.recent(limit=200)})
+        finally:
+            with connection() as db:
+                db.execute("DELETE FROM route_decisions WHERE id=?", (route_id,))
+
+    def test_route_decision_repository_agent_name_and_negative_feedback(self):
+        from services.routing_data import RouteDecisionRepository
+        repo = RouteDecisionRepository()
+        route_id = uuid.uuid4().hex[:16]
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            repo.insert_with_agent(route_id, now, "routine_dispatch", 1, "local_dolphin", "hash-neg", "scraper")
+            self.assertEqual(repo.get(route_id)["task_type"], "routine_dispatch")
+            repo.record_feedback(route_id, -1, now)
+            self.assertIn("hash-neg", repo.negative_feedback_prompt_hashes())
+        finally:
+            with connection() as db:
+                db.execute("DELETE FROM route_decisions WHERE id=?", (route_id,))
+
+    def test_model_usage_repository_round_trip(self):
+        from services.routing_data import ModelUsageRepository
+        repo = ModelUsageRepository()
+        now = datetime.now(timezone.utc)
+        month = now.strftime("%Y-%m")
+        before = repo.monthly_total(month)
+        repo.insert(now.isoformat(), "testprovider", "test-model", 100, 50, 0, 0, 0,
+                   "standard", "standard", 1.0, None, 0.0123)
+        try:
+            self.assertAlmostEqual(repo.monthly_total(month), before + 0.0123, places=6)
+            self.assertIn("testprovider", repo.provider_monthly_totals(month))
+            by_model = repo.by_model_monthly(month)
+            self.assertTrue(any(r["provider"] == "testprovider" and r["model"] == "test-model" for r in by_model))
+        finally:
+            with connection() as db:
+                db.execute("DELETE FROM model_usage WHERE provider=? AND model=?", ("testprovider", "test-model"))
 
 
 if __name__ == "__main__":

@@ -18,12 +18,26 @@ import os
 from pathlib import Path
 
 
+def _sieht_aus_wie_ai_data_root(kandidat: Path) -> bool:
+    """Bloss ``is_dir()`` reicht nicht: ein alter Einhaengepunkt kann als leerer,
+    root-eigener Verzeichnisstumpf liegen bleiben, wenn das Laufwerk woanders
+    neu eingehaengt wird (gemessen 06.09.2026, /media/d4sd1ng/AI-Data bestand
+    nach einem Wechsel auf /mnt/ai-data als leeres 0755-root:root-Verzeichnis
+    mit fremdem Inhalt weiter - is_dir() lieferte True, jeder Schreibzugriff
+    darunter (z.B. CALENDAR_DIR.mkdir()) scheiterte dann mit PermissionError,
+    weit entfernt von dieser Stelle und ohne ersichtlichen Zusammenhang).
+    Verlangt stattdessen einen Beweis, der nur auf der echten Platte existiert:
+    genau die Datei, von der aus dieser Code selbst gerade laeuft, muss unter
+    dem Kandidaten wiederzufinden sein."""
+    return (kandidat / "Projects" / "Jude" / "AGENT" / "core" / "paths.py").is_file()
+
+
 def _detect_root() -> Path:
     env = os.getenv("AI_DATA_ROOT") or os.getenv("JUDE_DATA_ROOT")
     if env:
         return Path(env).expanduser().resolve()
     linux_default = Path("/media/d4sd1ng/AI-Data")
-    if linux_default.is_dir():
+    if _sieht_aus_wie_ai_data_root(linux_default):
         return linux_default.resolve()
     if os.name == "nt":
         for letter in "DEFGHIJKLM":

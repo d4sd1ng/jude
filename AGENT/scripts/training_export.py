@@ -59,16 +59,16 @@ def systemprompt() -> str:
 
 def sammeln() -> tuple[list[dict], Counter]:
     from services.database import connection
+    from services.routing_data import RouteDecisionRepository
 
     grund = Counter()
     beispiele: list[dict] = []
     gesehen: set[str] = set()
     system = systemprompt()
 
+    # Negativ bewertete Modellläufe über die Route ausschließen.
+    schlecht = RouteDecisionRepository().negative_feedback_prompt_hashes()
     with connection() as db:
-        # Negativ bewertete Modellläufe über die Route ausschließen.
-        schlecht = {row["prompt_hash"] for row in db.execute(
-            "SELECT prompt_hash FROM route_decisions WHERE user_feedback = -1")}
         zeilen = db.execute(
             "SELECT created_at, user_text, assistant_text, model, training_allowed, exclusion_reason "
             "FROM conversation_turns ORDER BY id"

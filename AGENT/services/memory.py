@@ -133,16 +133,27 @@ class MemoryService:
                 continue
         return stored
 
-    def record_turn(self, user_text: str, assistant_text: str, model: str | None) -> None:
+    def record_turn(self, user_text: str, assistant_text: str, model: str | None, agent: str = "jude") -> None:
         excluded = bool(self.DO_NOT_STORE.search(user_text) or self.SENSITIVE.search(user_text))
         if excluded:
             return
         with connection() as db:
             db.execute(
-                "INSERT INTO conversation_turns(id,created_at,user_text,assistant_text,model,training_allowed,exclusion_reason) "
-                "VALUES(?,?,?,?,?,1,'')",
-                (uuid.uuid4().hex[:16], self._now(), user_text, assistant_text, model),
+                "INSERT INTO conversation_turns(id,created_at,user_text,assistant_text,model,training_allowed,exclusion_reason,agent) "
+                "VALUES(?,?,?,?,?,1,'',?)",
+                (uuid.uuid4().hex[:16], self._now(), user_text, assistant_text, model, agent),
             )
+
+    def recent_turns(self, limit: int = 6, agent: str = "jude") -> list[dict]:
+        """Letzte abgeschlossene Gesprächsrunden dieses Agenten, älteste zuerst –
+        zum Wiederherstellen der Chat-Historie nach einem Neustart des Prozesses,
+        der bisher jedes Mal ersatzlos vergaß, worüber gerade gesprochen wurde."""
+        with connection() as db:
+            rows = db.execute(
+                "SELECT user_text,assistant_text FROM conversation_turns WHERE agent=? "
+                "ORDER BY created_at DESC LIMIT ?", (agent, max(1, min(limit, 50))),
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
 
     def exclude_last_turn(self, reason: str) -> None:
         with connection() as db:

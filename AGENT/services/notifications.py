@@ -38,3 +38,10 @@ class NotificationService:
         if updated.rowcount != 1:
             raise ValueError("Benachrichtigung unbekannt oder bereits gelesen.")
         return {"id": notification_id, "read_at": when}
+
+    @staticmethod
+    def mark_all_read() -> dict:
+        when = datetime.now(timezone.utc).isoformat()
+        with connection() as db:
+            updated = db.execute("UPDATE notifications SET read_at=? WHERE read_at IS NULL", (when,))
+        return {"markiert": updated.rowcount, "read_at": when}

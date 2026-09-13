@@ -24,11 +24,21 @@ def build_application() -> tuple[Agent, ToolCreator]:
     load_dotenv(Path(__file__).with_name(".env"))
     registry = ToolRegistry()
     router = ModelRouter()
+    router.vorwaermen()
+    router.provider_selbstheilung()
     confirmations = ConfirmationQueue()
     load_all_tools(registry, router=router, confirmations=confirmations)
     creator = ToolCreator(router, registry)
     registry.register(creator.as_tool())
-    agent = Agent(router, registry)
+    # AI-Router-Umbau, Stage 2: einmal aufgebaut, an Jude selbst und das Team
+    # weitergereicht - use_ai_router steht ueberall auf False (Standard in
+    # Agent.__init__/data/sub_agents.json), bis eine Rolle in einer spaeteren
+    # Stufe gezielt umgeschaltet wird. Bau schlaegt fehl, wenn task_registry.yaml
+    # ein unbekanntes Modell nennt (siehe TaskRegistry.validate).
+    from core.ai_router import AIRouter
+    from core.task_registry import TaskRegistry
+    ai_router = AIRouter(router, TaskRegistry())
+    agent = Agent(router, registry, task_type="jude_chat", use_ai_router=True, ai_router=ai_router)
     _seed_profile(agent)
     from services.backup import BackupService
     from services.notion_db import NotionDatabaseService
@@ -37,14 +47,14 @@ def build_application() -> tuple[Agent, ToolCreator]:
     from services.team import SubAgentService
     from tools.skills import (register_backup, register_documents, register_notion,
                               register_scheduler, register_team)
-    agent.team = SubAgentService(registry, router)
+    agent.team = SubAgentService(registry, router, ai_router=ai_router)
     register_team(registry, agent.team)
     agent.scheduler = SchedulerService(agent)
+    SchedulerService.registrieren(agent.scheduler)
     register_scheduler(registry, agent.scheduler)
     agent.backup = BackupService()
     register_backup(registry, agent.backup)
     _ensure_nightly_backup(agent.scheduler)
-    _ensure_auftragswaechter(agent.scheduler)
     register_notion(registry, NotionDatabaseService())
     agent.documents = DocumentService()
     register_documents(registry, agent.documents)
@@ -58,16 +68,6 @@ def _ensure_nightly_backup(scheduler) -> None:
             scheduler.create("Nächtliche Sicherung", "tool", at="03:00", tool="run_backup", speak=False)
     except Exception as exc:
         logging.getLogger(__name__).warning("Sicherungsaufgabe nicht angelegt: %s", exc)
-
-
-def _ensure_auftragswaechter(scheduler) -> None:
-    """Stündlich überfällige Aufträge nachfassen – nichts versickert mehr."""
-    try:
-        if not any(t.get("tool") == "auftragswaechter" for t in scheduler.list()):
-            scheduler.create("Auftragswächter", "tool", every_minutes=60,
-                             tool="auftragswaechter", speak=False)
-    except Exception as exc:
-        logging.getLogger(__name__).warning("Auftragswächter nicht angelegt: %s", exc)
 
 
 def _seed_profile(agent: Agent) -> None:
