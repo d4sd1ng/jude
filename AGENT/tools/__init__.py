@@ -3,9 +3,7 @@
 import importlib
 import importlib.util
 import logging
-import os
 import pkgutil
-from pathlib import Path
 
 from core.tool_registry import ToolRegistry
 

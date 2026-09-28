@@ -68,6 +68,8 @@ def read_project_file(path: str, max_characters: int = 12000) -> str:
 
 def list_project_files(path: str = ".", pattern: str = "*") -> dict:
     """Verzeichnisinhalt einer erlaubten Wurzel – Namen, Größe, Änderungsdatum."""
+    if ".." in pattern or "/" in pattern or "\\" in pattern:
+        raise ValueError("Ungültiges Glob-Muster: '..' und Pfadtrenner sind nicht erlaubt.")
     wurzeln = _wurzeln()
     kandidat = Path(path).expanduser()
     versuche = [kandidat] if kandidat.is_absolute() else [w / path for w in wurzeln]

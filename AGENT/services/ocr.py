@@ -25,8 +25,8 @@ class OCRService:
         if suffix == ".pdf":
             texts = self._pdf(content, language)
         elif suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}:
-            image = Image.open(io.BytesIO(content))
-            texts = [pytesseract.image_to_string(image, lang=language)]
+            with Image.open(io.BytesIO(content)) as image:
+                texts = [pytesseract.image_to_string(image, lang=language)]
         else:
             raise ValueError("Unterstützt werden PDF und gängige Bildformate.")
         return {"filename": filename, "language": language, "pages": len(texts), "text": "\n\n".join(texts).strip()}
@@ -42,4 +42,8 @@ class OCRService:
             result = subprocess.run(["pdftoppm", "-png", "-r", "200", str(source), str(prefix)], capture_output=True, text=True, timeout=120)
             if result.returncode:
                 raise RuntimeError(result.stderr.strip())
-            return [pytesseract.image_to_string(Image.open(page), lang=language) for page in sorted(Path(tmp).glob("page-*.png"))]
+            pages = []
+            for page in sorted(Path(tmp).glob("page-*.png")):
+                with Image.open(page) as img:
+                    pages.append(pytesseract.image_to_string(img, lang=language))
+            return pages

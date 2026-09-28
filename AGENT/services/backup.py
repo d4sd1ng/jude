@@ -8,7 +8,6 @@ vor, damit die (auf NTFS lesbaren) ZIPs keine Schlüssel enthalten.
 
 from __future__ import annotations
 
-import shutil
 import sqlite3
 import tempfile
 import zipfile

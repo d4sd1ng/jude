@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import re
 import socket
+import time
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -11,6 +12,9 @@ from bs4 import BeautifulSoup
 from defusedxml import ElementTree
 
 USER_AGENT = "JudeFactChecker/1.0 (+personal research; respects robots.txt)"
+
+_ROBOTS_CACHE: dict[str, tuple[bool, float]] = {}
+_ROBOTS_TTL = 3600
 
 
 class ScraperService:
@@ -29,27 +33,34 @@ class ScraperService:
 
     def _robots_allowed(self, url: str) -> bool:
         parsed = urlparse(url)
-        current = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+        cache_key = f"{parsed.scheme}://{parsed.netloc}"
+        cached = _ROBOTS_CACHE.get(cache_key)
+        if cached is not None and time.monotonic() - cached[1] < _ROBOTS_TTL:
+            return cached[0]
+        current = f"{cache_key}/robots.txt"
         parser = RobotFileParser()
+        result = True
         for _ in range(4):
             self._validate_url(current)
             try:
                 response = requests.get(current, headers={"User-Agent": USER_AGENT}, timeout=(5, 8),
                                         allow_redirects=False)
             except requests.RequestException:
-                return True
+                break
             if response.is_redirect or response.is_permanent_redirect:
                 location = response.headers.get("location")
                 if not location:
-                    return True
+                    break
                 current = urljoin(current, location)
                 continue
             if response.status_code >= 400:
-                return True
+                break
             parser.set_url(current)
             parser.parse(response.text.splitlines())
-            return parser.can_fetch(USER_AGENT, url)
-        return True
+            result = parser.can_fetch(USER_AGENT, url)
+            break
+        _ROBOTS_CACHE[cache_key] = (result, time.monotonic())
+        return result
 
     def _get(self, url: str, *, stream: bool = False) -> requests.Response:
         current = url
@@ -97,17 +108,20 @@ class ScraperService:
         if not self._robots_allowed(url):
             raise PermissionError("robots.txt untersagt den Abruf.")
         response = self._get(url, stream=True)
-        response.raise_for_status()
-        final_url = self._validate_url(response.url)
-        content_type = response.headers.get("content-type", "").lower()
-        if "text/html" not in content_type and "application/xhtml" not in content_type:
-            raise ValueError("Der Scraper verarbeitet aktuell öffentliche HTML-Seiten.")
-        chunks, size = [], 0
-        for chunk in response.iter_content(65536):
-            size += len(chunk)
-            if size > self.MAX_BYTES:
-                raise ValueError("Seite überschreitet das Größenlimit von 4 MB.")
-            chunks.append(chunk)
+        try:
+            response.raise_for_status()
+            final_url = self._validate_url(response.url)
+            content_type = response.headers.get("content-type", "").lower()
+            if "text/html" not in content_type and "application/xhtml" not in content_type:
+                raise ValueError("Der Scraper verarbeitet aktuell öffentliche HTML-Seiten.")
+            chunks, size = [], 0
+            for chunk in response.iter_content(65536):
+                size += len(chunk)
+                if size > self.MAX_BYTES:
+                    raise ValueError("Seite überschreitet das Größenlimit von 4 MB.")
+                chunks.append(chunk)
+        finally:
+            response.close()
         soup = BeautifulSoup(b"".join(chunks), "html.parser")
         for node in soup(["script", "style", "noscript", "svg", "nav", "footer"]):
             node.decompose()

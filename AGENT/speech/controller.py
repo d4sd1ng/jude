@@ -51,7 +51,6 @@ class VoiceController:
         self.wake_word = wake_word or os.getenv("JUDE_WAKE_PHRASE", "Jude angetreten")
         self.sleep_word = sleep_word or os.getenv("JUDE_SLEEP_PHRASE", "Jude Zapfenstreich")
         self.record_seconds = max(6.0, float(record_seconds))
-        user_name = os.getenv("JUDE_USER_NAME", "Tino").strip()
         # Passend zu Weck- und Schlafwort ("angetreten" / "Zapfenstreich"):
         # knappe Meldung statt Small Talk. Beides in der GUI überschreibbar.
         self.greeting = os.getenv("JUDE_GREETING", "Zu Befehl.")
@@ -126,7 +125,8 @@ class VoiceController:
         }
 
     def events(self, since: int = 0) -> dict:
-        items = [e for e in self._events if e["id"] > since]
+        snapshot = list(self._events)
+        items = [e for e in snapshot if e["id"] > since]
         last_id = items[-1]["id"] if items else since
         return {"events": items, "last_id": last_id, **self.status()}
 
@@ -241,8 +241,14 @@ class VoiceController:
     def _respond(self, text: str) -> None:
         self._set_state("denkt")
         self._emit("heard", text)
-        with self.agent_lock:
-            answer = self.agent.process_input(text)
+        try:
+            with self.agent_lock:
+                answer = self.agent.process_input(text)
+        except Exception as exc:
+            logger.warning("Verarbeitung des Sprachbefehls fehlgeschlagen: %s", exc)
+            self._emit("error", f"Antwort konnte nicht erzeugt werden: {exc}")
+            self._set_state("aktiv")
+            return
         self._emit("answer", answer, model=self.agent.last_model)
         self._set_state("spricht")
         # Auch normale Antworten müssen abbrechbar sein (Ansage Tino) – vorher
